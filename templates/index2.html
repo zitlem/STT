@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>...</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='all.min.css') }}"
+    />
+    <script src="{{ url_for('static', filename='jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
+
+    <script>
+      var titles = [
+        ".",
+      ];
+      var title = titles[Math.floor(Math.random() * titles.length)]; // pick random item
+
+      document.title = title;
+    </script>
+
+    <script type="text/javascript">
+      var start = 3000;
+      var speed = 250;
+
+      function getParams(startAttr, speedAttr) {
+        var params = window.document.getElementsByTagName("script");
+
+        for (var i = 0; i < params.length; i++) {
+          if (params[i].src.indexOf("title-scroll.js") !== -1) {
+            if (
+              params[i].getAttribute(startAttr) !== null &&
+              params[i].getAttribute(startAttr) !== ""
+            ) {
+              start = params[i].getAttribute(startAttr);
+            }
+
+            if (
+              params[i].getAttribute(speedAttr) !== null &&
+              params[i].getAttribute(speedAttr) !== ""
+            ) {
+              speed = params[i].getAttribute(speedAttr);
+            }
+
+            return;
+          }
+        }
+      }
+
+      window.onload = function (e) {
+        getParams("data-start", "data-speed");
+        var title_ref = window.document.getElementsByTagName("title")[0];
+        var title = title_ref.text;
+        var i = 0;
+
+        setTimeout(function () {
+          setInterval(function () {
+            title_ref.text =
+              title.substr(i, title.length) + "  ---  " + title.substr(0, i);
+            i++;
+
+            if (i === title.length) {
+              i = 0;
+            }
+          }, speed);
+        }, start);
+      };
+    </script>
+
+    <script>
+      $(document).ready(function () {
+        var isDarkMode = true; // Initial theme
+        var fontSize = 32; // Default font size
+        var buttonsVisible = true;
+
+        $("#settingsButton").click(function () {
+          $(".font-size-controls button:not(#settingsButton)").toggleClass(
+            "hide-buttons"
+          );
+          buttonsVisible = !buttonsVisible;
+        });
+
+        // When settings change changes
+        $("#settingsButton").click(function () {
+          localStorage.setItem("buttonsVisible", buttonsVisible);
+        });
+
+        // Retrieve settings value
+        var buttonsVisible = localStorage.getItem("buttonsVisible");
+        if (buttonsVisible === "true") {
+        } else if (buttonsVisible === "false") {
+          $(".font-size-controls button:not(#settingsButton)").toggleClass(
+            "hide-buttons"
+          );
+          buttonsVisible = !buttonsVisible;
+        }
+
+        // Retrieve font size
+        var savedFontSize = localStorage.getItem("fontSize");
+        if (savedFontSize) {
+          fontSize = parseInt(savedFontSize);
+          $("body").css("font-size", fontSize + "px");
+        }
+
+        // Retrieve theme
+        var savedIsDarkMode = localStorage.getItem("isDarkMode");
+        if (savedIsDarkMode === "true") {
+          isDarkMode = true;
+          updateTheme();
+        } else if (savedIsDarkMode === "false") {
+          isDarkMode = false;
+          updateTheme();
+        }
+
+        // When font size changes
+        $("#increaseFontSize").click(function () {
+          fontSize += 2;
+          $("body").css("font-size", fontSize + "px");
+          localStorage.setItem("fontSize", fontSize);
+        });
+
+        $("#decreaseFontSize").click(function () {
+          fontSize -= 2;
+          $("body").css("font-size", fontSize + "px");
+          localStorage.setItem("fontSize", fontSize);
+        });
+
+        var isAutoScrollEnabled = true; // Initial auto-scroll state
+
+        function enableAutoScroll() {
+          isAutoScrollEnabled = true;
+          scrollToBottom();
+        }
+
+        function disableAutoScroll() {
+          isAutoScrollEnabled = false;
+        }
+
+        $("#scrollUpDown").click(function () {
+          enableAutoScroll();
+        });
+
+        var isScrolledToBottom = true; // Initial assumption
+
+        function scrollToBottom() {
+          if (isAutoScrollEnabled) {
+            var tableContainer = $("#table-container");
+            tableContainer.scrollTop(tableContainer[0].scrollHeight);
+          }
+        }
+
+        $("#scrollUpDown").click(function () {
+          enableAutoScroll();
+        });
+
+        $("#table-container").scroll(function () {
+          var tableContainer = $("#table-container");
+          isScrolledToBottom =
+            tableContainer[0].scrollHeight - tableContainer.scrollTop() <=
+            tableContainer.outerHeight() + 10;
+          if (isScrolledToBottom && isAutoScrollEnabled) {
+            scrollToBottom();
+          }
+        });
+
+        // Increase font size
+        $("#increaseFontSize").click(function () {
+          fontSize += 2;
+          $("body").css("font-size", fontSize + "px");
+        });
+
+        // Decrease font size
+        $("#decreaseFontSize").click(function () {
+          fontSize -= 2;
+          $("body").css("font-size", fontSize + "px");
+        });
+
+        // When theme changes
+        $("#toggleTheme").click(function () {
+          isDarkMode = !isDarkMode;
+          updateTheme();
+          localStorage.setItem("isDarkMode", isDarkMode);
+        });
+
+        function updateTheme() {
+          if (isDarkMode) {
+            $("body").addClass("dark-mode").removeClass("light-mode");
+            $(".font-size-controls button").addClass("dark-mode-btn");
+          } else {
+            $("body").addClass("light-mode").removeClass("dark-mode");
+            $(".font-size-controls button").removeClass("dark-mode-btn");
+          }
+        }
+
+        // Initialize the theme
+        updateTheme();
+
+        var socket = io.connect();
+
+        socket.on("connect", function () {
+          console.log("Connected to Alexs server");
+        });
+
+        var lastEntry = null; // Store the last entry
+
+        socket.on("new_entries", function (data) {
+          if (data.length > 0) {
+            lastEntry = data[data.length - 1]; // Update last entry
+            updateTable(data);
+          }
+        });
+
+        function updateTable(data) {
+          var tableBody = $("#transcription-table-body");
+          var wasScrolledToBottom = isScrolledToBottom;
+
+          data.reverse(); // Reverse the order of the data
+
+          tableBody.empty();
+
+          data.forEach(function (entry) {
+            var row = $("<tr>");
+            var textCell = $("<td>").text(entry[1]).css({
+              "font-family": "Calibri",
+            });
+            row.append(textCell);
+            tableBody.append(row);
+          });
+
+          if (lastEntry !== null) {
+            var lastRow = $("<tr>"); // Display last entry at the bottom
+            var lastTextCell = $("<td>").text(lastEntry[1]).css({
+              "font-family": "Calibri",
+            });
+            lastRow.append(lastTextCell);
+            tableBody.append(lastRow);
+          }
+
+          if (wasScrolledToBottom) {
+            scrollToBottom();
+          }
+        }
+      });
+    </script>
+
+    <style>
+      body {
+        background-color: White;
+        margin: 0;
+        font-family: Calibri, Verdana, Arial, sans-serif;
+        font-size: 32px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center; /* Center vertically */
+        align-items: flex-start; /* Align content to the left */
+        height: 98vh; /* Set body height to full viewport height */
+        overflow-x: hidden; /* Disable horizontal scrolling */
+      }
+
+      #table-container {
+        width: 100%; /* Set a specific width for the table container */
+        max-width: 100%; /* Ensure the table container doesn't exceed the screen width */
+        overflow-x: auto; /* Add horizontal scrolling if needed */
+        padding-right: 20px; /* Add right padding to accommodate scrollbar */
+        overflow-y: scroll; /* Enable vertical scrolling */
+      }
+
+      table {
+        width: 100%; /* Make the table fill the available width */
+        border-collapse: collapse; /* Combine cell borders for cleaner appearance */
+        table-layout: fixed;
+		text-align:center;
+      }
+
+      td {
+        padding-left: 25px;
+        padding-right: 50px;
+        color: inherit;
+        word-wrap: break-word; /* Allow text to break and wrap */
+      }
+
+      .font-size-controls {
+        position: fixed;
+        right: 7px;
+        top: 70px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        align-self: flex-end;
+        z-index: 100;
+      }
+
+      .font-size-controls button {
+        margin: 5px;
+        padding: 10px;
+        font-size: 30px;
+        background-color: rgba(
+          0,
+          0,
+          0,
+          0.04
+        ); /* Semi-transparent white background */
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease-in-out; /* Add transition for a smooth effect */
+      }
+
+      .hide-buttons {
+        display: none;
+      }
+
+      /* Move the settings button to the top right corner */
+      #settingsButton {
+        position: fixed;
+        top: 5px;
+        right: 5px;
+        background-color: rgba(0, 0, 0, 0.04);
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease-in-out;
+      }
+
+      /* Light mode styles */
+      body {
+        background-color: white;
+        color: black;
+      }
+
+      /* Dark mode styles */
+      .dark-mode {
+        background-color: black;
+        color: white;
+      }
+      body.light-mode {
+        background-color: white;
+        color: black;
+      }
+
+      /* Dark mode styles */
+      .body.dark-mode {
+        background-color: black;
+        color: white;
+      }
+
+      /* Light mode button styles */
+      .light-mode .font-size-controls button {
+        color: black; /* Set the icon color for light mode */
+      }
+
+      /* Dark mode button styles */
+      .dark-mode .font-size-controls button {
+        color: white; /* Set the icon color for dark mode */
+      }
+
+      h1 {
+        text-align: center; /* Center the text horizontally */
+        margin-top: auto; /* Push the element to the top of the remaining space */
+        margin-bottom: auto; /* Push the element to the bottom of the remaining space */
+      }
+
+      @medix (max-width: 800px) {
+        /* Adjust the breakpoint as needed */
+        .font-size-controls button {
+          font-size: 30px; /* Increase the font size for buttons on mobile devices */
+          padding: 5px; /* Increase the padding for buttons on mobile devices */
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="table-container">
+      <table>
+        <tbody id="transcription-table-body"></tbody>
+      </table>
+    </div>
+
+  </body>
+</html>

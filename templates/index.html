@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>...</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='all.min.css') }}"
+    />
+    <script src="{{ url_for('static', filename='jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
+
+    <script>
+      var titles = [
+        "I have a few jokes about unemployed people, but none of them work.",
+        "I failed math so many times at school, I can't even count.",
+        "Blunt pencils are really pointless.",
+        "6:30 is the best time on a clock, hands down.",
+        "Two wifi engineers got married, the reception was fantastic.",
+        "The man who invented Velcro has died. RIP.",
+        "The rotation of Earth really makes my day.",
+        "I can tell when people are being judgmental just by looking at them.",
+        "I'm sceptical of anyone who tells me they do yoga every day, that's a bit of a stretch.Geology rocks, but geography's where it's at.",
+        "Whiteboards are remarkable.",
+        "My IQ test results came back, they were negative.",
+        "My math teacher called me average. How mean!",
+        "A fish swam into a concrete wall, Dam!",
+        "Change is inevitable, except from a vending machine.",
+        "When life gives you melons, you might be dyslexic.",
+        "The guy who got hit in the head with a can of soda was lucky it was a soft drink.",
+        "The man who invented knock-knock jokes should get a no bell prize.",
+        "Never trust atoms; they make up everything.",
+        "The first time I got a universal remote control, I thought to myself, 'This changes everything.'",
+        "I heard there were a bunch of break-ins over at the car park. That is wrong on so many levels.",
+        "I can't believe I got fired from the calendar factory. All I did was take a day off.",
+        "Always borrow money from a pessimist. They'll never expect it back.",
+        "Today a man knocked on my door and asked for a small donation toward the local swimming pool. I gave him a glass of water.",
+        "The future, the present, and the past walk into a bar, things got a little tense.",
+        "I didn't think orthopedic shoes would help, but I stand corrected.",
+        "It was an emotional wedding. Even the cake was in tiers.",
+        "Just got fired from my job as a set designer. I left without making a scene.",
+        "The world champion tongue twister got arrested, I hear they're going to give him a tough sentence.",
+        "Refusing to go to the gym is a form of resistance training.",
+        "Are people born with photographic memories, or does it take time to develop?",
+        "My friend's bakery burned down last night. Now his business is toast.",
+        "Four fonts walk into a bar. The bartender says, 'Hey! We don't want your type in here!'",
+        "A ghost walked into a bar and ordered a shot of vodka. The bartender said, 'Sorry, we don't serve spirits here.'",
+        "The kid who started a business tying shoelaces on the playground? It was a knot-for-profit.",
+        "When I lose the TV controller, it's always hidden in some remote destination.",
+        "If you arrest a mime, do you have to tell him he has the right to remain silent?",
+        "The man who survived both mustard gas and pepper spray is a seasoned veteran now.",
+        "Why didn't Han Solo enjoy his steak dinner? It was Chewie.",
+        "My wife told me to stop impersonating a flamingo, I had to put my foot down.",
+        "My wife just found out I replaced our bed with a trampoline, she hit the ceiling!",
+        "A told my girlfriend she drew her eyebrows too high, she seemed surprised.",
+        "The last thing I want to do is hurt you; but it's still on the list.",
+        "A recent study has found that women who carry a little extra weight live longer than the men who mention it.",
+        "Last night my girlfriend was complaining that I never listen to her... or something like that.",
+        "Advice to husbands: Try praising your wife now and then, even if it does startle her at first.",
+        "The problem isn't that obesity runs in your family, it's that no one runs in your family.",
+        "I put my grandma on speed dial the other day. I call it insta-gram.",
+        "Why did the parents not like their son's biology teacher? He had skeletons in his closet.",
+        "I spent a lot of time, money and effort childproofing my house... but the kids still get in.",
+        "My mother was so surprised when I told her I was born again. She said she didn't feel a thing!",
+        "Women should not have children after 35, really, 35 children are enough.",
+        "There are three kinds of people, those who can count and those who can't.",
+        "You are such a good friend that, if we were on a sinking ship together and there was only one life jacket, I'd miss you so much and talk about you fondly to everybody who asked.",
+        "I always take life with a grain of salt, a slice of lemon and a shot of tequila.",
+        "one liner about life and a shot of tequila.",
+        "I used to have a handle on life, but then it broke.",
+        "I know they say that money talks, but all mine says is 'Goodbye.'",
+        "Before you criticize someone, walk a mile in their shoes. That way, when you do criticize them, you're a mile away and you have their shoes.",
+        "Before you marry a person, you should first make them use a computer with a slow Internet connection to see who they really are.",
+        "I never knew what happiness was until I got married—and then it was too late.",
+        "A rich man is one who isn't afraid to ask the clerk to show him something cheaper.",
+        "The trouble with getting to work on time is that it makes the day so long.",
+        "Funny one-liner about being a work on time.",
+        "You'll always stay young if you live honestly, eat slowly, sleep sufficiently, work industriously, worship faithfully and lie about your age.",
+        "How can you tell you're getting old? When you go to an antique auction and three people bid on you.",
+        "Winter: the season when we try to keep the house as hot as it was in the summer, when we complained about the heat.",
+        "Some cause happiness wherever they go, others whenever they go.",
+        "It's not the fall that kills you, it's the sudden stop at the end.",
+        "Give a man a fish, and he will eat for a day. Teach a man to fish, and he will sit in a boat and drink beer all day.",
+        "If supermarkets are lowering prices every day, why isn't anything in the store free yet?",
+        "Corny & Silly One Liners",
+        "Time for some light-hearted cheesy style one-liners, these silly lines are picked release that inner groaner with you!",
+        "I just got kicked out of a secret cooking society, I spilled the beans.",
+        "Silly funny one liner about cooking society.",
+        "I used to think I was indecisive. But now I'm not so sure.",
+        "I was wondering why the frisbee kept getting bigger and bigger, but then it hit me.",
+        "Light travels faster than sound, which is the reason that some people appear bright before you hear them speak.",
+        "People who use selfie sticks really need to have a good, long look at themselves.",
+        "Just burned 2,000 calories. That's the last time I leave brownies in the oven while I nap.",
+        "I don't suffer from insanity, I enjoy every minute of it.",
+        "I'm reading a book about anti-gravity - it's impossible to put down.",
+        "Maybe if we start telling people their brain is an app, they'll want to use it.",
+        "I got a new pair of gloves today, but they're both 'lefts,' which on the one hand is great, but on the other, it's just not right.",
+        "A book fell on my head the other day, I only have my shelf to blame.",
+        "A blind man walked into a bar... and a table... and a chair...",
+        "I went to a seafood disco last week, but ended up pulling a mussel.",
+        "What do you call a guy who's had too much to drink? A cab.",
+        "I buy all my guns from a guy called T-Rex - he's a small arms dealer.",
+        "Corny one liner about a dinosaur.",
+        "How do you make holy water? You boil the hell out of it.",
+        "Did you hear about the guy whose whole left side got amputated, he's all right now.",
+        "I threw a boomerang a couple years ago; I know live in constant fear.",
+        "How does the man in the moon get his hair cut? Eclipse it.",
+        "The claustrophobic astronaut? He just wanted a little more space.",
+        "What do you call a steak that's been knighted by the queen? Sir Loin.",
+        "A computer once beat me at chess, but it was no match for me at kickboxing.",
+        "I was addicted to the hokey pokey, but then I turned myself around.",
+        "Feeling pretty proud of myself. The puzzle I bought said 3-5 years, but I finished it in 18 months.",
+        "Most people are shocked when they find out how bad I am as an electrician.",
+        "If supermarkets are lowering prices every day, why isn't anything in the store free yet?",
+        "The easiest time to add insult to injury is when you're signing somebody's cast.",
+        "Why does someone believe you when you say there are four billion stars but checks when you say the paint is wet?",
+        "When tempted to fight fire with fire, always remember The fire department usually uses water.",
+        "My boss is going to fire the employee with the worst posture. I have a hunch, it might be me.",
+        "Related: Looking for more cheesy humour? Check out our list of Corny Jokes",
+        "Animal One Liners (Perfect For Kids)",
+        "Aimed more for children - nothing beats the charm and laughs produced from jokes about our furry animal friends! Enjoy the end of our list with these final few funny one-liners related to animals.",
+        "Why did the teddy bear say no to dessert? Because he was stuffed.",
+        "funny animal one liner about a bear.",
+        "I was riding a donkey the other day when someone threw a rock at me and I fell off. I guess I was stoned off my ass.",
+        "People who take care of chickens are literally chicken tenders.",
+        "One of the cows didn't produce milk today - it was an udder failure.",
+        "What's a dog's favorite homework assignment? A lab report.",
+        "What do you call a bear with no teeth? A gummy bear.",
+        "Why aren't dogs good dancers? Because they have two left feet.",
+        "What happens to an illegally parked frog? It gets toad away.",
+        "animal one liner about a frog.",
+        "The cat who ate a ball of yarn? She had mittens.",
+        "The racing snail that got rid of his shell? He thought it would make him faster, but it just made him sluggish.",
+        "The veterinarian who prescribes birth-control pills for dogs? It's part of an anti-litter campaign.",
+        "Why don't cats play poker in the jungle? Too many cheetahs.",
+        "Life's like a bird. It's pretty cute until it poops on your head.",
+        "I am not a vegetarian because I love animals. I am a vegetarian because I hate plants.",
+        "Elephants dont use computers, because they're afraid of the mouse!",
+      ];
+      var title = titles[Math.floor(Math.random() * titles.length)]; // pick random item
+
+      document.title = title;
+    </script>
+
+    <script type="text/javascript">
+      var start = 3000;
+      var speed = 250;
+
+      function getParams(startAttr, speedAttr) {
+        var params = window.document.getElementsByTagName("script");
+
+        for (var i = 0; i < params.length; i++) {
+          if (params[i].src.indexOf("title-scroll.js") !== -1) {
+            if (
+              params[i].getAttribute(startAttr) !== null &&
+              params[i].getAttribute(startAttr) !== ""
+            ) {
+              start = params[i].getAttribute(startAttr);
+            }
+
+            if (
+              params[i].getAttribute(speedAttr) !== null &&
+              params[i].getAttribute(speedAttr) !== ""
+            ) {
+              speed = params[i].getAttribute(speedAttr);
+            }
+
+            return;
+          }
+        }
+      }
+
+      window.onload = function (e) {
+        getParams("data-start", "data-speed");
+        var title_ref = window.document.getElementsByTagName("title")[0];
+        var title = title_ref.text;
+        var i = 0;
+
+        setTimeout(function () {
+          setInterval(function () {
+            title_ref.text =
+              title.substr(i, title.length) + "  ---  " + title.substr(0, i);
+            i++;
+
+            if (i === title.length) {
+              i = 0;
+            }
+          }, speed);
+        }, start);
+      };
+    </script>
+
+    <script>
+      $(document).ready(function () {
+        var isDarkMode = true; // Initial theme
+        var fontSize = 32; // Default font size
+        var buttonsVisible = true;
+
+        $("#settingsButton").click(function () {
+          $(".font-size-controls button:not(#settingsButton)").toggleClass(
+            "hide-buttons"
+          );
+          buttonsVisible = !buttonsVisible;
+        });
+
+        // When settings change changes
+        $("#settingsButton").click(function () {
+          localStorage.setItem("buttonsVisible", buttonsVisible);
+        });
+
+        // Retrieve settings value
+        var buttonsVisible = localStorage.getItem("buttonsVisible");
+        if (buttonsVisible === "true") {
+        } else if (buttonsVisible === "false") {
+          $(".font-size-controls button:not(#settingsButton)").toggleClass(
+            "hide-buttons"
+          );
+          buttonsVisible = !buttonsVisible;
+        }
+
+        // Retrieve font size
+        var savedFontSize = localStorage.getItem("fontSize");
+        if (savedFontSize) {
+          fontSize = parseInt(savedFontSize);
+          $("body").css("font-size", fontSize + "px");
+        }
+
+        // Retrieve theme
+        var savedIsDarkMode = localStorage.getItem("isDarkMode");
+        if (savedIsDarkMode === "true") {
+          isDarkMode = true;
+          updateTheme();
+        } else if (savedIsDarkMode === "false") {
+          isDarkMode = false;
+          updateTheme();
+        }
+
+        // When font size changes
+        $("#increaseFontSize").click(function () {
+          fontSize += 2;
+          $("body").css("font-size", fontSize + "px");
+          localStorage.setItem("fontSize", fontSize);
+        });
+
+        $("#decreaseFontSize").click(function () {
+          fontSize -= 2;
+          $("body").css("font-size", fontSize + "px");
+          localStorage.setItem("fontSize", fontSize);
+        });
+
+        var isAutoScrollEnabled = true; // Initial auto-scroll state
+
+        function enableAutoScroll() {
+          isAutoScrollEnabled = true;
+          scrollToBottom();
+        }
+
+        function disableAutoScroll() {
+          isAutoScrollEnabled = false;
+        }
+
+        $("#scrollUpDown").click(function () {
+          enableAutoScroll();
+        });
+
+        var isScrolledToBottom = true; // Initial assumption
+
+        function scrollToBottom() {
+          if (isAutoScrollEnabled) {
+            var tableContainer = $("#table-container");
+            tableContainer.scrollTop(tableContainer[0].scrollHeight);
+          }
+        }
+
+        $("#scrollUpDown").click(function () {
+          enableAutoScroll();
+        });
+
+        $("#table-container").scroll(function () {
+          var tableContainer = $("#table-container");
+          isScrolledToBottom =
+            tableContainer[0].scrollHeight - tableContainer.scrollTop() <=
+            tableContainer.outerHeight() + 10;
+          if (isScrolledToBottom && isAutoScrollEnabled) {
+            scrollToBottom();
+          }
+        });
+
+        // Increase font size
+        $("#increaseFontSize").click(function () {
+          fontSize += 2;
+          $("body").css("font-size", fontSize + "px");
+        });
+
+        // Decrease font size
+        $("#decreaseFontSize").click(function () {
+          fontSize -= 2;
+          $("body").css("font-size", fontSize + "px");
+        });
+
+        // When theme changes
+        $("#toggleTheme").click(function () {
+          isDarkMode = !isDarkMode;
+          updateTheme();
+          localStorage.setItem("isDarkMode", isDarkMode);
+        });
+
+        function updateTheme() {
+          if (isDarkMode) {
+            $("body").addClass("dark-mode").removeClass("light-mode");
+            $(".font-size-controls button").addClass("dark-mode-btn");
+          } else {
+            $("body").addClass("light-mode").removeClass("dark-mode");
+            $(".font-size-controls button").removeClass("dark-mode-btn");
+          }
+        }
+
+        // Initialize the theme
+        updateTheme();
+
+        var socket = io.connect();
+
+        socket.on("connect", function () {
+          console.log("Connected to Alexs server");
+        });
+
+        var lastEntry = null; // Store the last entry
+
+        socket.on("new_entries", function (data) {
+          if (data.length > 0) {
+            lastEntry = data[data.length - 1]; // Update last entry
+            updateTable(data);
+          }
+        });
+
+        function updateTable(data) {
+          var tableBody = $("#transcription-table-body");
+          var wasScrolledToBottom = isScrolledToBottom;
+
+          data.reverse(); // Reverse the order of the data
+
+          tableBody.empty();
+
+          data.forEach(function (entry) {
+            var row = $("<tr>");
+            var textCell = $("<td>").text(entry[1]).css({
+              "font-family": "Calibri",
+            });
+            row.append(textCell);
+            tableBody.append(row);
+          });
+
+          if (lastEntry !== null) {
+            var lastRow = $("<tr>"); // Display last entry at the bottom
+            var lastTextCell = $("<td>").text(lastEntry[1]).css({
+              "font-family": "Calibri",
+            });
+            lastRow.append(lastTextCell);
+            tableBody.append(lastRow);
+          }
+
+          if (wasScrolledToBottom) {
+            scrollToBottom();
+          }
+        }
+      });
+    </script>
+
+    <style>
+      body {
+        background-color: White;
+        margin: 0;
+        font-family: Calibri, Verdana, Arial, sans-serif;
+        font-size: 32px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center; /* Center vertically */
+        align-items: flex-start; /* Align content to the left */
+        height: 98vh; /* Set body height to full viewport height */
+        overflow-x: hidden; /* Disable horizontal scrolling */
+      }
+
+      #table-container {
+        width: 100%; /* Set a specific width for the table container */
+        max-width: 100%; /* Ensure the table container doesn't exceed the screen width */
+        overflow-x: auto; /* Add horizontal scrolling if needed */
+        padding-right: 20px; /* Add right padding to accommodate scrollbar */
+        overflow-y: scroll; /* Enable vertical scrolling */
+      }
+
+      table {
+        width: 100%; /* Make the table fill the available width */
+        border-collapse: collapse; /* Combine cell borders for cleaner appearance */
+        table-layout: fixed;
+      }
+
+      td {
+        padding-left: 25px;
+        padding-right: 50px;
+        color: inherit;
+        word-wrap: break-word; /* Allow text to break and wrap */
+      }
+
+      .font-size-controls {
+        position: fixed;
+        right: 7px;
+        top: 70px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        align-self: flex-end;
+        z-index: 100;
+      }
+
+      .font-size-controls button {
+        margin: 5px;
+        padding: 10px;
+        font-size: 30px;
+        background-color: rgba(
+          0,
+          0,
+          0,
+          0.04
+        ); /* Semi-transparent white background */
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease-in-out; /* Add transition for a smooth effect */
+      }
+
+      .hide-buttons {
+        display: none;
+      }
+
+      /* Move the settings button to the top right corner */
+      #settingsButton {
+        position: fixed;
+        top: 5px;
+        right: 5px;
+        background-color: rgba(0, 0, 0, 0.04);
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease-in-out;
+      }
+
+      /* Light mode styles */
+      body {
+        background-color: white;
+        color: black;
+      }
+
+      /* Dark mode styles */
+      .dark-mode {
+        background-color: black;
+        color: white;
+      }
+      body.light-mode {
+        background-color: white;
+        color: black;
+      }
+
+      /* Dark mode styles */
+      .body.dark-mode {
+        background-color: black;
+        color: white;
+      }
+
+      /* Light mode button styles */
+      .light-mode .font-size-controls button {
+        color: black; /* Set the icon color for light mode */
+      }
+
+      /* Dark mode button styles */
+      .dark-mode .font-size-controls button {
+        color: white; /* Set the icon color for dark mode */
+      }
+
+      h1 {
+        text-align: center; /* Center the text horizontally */
+        margin-top: auto; /* Push the element to the top of the remaining space */
+        margin-bottom: auto; /* Push the element to the bottom of the remaining space */
+      }
+
+      @medix (max-width: 800px) {
+        /* Adjust the breakpoint as needed */
+        .font-size-controls button {
+          font-size: 30px; /* Increase the font size for buttons on mobile devices */
+          padding: 5px; /* Increase the padding for buttons on mobile devices */
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="table-container">
+      <table>
+        <tbody id="transcription-table-body"></tbody>
+      </table>
+    </div>
+    <div class="font-size-controls">
+      <button id="settingsButton"><i class="fas fa-cog"></i></button>
+      <button id="increaseFontSize"><i class="fas fa-plus"></i></button>
+      <button id="decreaseFontSize"><i class="fas fa-minus"></i></button>
+      <button id="toggleTheme"><i class="fas fa-lightbulb"></i></button>
+      <button id="scrollUpDown"><i class="fas fa-arrow-down"></i></button>
+    </div>
+  </body>
+</html>
