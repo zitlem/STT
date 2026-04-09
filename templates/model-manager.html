@@ -329,6 +329,7 @@
                                 <select id="config_context" onchange="updateConfigUI()">
                                     <option value="live">🎙️ Live Transcription</option>
                                     <option value="file">📁 File Transcription</option>
+                                    <option value="translation">🌐 Translation</option>
                                 </select>
                                 <small>Choose which context to configure</small>
                             </div>
@@ -438,6 +439,17 @@
                         </div>
                     </div>
 
+                    <!-- Translation Model Settings -->
+                    <div id="config_translation_settings" style="display: none;">
+                        <div class="form-group">
+                            <label for="config_translation_model">Translation Model</label>
+                            <select id="config_translation_model">
+                                <option value="">Loading downloaded models...</option>
+                            </select>
+                            <small>Select from downloaded NLLB models</small>
+                        </div>
+                    </div>
+
                     <!-- Save and Reload Buttons (moved here) -->
                     <div class="sync-buttons">
                         <button class="sync-btn primary" onclick="saveModelManager()">
@@ -468,49 +480,13 @@
                                 </div>
                             </div>
 
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Translation Model Configuration Card -->
-                <div class="settings-card">
-                    <h4>🌐 Translation Model Configuration</h4>
-
-                    <div class="config-layout">
-                        <!-- Left Column: Configuration Form -->
-                        <div class="config-form">
-                            <div class="form-group">
-                                <label for="config_translation_model">Translation Model</label>
-                                <select id="config_translation_model">
-                                    <option value="">Loading downloaded models...</option>
-                                </select>
-                                <small>Select from downloaded NLLB models</small>
-                            </div>
-
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="config_translation_use_gpu" checked>
-                                <label for="config_translation_use_gpu">Use GPU for Translation</label>
-                            </div>
-                            <small style="color: #999; display: block; margin-top: -8px; margin-bottom: 12px;">Disable to run NLLB on CPU, freeing GPU VRAM for Whisper</small>
-
-                            <div class="sync-buttons">
-                                <button class="sync-btn primary" onclick="saveTranslationConfig()">
-                                    💾 Save Changes
-                                </button>
-                                <button class="sync-btn secondary" onclick="loadTranslationConfig()">
-                                    ↻ Reload
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Right Column: Current Configuration Display -->
-                        <div class="config-display">
                             <div class="model-card live compact">
                                 <h4>🌐 Translation</h4>
                                 <div id="translation_model_summary">
                                     Loading...
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
@@ -1359,6 +1335,28 @@
             const modelTypeSelect = document.getElementById('config_model_type');
             const currentModelType = modelTypeSelect.value;
 
+            // Hide all settings first
+            document.getElementById('config_live_whisper_settings').style.display = 'none';
+            document.getElementById('config_file_whisper_settings').style.display = 'none';
+            document.getElementById('config_live_faster_whisper_settings').style.display = 'none';
+            document.getElementById('config_file_faster_whisper_settings').style.display = 'none';
+            document.getElementById('config_live_huggingface_settings').style.display = 'none';
+            document.getElementById('config_file_huggingface_settings').style.display = 'none';
+            document.getElementById('config_live_downloaded_settings').style.display = 'none';
+            document.getElementById('config_file_downloaded_settings').style.display = 'none';
+            document.getElementById('config_translation_settings').style.display = 'none';
+
+            if (context === 'translation') {
+                // Hide model type selector for translation
+                modelTypeSelect.parentElement.style.display = 'none';
+                document.getElementById('config_translation_settings').style.display = 'block';
+                populateTranslationModelDropdown();
+                return;
+            }
+
+            // Show model type selector for transcription contexts
+            modelTypeSelect.parentElement.style.display = '';
+
             // Update model type options - both Whisper and Faster Whisper available for all contexts
             modelTypeSelect.innerHTML = `
                 <option value="whisper">Whisper (OpenAI)</option>
@@ -1372,16 +1370,6 @@
             }
 
             const modelType = modelTypeSelect.value;
-
-            // Hide all settings first
-            document.getElementById('config_live_whisper_settings').style.display = 'none';
-            document.getElementById('config_file_whisper_settings').style.display = 'none';
-            document.getElementById('config_live_faster_whisper_settings').style.display = 'none';
-            document.getElementById('config_file_faster_whisper_settings').style.display = 'none';
-            document.getElementById('config_live_huggingface_settings').style.display = 'none';
-            document.getElementById('config_file_huggingface_settings').style.display = 'none';
-            document.getElementById('config_live_downloaded_settings').style.display = 'none';
-            document.getElementById('config_file_downloaded_settings').style.display = 'none';
 
             // Show appropriate settings based on context and model type
             if (context === 'live') {
@@ -1511,9 +1499,17 @@
             showLoading(true);
 
             try {
+                const context = document.getElementById('config_context').value;
+
+                // Handle translation context separately
+                if (context === 'translation') {
+                    await saveTranslationConfig();
+                    showLoading(false);
+                    return;
+                }
+
                 // Get model type from dropdown
                 const modelType = document.getElementById('config_model_type').value;
-                const context = document.getElementById('config_context').value;
 
                 // Collect live model data
                 const liveModel = {
@@ -1654,9 +1650,7 @@
 
                 if (settings.success) {
                     const model = settings.settings.translation_model || 'facebook/nllb-200-distilled-600M';
-                    const useGpu = settings.settings.use_gpu !== false;
                     await populateTranslationModelDropdown(model);
-                    document.getElementById('config_translation_use_gpu').checked = useGpu;
 
                     // Update summary
                     const modelName = model.split('/').pop() || model;
@@ -1666,7 +1660,6 @@
                                      (loading ? '<span style="color: var(--warning);">Loading...</span>' : 'No');
                     document.getElementById('translation_model_summary').innerHTML =
                         `<strong>Model:</strong> ${modelName}<br>` +
-                        `<strong>GPU:</strong> ${useGpu ? 'Yes' : 'No'}<br>` +
                         `<strong>Loaded:</strong> ${loadedText}`;
                 }
             } catch (error) {
@@ -1680,15 +1673,11 @@
                 showAlert('No translation model selected. Download one from the Model Library below.', 'error');
                 return;
             }
-            showLoading(true);
             try {
                 const response = await fetch('/api/translation/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        translation_model: model,
-                        use_gpu: document.getElementById('config_translation_use_gpu').checked
-                    })
+                    body: JSON.stringify({ translation_model: model })
                 });
                 const data = await response.json();
                 if (data.success) {
@@ -1699,8 +1688,6 @@
                 }
             } catch (error) {
                 showAlert('Error saving translation config: ' + error.message, 'error');
-            } finally {
-                showLoading(false);
             }
         }
 
