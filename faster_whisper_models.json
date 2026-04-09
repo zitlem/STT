@@ -1,0 +1,96 @@
+{
+  "models": {
+    "large-v3": {
+      "repo": "Systran/faster-whisper-large-v3",
+      "size": "~3GB",
+      "params": "1550M",
+      "lang": "Multilingual"
+    },
+    "small": {
+      "repo": "Systran/faster-whisper-small",
+      "size": "~465MB",
+      "params": "244M",
+      "lang": "Multilingual"
+    },
+    "large-v2": {
+      "repo": "Systran/faster-whisper-large-v2",
+      "size": "~3GB",
+      "params": "1550M",
+      "lang": "Multilingual"
+    },
+    "large-v1": {
+      "repo": "Systran/faster-whisper-large-v1",
+      "size": "~3GB",
+      "params": "1550M",
+      "lang": "Multilingual"
+    },
+    "medium": {
+      "repo": "Systran/faster-whisper-medium",
+      "size": "~1.5GB",
+      "params": "769M",
+      "lang": "Multilingual"
+    },
+    "medium.en": {
+      "repo": "Systran/faster-whisper-medium.en",
+      "size": "~1.5GB",
+      "params": "769M",
+      "lang": "English-only"
+    },
+    "base": {
+      "repo": "Systran/faster-whisper-base",
+      "size": "~145MB",
+      "params": "74M",
+      "lang": "Multilingual"
+    },
+    "tiny": {
+      "repo": "Systran/faster-whisper-tiny",
+      "size": "~75MB",
+      "params": "39M",
+      "lang": "Multilingual"
+    },
+    "base.en": {
+      "repo": "Systran/faster-whisper-base.en",
+      "size": "~145MB",
+      "params": "74M",
+      "lang": "English-only"
+    },
+    "tiny.en": {
+      "repo": "Systran/faster-whisper-tiny.en",
+      "size": "~75MB",
+      "params": "39M",
+      "lang": "English-only"
+    },
+    "small.en": {
+      "repo": "Systran/faster-whisper-small.en",
+      "size": "~465MB",
+      "params": "244M",
+      "lang": "English-only"
+    },
+    "distil-large-v2": {
+      "repo": "Systran/faster-distil-whisper-large-v2",
+      "size": "~3GB",
+      "params": "1550M",
+      "lang": "English-only"
+    },
+    "distil-medium.en": {
+      "repo": "Systran/faster-distil-whisper-medium.en",
+      "size": "~1.5GB",
+      "params": "769M",
+      "lang": "English-only"
+    },
+    "distil-small.en": {
+      "repo": "Systran/faster-distil-whisper-small.en",
+      "size": "~465MB",
+      "params": "244M",
+      "lang": "English-only"
+    },
+    "distil-large-v3": {
+      "repo": "Systran/faster-distil-whisper-large-v3",
+      "size": "~3GB",
+      "params": "1550M",
+      "lang": "English-only"
+    }
+  },
+  "timestamp": 1767482348.9117157,
+  "last_updated": "2026-01-03T23:19:08.911717"
+}

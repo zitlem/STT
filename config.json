@@ -1,0 +1,292 @@
+{
+  "_comment": "Speech-to-Text Configuration File",
+  "_usage": "Edit these values to configure your transcription settings. Command-line arguments will override these defaults.",
+  "model": {
+    "type": "whisper",
+    "whisper": {
+      "model": "large-v3"
+    },
+    "backend": "whisper"
+  },
+  "audio": {
+    "backend": "ffmpeg",
+    "_backend_comment": "Audio capture backend: 'ffmpeg' (recommended, more reliable) or 'pyaudio' (legacy, may hang on some systems)",
+    "default_microphone": "default",
+    "_default_microphone_comment": "Audio device name. Linux/ffmpeg: 'default', 'plughw:0,0', 'plughw:1,0', etc. macOS/avfoundation: ':0', ':1', or device name.",
+    "energy_threshold": 100,
+    "phrase_timeout": 10,
+    "_phrase_timeout_comment": "Seconds of silence before considering it a new phrase. Higher = fewer false phrase breaks, Lower = more responsive to pauses",
+    "language": "ru",
+    "same_output_threshold": 10,
+    "_same_output_threshold_comment": "Number of repeated outputs before text is finalized. Lower = faster finalization (3-5), Higher = more stable but slower (10-15). Default: 7",
+    "fuzzy_duplicate_threshold": 1,
+    "_fuzzy_duplicate_threshold_comment": "Similarity threshold (0.0-1.0) for detecting duplicate sentences in live transcription. Higher = stricter matching. Default: 0.85",
+    "min_words": 0,
+    "_min_words_comment": "Minimum word count to save a segment. 0 = save all segments, 5 = skip short fragments. Default: 0"
+  },
+  "vad": {
+    "enabled": true,
+    "threshold": 0.6
+  },
+  "database": {
+    "path": "",
+    "_path_comment": "Custom database base path. Empty = use default (_AUTOMATIC_BACKUP). Can be absolute or relative path.",
+    "path_format": "%Y/%m",
+    "_path_format_comment": "Python strftime format for database subdirectories. Default: %Y/%m (2025/01)",
+    "filename_format": "%Y-%m-%d__%H-%M-%S",
+    "_filename_format_comment": "Python strftime format for database filenames. MUST include time (%H%M%S) for unique databases per session. Default: %Y-%m-%d_%H%M%S (2025-01-08_143527). Use %Y-%m-%d_%H for hourly databases.",
+    "filename_prefix": "Church",
+    "_filename_prefix_comment": "Optional custom prefix for database files. Empty = default 'Transcriptions'. Example: 'Meeting' creates '{format}_Meeting.db'",
+    "max_entries_to_send": 100,
+    "_max_entries_comment": "Number of recent transcriptions to send to web UI. Lower = faster, Higher = more history shown",
+    "srt_enabled": true,
+    "html_enabled": true
+  },
+  "web_server": {
+    "host": "0.0.0.0",
+    "_host_comment": "Server host. 0.0.0.0 = accessible from network, 127.0.0.1 = localhost only",
+    "port": 80,
+    "_port_comment": "Server port. Port 80 requires admin/root privileges. Use 8080 for non-privileged access",
+    "update_interval": 0.5,
+    "_update_interval_comment": "Seconds between web UI updates. Lower = more responsive, Higher = less network traffic",
+    "settings_ip_whitelist": [
+      "127.0.0.1",
+      "::1",
+      "10.1.10.0/24",
+      "192.168.2.254",
+      "192.168.2.253",
+      "192.168.2.11"
+    ],
+    "_settings_ip_whitelist_comment": "IP addresses or CIDR ranges allowed to access settings. Empty array = allow all. Example: ['127.0.0.1', '192.168.1.0/24']",
+    "password_auth": {
+      "enabled": true,
+      "_enabled_comment": "Enable password authentication as fallback for non-whitelisted IPs",
+      "password": "admin",
+      "_password_comment": "Password for temporary access. Empty = generate random password on startup and display in console",
+      "session_timeout_minutes": 60,
+      "_session_timeout_comment": "How long password-authenticated sessions remain valid (in minutes)"
+    }
+  },
+  "performance": {
+    "use_gpu": true
+  },
+  "audio_backup": {
+    "wav_enabled": true,
+    "_wav_enabled_comment": "Save final session audio as .wav file (created when transcription stops)",
+    "ts_enabled": true,
+    "_ts_enabled_comment": "Save continuous MPEG-TS backup (power-fail safe, created during recording)",
+    "base_directory": "",
+    "_base_directory_comment": "Base directory for audio backups. Empty = use default (_AUTOMATIC_BACKUP). Can be absolute or relative path.",
+    "path_format": "%Y/%m",
+    "_path_format_comment": "Python strftime format for audio backup subdirectories. Default: %Y/%m (2025/01)",
+    "filename_format": "%Y-%m-%d__%H-%M-%S",
+    "_filename_format_comment": "Python strftime format for audio filenames. Default: %Y-%m-%d_%H%M%S (2025-01-08_143527)",
+    "filename_prefix": "Recording",
+    "_filename_prefix_comment": "Optional custom prefix for audio files. Empty = no prefix. Example: 'Recording' creates '{format}_Recording.wav'",
+    "format": "wav",
+    "_format_comment": "Audio format for backups. WAV recommended to prevent file corruption"
+  },
+  "file_transcription": {
+    "model": {
+      "type": "whisper",
+      "whisper": {
+        "model": "tiny.en"
+      },
+      "backend": ""
+    },
+    "use_gpu": true,
+    "_use_gpu_comment": "Use GPU for file transcription if available",
+    "language": "auto",
+    "_language_comment": "Language code for transcription (auto, en, es, fr, de, etc.)",
+    "translate_enabled": false,
+    "translate_to": "en",
+    "translation_model": "facebook/nllb-200-distilled-600M"
+  },
+  "whisper_decoding": {
+    "_comment": "Advanced Whisper decoding parameters. Only modify if you understand Whisper internals. Defaults are optimized for each use case.",
+    "live_transcription": {
+      "beam_size": 4,
+      "_beam_size_comment": "Search breadth (1=greedy/fast, 5=thorough/slow). Default 1 for live reduces hallucinations.",
+      "best_of": 1,
+      "_best_of_comment": "Number of sampling runs (1=single pass, higher=more options to choose from).",
+      "temperature": 0.8,
+      "_temperature_comment": "Randomness (0.0=deterministic, higher=creative). Can be array like [0.0, 0.2, 0.4] for fallback.",
+      "condition_on_previous_text": false,
+      "_condition_comment": "Use previous text as context. False for live because short chunks lack context.",
+      "compression_ratio_threshold": 1.8,
+      "_compression_ratio_threshold_comment": "Reject transcriptions with too much repetition. Lower = stricter (rejects more), higher = permissive.",
+      "logprob_threshold": -0.2,
+      "_logprob_threshold_comment": "Reject transcriptions with low confidence scores. Higher = stricter (rejects more).",
+      "no_speech_threshold": 0.6,
+      "_no_speech_threshold_comment": "Probability threshold for detecting silence (0.0-1.0)."
+    },
+    "file_transcription": {
+      "beam_size": 5,
+      "_beam_size_comment": "Search breadth (1=greedy/fast, 5=thorough/slow). Default 5 for file prioritizes quality.",
+      "temperature": [
+        0.0,
+        0.2,
+        0.4,
+        0.6,
+        0.8
+      ],
+      "_temperature_comment": "Temperature fallback sequence. Tries deterministic first, then increases creativity if fails.",
+      "condition_on_previous_text": true,
+      "_condition_comment": "Use previous text as context. True for file because 30s chunks have context.",
+      "compression_ratio_threshold": 2.4,
+      "logprob_threshold": -1.0,
+      "no_speech_threshold": 0.6
+    }
+  },
+  "file_manager": {
+    "hidden_items": [
+      "static",
+      "__pycache__",
+      ".claude",
+      "templates",
+      "config.json",
+      "models",
+      "audio_capture.py",
+      "faster_whisper_models.json",
+      "file_mover.py",
+      "huggingface_manager.py",
+      "INSTALL.md",
+      "install.sh",
+      "install.bat",
+      "install.ps1",
+      "README.md",
+      "requirements.txt",
+      "word_highlighting.json",
+      "whisper_models.json",
+      "speech_to_text.py",
+      "start_server.sh",
+      "start_server.bat",
+      "stop_server.sh",
+      "stop_server.bat",
+      "restart_server.sh",
+      "restart_server.bat",
+      "download_progress.json"
+    ],
+    "_hidden_items_comment": "List of specific file/folder paths to hide in file manager. Paths are relative to the working directory. Example: ['templates', 'config.json', 'models/cached']",
+    "file_mover": {
+      "move_on_transcription_stop": false,
+      "_move_on_transcription_stop_comment": "Automatically move files when transcription stops",
+      "destination_path": "",
+      "_destination_path_comment": "Destination path for files (can be SMB path like //server/share/folder or local path)",
+      "smb_username": "",
+      "_smb_username_comment": "Username for SMB/network share authentication (leave empty for local paths)",
+      "smb_password": "",
+      "_smb_password_comment": "Password for SMB/network share authentication (stored in plain text - use with caution)",
+      "smb_domain": "",
+      "_smb_domain_comment": "Domain for SMB authentication (optional, can be empty)",
+      "source_patterns": [
+        "_AUTOMATIC_BACKUP/**/*"
+      ],
+      "_source_patterns_comment": "File patterns to move (glob patterns relative to working directory)",
+      "delete_source": true,
+      "_delete_source_comment": "Delete source file after successful move (false = copy instead)",
+      "preserve_structure": true,
+      "_preserve_structure_comment": "Preserve directory structure when moving files"
+    }
+  },
+  "url_builder_defaults": {
+    "fontSize": "30",
+    "bgColor": "000000",
+    "textColor": "ffffff",
+    "alignment": "center",
+    "verticalAlign": "bottom",
+    "fontFamily": "Arial",
+    "fontWeight": "400",
+    "lineHeight": "1",
+    "paddingTop": "10",
+    "paddingBottom": "20",
+    "paddingLeft": "20",
+    "paddingRight": "20",
+    "maxWidth": "100",
+    "inProgressOpacity": "0.9",
+    "layout": "side_by_side",
+    "inverse": "true"
+  },
+  "hallucination_filter": {
+    "enabled": true,
+    "_enabled_comment": "Filter out known Whisper hallucinations (phantom subtitles from training data)",
+    "phrases": [
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u0441\u0434\u0435\u043b\u0430\u043b DimaTorzok",
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u0441\u043e\u0437\u0434\u0430\u0432\u0430\u043b DimaTorzok",
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u043f\u043e\u0434\u043e\u0433\u043d\u0430\u043b \u00ab\u0421\u0438\u043c\u043e\u043d\u00bb",
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u0434\u0435\u043b\u0430\u043b DimaTorzok",
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u0438\u043b DimaTorzok",
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u0441\u043e\u0437\u0434\u0430\u0432\u0430\u043b DimaTorzok",
+      "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0435\u043d\u0438\u0435 \u0441\u043b\u0435\u0434\u0443\u0435\u0442...",
+      "Thank you for watching",
+      "Thanks for watching",
+      "Please subscribe",
+      "Like and subscribe",
+      "Don't forget to subscribe",
+      "\u041f\u041e\u0414\u041f\u0418\u0428\u0418\u0421\u042c \u041d\u0410 \u041a\u0410\u041d\u0410\u041b!",
+      "\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u043f\u043e\u0434\u043e\u0433\u043d\u0430\u043b\u0438 \u0421\u0438\u043c\u043e\u043d",
+      "\u041f\u041e\u0414\u041f\u0418\u0428\u0418\u0421\u042c!",
+      "\u0420\u0435\u0434\u0430\u043a\u0442\u043e\u0440 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u0410.\u0421\u0435\u043c\u043a\u0438\u043d \u041a\u043e\u0440\u0440\u0435\u043a\u0442\u043e\u0440 \u0410.\u0415\u0433\u043e\u0440\u043e\u0432\u0430",
+      "\u043c\u0438\u0440Strafe.ru",
+      "allah",
+      "shit",
+      "piss",
+      "fuck",
+      "cunt",
+      "cocksucker",
+      "motherfucker",
+      "tits",
+      "bitch",
+      "ass"
+    ],
+    "_phrases_comment": "List of phrases to filter. Partial matches are detected (phrase in text or text in phrase)",
+    "cjk_filter_enabled": true,
+    "_cjk_filter_enabled_comment": "Filter out hallucinated CJK characters when transcribing Latin-based languages"
+  },
+  "live_translation": {
+    "enabled": true,
+    "_enabled_comment": "Enable real-time translation of live transcription",
+    "target_language": "en",
+    "_target_language_comment": "Target language code (e.g., 'en', 'es', 'fr', 'de', 'ru')",
+    "source_language": "auto",
+    "_source_language_comment": "Source language (auto uses configured audio.language)",
+    "translate_in_progress": true,
+    "_translate_in_progress_comment": "Also translate in-progress text (may cause flicker)",
+    "display_mode": "translated_only",
+    "_display_mode_comment": "Display mode: translated_only, side_by_side, stacked",
+    "translation_model": "facebook/nllb-200-distilled-600M",
+    "_translation_model_comment": "HuggingFace model ID for translation",
+    "use_gpu": true,
+    "_use_gpu_comment": "Use GPU for translation model. Disable to run NLLB on CPU and free VRAM for Whisper",
+    "max_entries_to_send": 100,
+    "_max_entries_to_send_comment": "Number of recent translations to send to web UI. Lower = faster, Higher = more history shown",
+    "srt_enabled": true,
+    "html_enabled": true,
+    "remote": {
+      "enabled": false,
+      "endpoint": "http://192.168.2.62"
+    },
+    "trusted_clients": [],
+    "_trusted_clients_comment": "IPs allowed to use this machine for remote translation (managed automatically via pairing)"
+  },
+  "corrections": {
+    "output_delay": {
+      "enabled": false,
+      "delay_seconds": 7,
+      "auto_publish": true
+    },
+    "enabled": true,
+    "confidence_threshold": 0.7,
+    "confidence_highlighting": true,
+    "show_review_queue": true,
+    "n_best_alternatives": {
+      "translation_count": 3
+    }
+  },
+  "custom_dictionary": {
+    "file": "custom_dictionary.json",
+    "whisper_hotwords_enabled": false,
+    "whisper_initial_prompt_enabled": false,
+    "nllb_glossary_enabled": false
+  }
+}

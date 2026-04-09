@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="/static/socket.io.js"></script>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="messages"></div>
+
+    <script>
+        const socket = io.connect(window.location.origin, {
+            transports: ['websocket', 'polling']
+        });
+
+        const status = document.getElementById('status');
+        const messages = document.getElementById('messages');
+
+        socket.on('connect', function() {
+            status.innerHTML = 'Connected: ' + socket.id;
+            console.log('Connected to server');
+        });
+
+        socket.on('connected', function(data) {
+            const msg = document.createElement('div');
+            msg.textContent = 'Server message: ' + data.data;
+            messages.appendChild(msg);
+        });
+
+        socket.on('disconnect', function() {
+            status.innerHTML = 'Disconnected';
+        });
+
+        socket.on('new_entries', function(data) {
+            const msg = document.createElement('div');
+            msg.textContent = 'New entries: ' + JSON.stringify(data);
+            messages.appendChild(msg);
+        });
+    </script>
+</body>
+</html>

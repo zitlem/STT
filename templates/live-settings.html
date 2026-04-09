@@ -1,0 +1,2253 @@
+{% extends "base.html" %}
+
+{% block title %}Live Settings - Speech to Text{% endblock %}
+{% block page_title %}Live Settings{% endblock %}
+
+{% block extra_css %}
+        /* Slider Styles */
+        .slider-container {
+            margin-bottom: 14px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .slider-label span {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 0.85em;
+        }
+
+        .slider-value {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        /* Live Preview Panel */
+        .preview-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+
+        .status-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .status-title {
+            font-size: 1em;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            min-width: 12px;
+            border-radius: 50%;
+            background: #666;
+            padding: 0;
+            gap: 0;
+            border: none;
+            font-size: 0;
+        }
+
+        .status-indicator.running {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.starting {
+            background: #f6ad55;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.stopped {
+            background: #dc3545;
+        }
+
+        .status-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .status-item {
+            text-align: center;
+        }
+
+        .status-label {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .status-value {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+        }
+
+        .btn-force-reset:hover:not(:disabled) {
+            background: #e53e3e;
+            transform: translateY(-1px);
+        }
+
+        .control-btn {
+            padding: 12px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+        }
+
+        .btn-start {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-start:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+
+        .btn-stop {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-stop:hover:not(:disabled) {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+
+        .control-btn:disabled {
+            background: #4a4a4a;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .volume-meter {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .volume-bar-container {
+            background: var(--bg-base);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--border);
+        }
+
+        .volume-bar {
+            height: 24px;
+            background: var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .volume-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success) 0%, #38a169 50%, var(--warning) 75%, var(--danger) 100%);
+            transition: width 0.1s ease;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .volume-text {
+            display: flex;
+            justify-content: space-around;
+            font-size: 0.8em;
+            color: var(--text-secondary);
+        }
+
+        .transcription-preview {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .preview-content {
+            background: var(--bg-base);
+            padding: 16px;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--border);
+            min-height: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+
+        .preview-entry {
+            margin-bottom: 12px;
+            padding: 8px;
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent);
+            border-radius: 3px;
+        }
+
+        .preview-timestamp {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .preview-text {
+            color: var(--text-primary);
+        }
+
+        /* Unified transcription flow styles */
+        .preview-flow {
+            line-height: 1.8;
+            font-size: 1em;
+            color: var(--text-primary);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .finalized-text {
+            color: var(--text-primary);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .in-progress-text {
+            color: rgba(224, 224, 224, 0.7);
+            font-style: italic;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .alert.show { display: block; }
+
+        .model-section {
+            background: var(--bg-elevated);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+
+        .model-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px;
+            background: var(--bg-elevated);
+            font-size: 0.8em;
+        }
+
+        .model-item {
+            padding: 8px;
+            margin-bottom: 6px;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s var(--ease-out);
+            border: 1px solid transparent;
+            color: var(--text-primary);
+        }
+
+        .model-item:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent);
+        }
+
+        .model-item.selected {
+            border-color: var(--accent);
+            background: var(--bg-elevated);
+        }
+
+        .unsaved-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid var(--accent);
+            padding: 10px 24px;
+            z-index: 1000;
+        }
+        .unsaved-bar-inner {
+            max-width: 1300px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .unsaved-bar span { color: var(--warning); font-size: 0.85em; font-weight: 600; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .control-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .status-info {
+                grid-template-columns: 1fr;
+            }
+        }
+{% endblock %}
+
+{% block content %}
+        <div class="main-content">
+            <!-- Settings Panel -->
+            <div class="settings-panel">
+                <h3>Transcription Settings</h3>
+
+                <!-- Audio Device Lock Warning -->
+                <div id="audio_device_lock_warning" style="display: none; background: #3a2f1a; border: 1px solid #5a4a2d; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 4px solid #f6ad55;">
+                    <span style="color: #f6ad55; font-weight: 600;">Live Transcription Running</span><br>
+                    <small style="color: var(--text-primary);">Audio device selection is locked. Stop transcription before changing audio input.</small>
+                </div>
+
+                <!-- Model Configuration -->
+                <div class="form-group">
+                    <label>Model Configuration</label>
+                    <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border-left: 4px solid var(--accent); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-weight: 500; color: var(--text-primary);">Live Transcription Model:</span>
+                            <span id="live_model_status" style="font-size: 0.8em; color: #999;">Loading...</span>
+                        </div>
+
+                    </div>
+                    <small style="margin-top: 8px; display: block;">
+                        <strong>Tip:</strong> Use the <a href="/model-manager" style="color: var(--accent); text-decoration: none; font-weight: 500;">Model Manager</a> to download more models.
+                    </small>
+
+                    <!-- Model Configuration -->
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>Model Configuration</label>
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label for="live_model_type">Model Type</label>
+                                <select id="live_model_type" onchange="updateLiveModelTypeUI()">
+                                    <option value="whisper">Whisper (OpenAI)</option>
+                                    <option value="faster_whisper">Faster Whisper (4-10x faster)</option>
+                                    <option value="downloaded">Downloaded Models</option>
+                                </select>
+                                <small>Choose between Whisper, Faster Whisper, or custom downloaded models</small>
+                            </div>
+
+                            <!-- Whisper-specific settings -->
+                            <div id="live_whisper_config" style="display: none;">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="live_whisper_model_select">Whisper Model</label>
+                                    <select id="live_whisper_model_select">
+                                        <option value="">Loading downloaded models...</option>
+                                    </select>
+                                    <small>Download models from <a href="/model-manager" style="color: var(--accent);">Model Manager</a></small>
+                                </div>
+                            </div>
+
+                            <!-- Faster Whisper-specific settings -->
+                            <div id="live_faster_whisper_config" style="display: block;">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="live_faster_whisper_model_select">Faster Whisper Model</label>
+                                    <select id="live_faster_whisper_model_select">
+                                        <option value="">Loading available models...</option>
+                                    </select>
+                                    <small>Only downloaded Faster Whisper models are shown</small>
+                                </div>
+                            </div>
+
+                            <!-- Downloaded models settings -->
+                            <div id="live_downloaded_config" style="display: none;">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="live_downloaded_model_select">Select Downloaded Model</label>
+                                    <select id="live_downloaded_model_select">
+                                        <option value="">No models downloaded</option>
+                                    </select>
+                                    <small>Download models from <a href="/model-manager" style="color: var(--accent);">Model Manager</a></small>
+                                </div>
+                            </div>
+
+                    </div>
+                </div>
+
+                <!-- Audio Settings -->
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Audio Interface</label>
+                    <select id="audio_device" style="width: 100%; padding: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
+                        <option value="">Loading devices...</option>
+                    </select>
+                    <small style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">
+                        Select your microphone/audio input device
+                    </small>
+                </div>
+
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Energy Threshold</label>
+                    <input type="number" id="energy_threshold" min="500" max="10000" step="100" value="3500" oninput="updateThresholdDisplay(this.value)">
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Phrase Timeout</span>
+                        <span class="slider-value"><span id="phraseValue">2</span>s</span>
+                    </div>
+                    <input type="range" id="phrase_timeout" min="0.5" max="15" value="2" step="0.1" oninput="document.getElementById('phraseValue').textContent = this.value">
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Time to wait after speech stops before finalizing transcription</div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Same Output Threshold</span>
+                        <span class="slider-value"><span id="sameOutputValue">7</span></span>
+                    </div>
+                    <input type="range" id="same_output_threshold" min="3" max="25" value="7" step="1" oninput="document.getElementById('sameOutputValue').textContent = this.value">
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Number of repeated outputs before text is finalized. Lower = faster, Higher = more stable</div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Fuzzy Duplicate Threshold</span>
+                        <span class="slider-value"><span id="fuzzyThresholdValue">0.85</span></span>
+                    </div>
+                    <input type="range" id="fuzzy_duplicate_threshold" min="0.5" max="1.0" value="0.85" step="0.05" oninput="document.getElementById('fuzzyThresholdValue').textContent = this.value">
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Similarity threshold for detecting duplicate sentences. Higher = stricter matching</div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Minimum Words</span>
+                        <span class="slider-value"><span id="minWordsValue">0</span></span>
+                    </div>
+                    <input type="range" id="min_words" min="0" max="15" value="0" step="1" oninput="document.getElementById('minWordsValue').textContent = this.value">
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Minimum word count to save a segment. 0 = save all, higher = skip short fragments</div>
+                </div>
+
+                <!-- Language Selection -->
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Language</label>
+                    <select id="live_language" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
+                        <option value="auto">Auto Detect</option>
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="it">Italian</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="nl">Dutch</option>
+                        <option value="pl">Polish</option>
+                        <option value="ru">Russian</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                        <option value="zh">Chinese</option>
+                    </select>
+                    <small style="color: #999; font-size: 0.75em; margin-top: 3px; display: block;">Auto detect uses Whisper's language detection</small>
+                </div>
+
+                <!-- VAD Settings -->
+                <div class="checkbox-group">
+                    <input type="checkbox" id="vad_enabled" checked>
+                    <label for="vad_enabled">Enable VAD (Voice Activity Detection)</label>
+                </div>
+                <div id="vad_not_downloaded_warning" style="display: none; margin-top: 8px; padding: 10px; background: rgba(245, 101, 101, 0.15); border: 1px solid #f56565; border-radius: 6px;">
+                    <span style="color: #fc8181; font-size: 0.85em;">
+                        <strong>VAD model not downloaded.</strong>
+                        <a href="/model-manager" style="color: #63b3ed; text-decoration: underline;">Download it from the Model Manager</a> to enable Voice Activity Detection.
+                    </span>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>VAD Threshold</span>
+                        <span class="slider-value"><span id="vadValue">0.5</span></span>
+                    </div>
+                    <input type="range" id="vad_threshold" min="0.1" max="1.0" value="0.5" step="0.05" oninput="document.getElementById('vadValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            Minimum confidence (0.0-1.0) that audio contains speech before transcribing.
+                            <br/>
+                            <strong>Lower</strong> (0.3) = more sensitive, catches quiet speech but may transcribe noise.
+                            <br/>
+                            <strong>Higher</strong> (0.7) = stricter, only clear speech, filters out most non-speech.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Advanced Whisper Decoding -->
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--border);">
+                    <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
+                        Advanced Whisper Decoding
+                    </label>
+                    <small style="color: #999; font-size: 0.75em; display: block; margin-bottom: 12px;">
+                        Fine-tune transcription quality vs speed. Lower beam size = faster, higher = more accurate.
+                    </small>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Beam Size</span>
+                        <span class="slider-value"><span id="beamSizeValue">1</span></span>
+                    </div>
+                    <input type="range" id="beam_size" min="1" max="5" value="1" step="1" oninput="document.getElementById('beamSizeValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            Search breadth for transcription.
+                            <br/>
+                            <strong>1</strong> = Greedy/Fast (recommended for live, reduces hallucinations)
+                            <br/>
+                            <strong>5</strong> = Thorough/Slow (best quality, slower processing)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Temperature</span>
+                        <span class="slider-value"><span id="temperatureValue">0.0</span></span>
+                    </div>
+                    <input type="range" id="temperature" min="0" max="1.0" value="0.0" step="0.1" oninput="document.getElementById('temperatureValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            Transcription randomness/creativity.
+                            <br/>
+                            <strong>0.0</strong> = Deterministic (recommended for live, most stable)
+                            <br/>
+                            <strong>0.5-1.0</strong> = Creative (more variations, may help with difficult audio)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Compression Ratio Threshold</span>
+                        <span class="slider-value"><span id="compressionRatioValue">1.8</span></span>
+                    </div>
+                    <input type="range" id="compression_ratio" min="1.0" max="3.0" value="1.8" step="0.1" oninput="document.getElementById('compressionRatioValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            Rejects transcriptions with too much repetition.
+                            <br/>
+                            <strong>Lower</strong> (1.5-1.8) = Stricter, rejects more repetitive text (reduces hallucinations)
+                            <br/>
+                            <strong>Higher</strong> (2.4-3.0) = Permissive, allows some repetition
+                        </span>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Log Probability Threshold</span>
+                        <span class="slider-value"><span id="logprobValue">-0.5</span></span>
+                    </div>
+                    <input type="range" id="logprob_threshold" min="-1.0" max="0.0" value="-0.5" step="0.1" oninput="document.getElementById('logprobValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            Rejects transcriptions with low confidence scores.
+                            <br/>
+                            <strong>Higher</strong> (-0.3 to 0.0) = Stricter, only high-confidence text (reduces hallucinations)
+                            <br/>
+                            <strong>Lower</strong> (-1.0 to -0.7) = Permissive, accepts lower confidence text
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Performance Settings -->
+                <div class="checkbox-group">
+                    <input type="checkbox" id="use_gpu" checked>
+                    <label for="use_gpu">Use GPU for Transcription</label>
+                </div>
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">GPU for Whisper only. Translation GPU is configured on the /translation page</div>
+
+                <!-- Real-Time Corrections Settings -->
+                <div style="border-top: 1px solid #333; margin-top: 16px; padding-top: 16px;">
+                    <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Real-Time Corrections</h3>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="corrections_enabled" checked>
+                        <label for="corrections_enabled">Enable corrections features</label>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="confidence_highlighting" checked>
+                        <label for="confidence_highlighting">Confidence highlighting</label>
+                    </div>
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Highlights low-confidence words in orange (adds ~10-20% latency)</div>
+
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>Confidence Threshold</span>
+                            <span class="slider-value"><span id="confidenceThresholdValue">0.7</span></span>
+                        </div>
+                        <input type="range" id="confidence_threshold" min="0.3" max="0.95" value="0.7" step="0.05"
+                               oninput="document.getElementById('confidenceThresholdValue').textContent = this.value">
+                        <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px;">Words below this score are flagged for review</div>
+                    </div>
+
+                </div>
+
+                <!-- Custom Dictionary -->
+                <div style="border-top: 1px solid #333; margin-top: 16px; padding-top: 16px;">
+                    <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Custom Dictionary</h3>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="whisper_hotwords_enabled" checked>
+                        <label for="whisper_hotwords_enabled">Whisper hotwords biasing</label>
+                    </div>
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Boosts recognition of specific words during transcription</div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="whisper_initial_prompt_enabled" checked>
+                        <label for="whisper_initial_prompt_enabled">Use as initial prompt</label>
+                    </div>
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Feeds hotwords as context to Whisper before transcription starts</div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="nllb_glossary_enabled" checked>
+                        <label for="nllb_glossary_enabled">NLLB glossary post-processing</label>
+                    </div>
+                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Replaces translated terms using glossary mappings after translation</div>
+
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label style="font-size: 0.85em;">Hotwords (one per line)</label>
+                        <textarea id="hotwords_list" rows="4" placeholder="Add words the model often gets wrong...&#10;e.g. Kubernetes&#10;PyTorch&#10;NLLB"
+                                  style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid #333; color: var(--text-primary); border-radius: 4px; font-size: 0.85em; resize: vertical;"></textarea>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 8px;">
+                        <label style="font-size: 0.85em;">Glossary (source=target, one per line)</label>
+                        <textarea id="glossary_list" rows="4" placeholder="Add translation term mappings...&#10;e.g. neural network=red neuronal&#10;machine learning=aprendizaje automatico"
+                                  style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid #333; color: var(--text-primary); border-radius: 4px; font-size: 0.85em; resize: vertical;"></textarea>
+                        <small style="color: #666; font-size: 0.75em;">Applied when translating to the target language</small>
+                    </div>
+
+                    <button onclick="saveDictionary()" class="btn-save" style="background: #4a90d9; margin-top: 8px;">Save Dictionary</button>
+                </div>
+
+                <!-- Action Buttons -->
+                <button id="main-save-btn" onclick="saveSettings()" class="btn-save">Save Settings</button>
+                <button onclick="resetConfig()" class="btn-save" style="background: #ed8936;">Reset to Default</button>
+                <button onclick="startCalibration()" class="btn-save" style="background: #48bb78;">Calibrate Settings</button>
+
+            </div>
+
+            <!-- Live Preview Panel -->
+            <div class="preview-panel">
+                <!-- Alert Display -->
+                <div id="alert_message" class="alert"></div>
+
+                <!-- Status Card -->
+                <div class="status-card">
+                    <div class="status-header">
+                        <div class="status-title">Transcription Status</div>
+                        <div id="status_indicator" class="status-indicator stopped"></div>
+                    </div>
+                    <div class="status-info">
+                        <div class="status-item">
+                            <div class="status-label">Status</div>
+                            <div id="status_text" class="status-value">STOPPED</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Message</div>
+                            <div id="status_message" class="status-value" style="font-size: 0.9em;">Ready</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Model</div>
+                            <div id="status_model" class="status-value" style="font-size: 0.9em; color: var(--accent);">Not loaded</div>
+                        </div>
+                    </div>
+                    <div class="control-buttons">
+                        <button id="btn_start" class="control-btn btn-start" onclick="startTranscription()">
+                            Start
+                        </button>
+                        <button id="btn_stop" class="control-btn btn-stop" onclick="stopTranscription()" disabled>
+                            Stop
+                        </button>
+                        <button id="btn_force_reset" class="control-btn btn-force-reset" onclick="forceResetTranscription()" style="background: #f56565;">
+                            Force Reset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Audio Visualization -->
+                <div class="volume-meter">
+                    <div class="section-title">Audio Level Monitor</div>
+
+                    <!-- Stats Bar -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
+                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">CURRENT</div>
+                            <div id="volume_current" style="color: var(--accent); font-size: 1.4em; font-weight: 700;">0</div>
+                        </div>
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
+                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">PEAK</div>
+                            <div id="volume_peak" style="color: #48bb78; font-size: 1.4em; font-weight: 700;">0</div>
+                        </div>
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
+                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">STATUS</div>
+                            <div id="volume_status" style="font-size: 0.9em; font-weight: 600; color: #999;">Waiting</div>
+                        </div>
+                    </div>
+
+                    <!-- Oscilloscope-style Timeline -->
+                    <div style="background: var(--bg-elevated); padding: 16px; border-radius: 6px; border: 2px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="color: var(--text-primary); font-size: 0.9em; font-weight: 600;">Audio Level Timeline (Last 60s)</span>
+                            <span style="color: #999; font-size: 0.75em;">Activation Threshold: <span id="threshold_display" style="color: var(--accent); font-weight: 600;">3500</span></span>
+                        </div>
+                        <div style="margin-bottom: 8px; padding: 8px; background: var(--accent-subtle); border-left: 3px solid var(--accent); border-radius: 3px;">
+                            <span style="color: var(--text-primary); font-size: 0.75em;">
+                                <strong>Goal:</strong> Peak above the purple threshold line when speaking. Audio below the threshold is considered silence and won't be transcribed.
+                                <br>* <strong>Energy Threshold (Always Active):</strong> Quiet audio below this line is immediately rejected - fast and lightweight
+                                <br>* <strong>VAD (When Enabled Above):</strong> For loud audio, VAD uses AI to detect if it's actually speech vs noise/music
+                                <br>* <em>Best practice: Enable VAD for accurate filtering of background noise and music</em>
+                            </span>
+                        </div>
+                        <canvas id="audio_timeline" width="1200" height="180" style="width: 100%; height: 180px; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border);"></canvas>
+                        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7em; color: #666;">
+                            <span>< 60s ago</span>
+                            <span>30s ago</span>
+                            <span>Now ></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transcription Preview -->
+                <div class="transcription-preview">
+                    <div class="section-title">Live Transcription</div>
+                    <div id="transcription_preview" class="preview-content">
+                        <p style="color: #999; text-align: center; margin: 100px 0;">Connecting to transcription service...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="unsaved-bar" class="unsaved-bar" style="display:none;">
+            <div class="unsaved-bar-inner">
+                <span>Unsaved changes</span>
+                <button onclick="saveSettings()" class="btn-save" style="margin:0; width:auto; padding:8px 24px;">Save</button>
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        const socket = io.connect(window.location.origin, {
+            transports: ['websocket', 'polling']
+        });
+        let currentConfig = {};
+        let peakVolume = 0;
+        let transcriptionState = { running: false }; // Track transcription state for UI locks
+
+        // Check if VAD model is downloaded
+        async function checkVADModelStatus() {
+            try {
+                const response = await fetch('/api/models/silero-vad-status');
+                const data = await response.json();
+                return data.success && data.downloaded;
+            } catch (error) {
+                console.error('Error checking VAD status:', error);
+                return false;
+            }
+        }
+
+        // Update VAD toggle availability based on model status
+        async function updateVADAvailability() {
+            const vadAvailable = await checkVADModelStatus();
+            const vadCheckbox = document.getElementById('vad_enabled');
+            const vadThreshold = document.getElementById('vad_threshold');
+            const warningEl = document.getElementById('vad_not_downloaded_warning');
+
+            if (!vadAvailable) {
+                vadCheckbox.disabled = true;
+                vadCheckbox.checked = false;
+                vadThreshold.disabled = true;
+                warningEl.style.display = 'block';
+            } else {
+                vadCheckbox.disabled = false;
+                vadThreshold.disabled = false;
+                warningEl.style.display = 'none';
+            }
+        }
+
+        // Load settings from server
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    currentConfig = data.config;
+                    populateForm(currentConfig);
+                }
+            } catch (error) {
+                showAlert('Failed to load settings: ' + error.message, 'error');
+            }
+        }
+
+        // Update threshold display when user changes the input
+        function updateThresholdDisplay(value) {
+            const threshold = parseInt(value) || 3500;
+            document.getElementById('threshold_display').textContent = threshold;
+            energyThreshold = threshold;
+        }
+
+        // Populate form with config data
+        function populateForm(config) {
+            // Store the saved audio device for later selection
+            window.savedAudioDevice = config.audio?.default_microphone || '';
+
+            const threshold = config.audio?.energy_threshold || 3500;
+            document.getElementById('energy_threshold').value = threshold;
+            document.getElementById('threshold_display').textContent = threshold;
+            energyThreshold = threshold; // Update the histogram threshold
+
+            document.getElementById('phrase_timeout').value = config.audio?.phrase_timeout || 2;
+            document.getElementById('phraseValue').textContent = config.audio?.phrase_timeout || 2;
+            document.getElementById('same_output_threshold').value = config.audio?.same_output_threshold || 7;
+            document.getElementById('sameOutputValue').textContent = config.audio?.same_output_threshold || 7;
+            document.getElementById('fuzzy_duplicate_threshold').value = config.audio?.fuzzy_duplicate_threshold || 0.85;
+            document.getElementById('fuzzyThresholdValue').textContent = config.audio?.fuzzy_duplicate_threshold || 0.85;
+            document.getElementById('min_words').value = config.audio?.min_words || 0;
+            document.getElementById('minWordsValue').textContent = config.audio?.min_words || 0;
+            document.getElementById('live_language').value = config.audio?.language || 'auto';
+            document.getElementById('vad_enabled').checked = config.vad?.enabled !== false;
+            document.getElementById('vad_threshold').value = config.vad?.threshold || 0.5;
+            document.getElementById('vadValue').textContent = config.vad?.threshold || 0.5;
+            document.getElementById('use_gpu').checked = config.performance?.use_gpu !== false;
+
+            // Load Whisper decoding parameters
+            const whisperDecoding = config.whisper_decoding?.live_transcription || {};
+            document.getElementById('beam_size').value = whisperDecoding.beam_size || 1;
+            document.getElementById('beamSizeValue').textContent = whisperDecoding.beam_size || 1;
+            document.getElementById('temperature').value = whisperDecoding.temperature || 0.0;
+            document.getElementById('temperatureValue').textContent = whisperDecoding.temperature || 0.0;
+            document.getElementById('compression_ratio').value = whisperDecoding.compression_ratio_threshold || 1.8;
+            document.getElementById('compressionRatioValue').textContent = whisperDecoding.compression_ratio_threshold || 1.8;
+            document.getElementById('logprob_threshold').value = whisperDecoding.logprob_threshold || -0.5;
+            document.getElementById('logprobValue').textContent = whisperDecoding.logprob_threshold || -0.5;
+
+            // Load corrections settings
+            const corr = config.corrections || {};
+            document.getElementById('corrections_enabled').checked = corr.enabled !== false;
+            document.getElementById('confidence_highlighting').checked = corr.confidence_highlighting !== false;
+            document.getElementById('confidence_threshold').value = corr.confidence_threshold || 0.7;
+            document.getElementById('confidenceThresholdValue').textContent = corr.confidence_threshold || 0.7;
+
+            // Load custom dictionary settings
+            const dict = config.custom_dictionary || {};
+            document.getElementById('whisper_hotwords_enabled').checked = dict.whisper_hotwords_enabled !== false;
+            document.getElementById('whisper_initial_prompt_enabled').checked = dict.whisper_initial_prompt_enabled !== false;
+            document.getElementById('nllb_glossary_enabled').checked = dict.nllb_glossary_enabled !== false;
+
+            // Load dictionary content
+            loadDictionaryContent();
+        }
+
+        async function loadDictionaryContent() {
+            try {
+                const resp = await fetch('/api/dictionary');
+                const data = await resp.json();
+                if (data.success && data.dictionary) {
+                    document.getElementById('hotwords_list').value = (data.dictionary.hotwords || []).join('\n');
+                    // Format glossary as source=target lines
+                    const glossary = data.dictionary.glossary || {};
+                    const lines = [];
+                    for (const [langPair, mappings] of Object.entries(glossary)) {
+                        for (const [src, tgt] of Object.entries(mappings)) {
+                            lines.push(`${src}=${tgt}`);
+                        }
+                    }
+                    document.getElementById('glossary_list').value = lines.join('\n');
+                }
+            } catch (e) {
+                console.error('Failed to load dictionary:', e);
+            }
+        }
+
+        async function saveDictionary() {
+            try {
+                const hotwords = document.getElementById('hotwords_list').value
+                    .split('\n').map(s => s.trim()).filter(Boolean);
+
+                // Parse glossary lines (source=target format)
+                const glossaryLines = document.getElementById('glossary_list').value
+                    .split('\n').map(s => s.trim()).filter(Boolean);
+
+                // Get current target language for glossary key
+                const targetLang = currentConfig.live_translation?.target_language || 'en';
+                const sourceLang = currentConfig.audio?.language || 'en';
+                const langPair = `${sourceLang}_to_${targetLang}`;
+
+                const glossary = {};
+                if (glossaryLines.length > 0) {
+                    glossary[langPair] = {};
+                    for (const line of glossaryLines) {
+                        const eqIdx = line.indexOf('=');
+                        if (eqIdx > 0) {
+                            const src = line.substring(0, eqIdx).trim();
+                            const tgt = line.substring(eqIdx + 1).trim();
+                            if (src && tgt) {
+                                glossary[langPair][src] = tgt;
+                            }
+                        }
+                    }
+                }
+
+                const resp = await fetch('/api/dictionary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dictionary: { hotwords, glossary } })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showAlert('Dictionary saved!', 'success');
+                } else {
+                    showAlert('Failed to save dictionary: ' + (data.error || ''), 'error');
+                }
+            } catch (e) {
+                showAlert('Failed to save dictionary: ' + e.message, 'error');
+            }
+        }
+
+        // Save all settings to server (model config + audio/VAD/performance settings)
+        async function saveSettings() {
+            try {
+                // 1. Build and save model configuration
+                const modelType = document.getElementById('live_model_type').value;
+                const liveModel = { type: 'whisper' }; // Base type is whisper
+
+                if (modelType === 'whisper') {
+                    liveModel.backend = 'whisper';
+                    liveModel.whisper = {
+                        model: document.getElementById('live_whisper_model_select').value
+                    };
+                } else if (modelType === 'faster_whisper') {
+                    // Faster Whisper uses whisper type with backend flag
+                    liveModel.backend = 'faster-whisper';
+                    liveModel.whisper = {
+                        model: document.getElementById('live_faster_whisper_model_select').value
+                    };
+                } else if (modelType === 'downloaded') {
+                    const downloadedPath = document.getElementById('live_downloaded_model_select').value;
+
+                    if (!downloadedPath) {
+                        showAlert('Please select a downloaded model', 'error');
+                        return;
+                    }
+
+                    // Determine if HuggingFace or custom based on path format
+                    if (downloadedPath.includes('--')) {
+                        liveModel.type = 'huggingface';
+                        liveModel.huggingface = {
+                            model_id: downloadedPath,
+                            use_flash_attention: false
+                        };
+                    } else {
+                        liveModel.type = 'custom';
+                        liveModel.custom = {
+                            model_path: downloadedPath,
+                            model_type: 'custom'
+                        };
+                    }
+                }
+
+                // Get current file model config (don't change it)
+                const currentResponse = await fetch('/api/models/manager');
+                const currentData = await currentResponse.json();
+
+                if (!currentData.success) {
+                    showAlert('Error loading current model configuration', 'error');
+                    return;
+                }
+
+                // Save model config
+                const modelResponse = await fetch('/api/models/manager', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        live_model: liveModel,
+                        file_transcription_model: currentData.file_transcription_model
+                    })
+                });
+
+                const modelData = await modelResponse.json();
+                if (!modelData.success) {
+                    showAlert('Error saving model config: ' + modelData.error, 'error');
+                    return;
+                }
+
+                // 2. Build and save audio/VAD/performance settings
+                const settings = {
+                    audio: {
+                        default_microphone: document.getElementById('audio_device').value,
+                        energy_threshold: parseInt(document.getElementById('energy_threshold').value),
+                        phrase_timeout: parseFloat(document.getElementById('phrase_timeout').value),
+                        language: document.getElementById('live_language').value,
+                        same_output_threshold: parseInt(document.getElementById('same_output_threshold').value),
+                        fuzzy_duplicate_threshold: parseFloat(document.getElementById('fuzzy_duplicate_threshold').value),
+                        min_words: parseInt(document.getElementById('min_words').value)
+                    },
+                    vad: {
+                        enabled: document.getElementById('vad_enabled').checked,
+                        threshold: parseFloat(document.getElementById('vad_threshold').value)
+                    },
+                    performance: {
+                        use_gpu: document.getElementById('use_gpu').checked
+                    },
+                    whisper_decoding: {
+                        live_transcription: {
+                            beam_size: parseInt(document.getElementById('beam_size').value),
+                            best_of: 1,  // Keep fixed at 1 for live
+                            temperature: parseFloat(document.getElementById('temperature').value),
+                            condition_on_previous_text: false,  // Keep fixed at false for live
+                            compression_ratio_threshold: parseFloat(document.getElementById('compression_ratio').value),
+                            logprob_threshold: parseFloat(document.getElementById('logprob_threshold').value),
+                            no_speech_threshold: 0.6
+                        }
+                    },
+                    corrections: {
+                        enabled: document.getElementById('corrections_enabled').checked,
+                        confidence_threshold: parseFloat(document.getElementById('confidence_threshold').value),
+                        confidence_highlighting: document.getElementById('confidence_highlighting').checked,
+                    },
+                    custom_dictionary: {
+                        file: "custom_dictionary.json",
+                        whisper_hotwords_enabled: document.getElementById('whisper_hotwords_enabled').checked,
+                        whisper_initial_prompt_enabled: document.getElementById('whisper_initial_prompt_enabled').checked,
+                        nllb_glossary_enabled: document.getElementById('nllb_glossary_enabled').checked
+                    }
+                };
+
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Reload model config and status
+                    loadLiveModelConfig();
+                    loadModelStatus();
+                    showAlert('All settings saved successfully!', 'success');
+                    currentConfig = data.config;
+                    markClean();
+                } else {
+                    showAlert('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Transcription control functions
+        async function startTranscription() {
+            try {
+                const response = await fetch('/api/transcription/start', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    updateStatus();
+                } else {
+                    showAlert(data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function stopTranscription() {
+            try {
+                const response = await fetch('/api/transcription/stop', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    updateStatus();
+                    // Clear transcription display and segment state
+                    clearTranscriptionDisplay();
+                } else {
+                    showAlert(data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        function clearTranscriptionDisplay() {
+            // Clear the preview display
+            const preview = document.getElementById('transcription_preview');
+            if (preview) {
+                preview.innerHTML = '<p style="color: #999; text-align: center; margin: 30px 0;">No transcriptions yet. Start speaking...</p>';
+            }
+            // Reset segment tracking state
+            previewSegments = [];
+            previewLastEndTime = 0;
+            previewLastSegmentCount = 0;
+            previewLastInProgressText = '';
+        }
+
+        async function forceResetTranscription() {
+            if (!confirm('WARNING: Force reset will forcefully kill the transcription process and reset the state.\n\nThis should only be used if the system is stuck.\n\nAre you sure you want to continue?')) {
+                return;
+            }
+
+            try {
+                showAlert('Force resetting transcription...', 'success');
+
+                const response = await fetch('/api/transcription/force-reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    updateStatus();
+                    // Clear transcription display and segment state
+                    clearTranscriptionDisplay();
+                } else {
+                    showAlert('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+
+
+        async function resetConfig() {
+            if (!confirm('Reset ALL settings to defaults?\n\nThis will reset:\n* Model Configuration (Whisper small)\n* Energy Threshold (100)\n* Phrase Timeout (2s)\n* Active Window Duration (8s)\n* Confirmation Delay (2s)\n* Language (auto)\n* VAD settings (enabled, threshold 0.5)\n* Whisper Decoding (Beam Size 3, Temperature 0, etc.)\n* GPU setting (enabled)\n\nThis will save immediately and may require restarting transcription.')) {
+                return;
+            }
+
+            try {
+                // Call the server reset endpoint to reset config.json to defaults
+                const response = await fetch('/api/config/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ create_backup: true })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Reload all settings from the reset config
+                    await loadSettings();
+                    await loadLiveModelConfig();
+
+                    showAlert('All settings reset to defaults and saved.\n\n' + (data.needs_restart ? 'Restart transcription to apply changes.' : ''), 'success');
+                } else {
+                    showAlert('Error resetting config: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showAlert('Error resetting config: ' + error.message, 'error');
+            }
+        }
+
+        // Update transcription status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/transcription/status');
+                const data = await response.json();
+                if (data.success) {
+                    const state = data.state;
+                    const statusText = document.getElementById('status_text');
+                    const statusMessage = document.getElementById('status_message');
+                    const statusModel = document.getElementById('status_model');
+                    const statusIndicator = document.getElementById('status_indicator');
+                    const btnStart = document.getElementById('btn_start');
+                    const btnStop = document.getElementById('btn_stop');
+
+                    statusText.textContent = state.status.toUpperCase();
+                    statusMessage.textContent = state.message;
+
+                    // Update loaded model display
+                    if (state.loaded_model && state.loaded_model !== '') {
+                        statusModel.textContent = state.loaded_model;
+                        statusModel.style.color = '#bb86fc';
+                    } else {
+                        statusModel.textContent = 'Not loaded';
+                        statusModel.style.color = '#666';
+                    }
+
+                    // Update global transcription state for UI locks
+                    transcriptionState.running = (state.status === 'running' || state.status === 'starting');
+
+                    // Handle different status states
+                    if (state.status === 'running') {
+                        statusIndicator.className = 'status-indicator running';
+                        btnStart.disabled = true;
+                        btnStop.disabled = false;
+                        statusText.style.color = '#28a745';
+                    } else if (state.status === 'starting') {
+                        statusIndicator.className = 'status-indicator starting';
+                        btnStart.disabled = true;
+                        btnStop.disabled = false; // Allow stopping during startup
+                        statusText.style.color = '#f6ad55';
+                    } else if (state.status === 'stopping') {
+                        statusIndicator.className = 'status-indicator starting';
+                        btnStart.disabled = true;
+                        btnStop.disabled = true; // Disable both during shutdown
+                        statusText.style.color = '#f6ad55';
+                    } else if (state.status === 'error') {
+                        statusIndicator.className = 'status-indicator stopped';
+                        btnStart.disabled = false;
+                        btnStop.disabled = true;
+                        statusText.style.color = '#f56565';
+                        if (state.error) {
+                            statusMessage.textContent = state.error;
+                            // Only show alert once per error
+                            if (!window._lastShownError || window._lastShownError !== state.error) {
+                                window._lastShownError = state.error;
+                                showAlert(state.error, 'error');
+                            }
+                        }
+                    } else {
+                        statusIndicator.className = 'status-indicator stopped';
+                        btnStart.disabled = false;
+                        btnStop.disabled = true;
+                        statusText.style.color = '#dc3545';
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert_message');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // Socket.IO events
+        socket.on('connect', () => {
+            // console.log('Connected to transcription service');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
+            showAlert('WebSocket connection failed. Some features may not work.', 'error');
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.warn('Socket disconnected:', reason);
+        });
+
+        socket.on('reconnect', () => {
+            // console.log('Reconnected - reloading transcription history');
+            // Clear segment state to reload fresh data on reconnect
+            previewSegments = [];
+            previewLastEndTime = 0;
+            previewLastSegmentCount = 0;
+            previewLastInProgressText = '';
+        });
+
+        // Unified transcription update (segments with temporal data)
+        socket.on('transcription_update', (data) => {
+            // console.log('[UPDATE] segments:', data.segments?.length || 0,
+            //             'in_progress:', data.in_progress_segment?.text?.substring(0, 40) || 'none');
+            updateTranscriptionPreview(data);
+        });
+
+        // Only process audio_level when page is visible (optimization)
+        let isPageVisible = !document.hidden;
+        let audioLevelCount = 0;
+        let lastAudioEnergy = 0;
+        let sameEnergyCount = 0;
+
+        document.addEventListener('visibilitychange', () => {
+            const wasVisible = isPageVisible;
+            isPageVisible = !document.hidden;
+            // console.log(`[VISIBILITY] Page visibility changed: ${wasVisible ? 'visible' : 'hidden'} -> ${isPageVisible ? 'visible' : 'hidden'}`);
+        });
+
+        socket.on('audio_level', (data) => {
+            audioLevelCount++;
+
+            // Detect frozen audio level (same energy for too long)
+            if (Math.abs(data.energy - lastAudioEnergy) < 1) {
+                sameEnergyCount++;
+                if (sameEnergyCount === 20) {
+                    console.warn(`[AUDIO-FROZEN] Audio energy stuck at ${data.energy} for 20+ updates`);
+                }
+            } else {
+                if (sameEnergyCount >= 20) {
+                    // console.log(`[AUDIO-RESUMED] Audio energy changed after ${sameEnergyCount} frozen updates`);
+                }
+                sameEnergyCount = 0;
+            }
+            lastAudioEnergy = data.energy;
+
+            // Log every 50 updates (commented out to reduce console spam)
+            // if (audioLevelCount % 50 === 0) {
+            //     console.log(`[AUDIO] #${audioLevelCount} energy=${data.energy?.toFixed(0)} level=${data.level?.toFixed(1)} visible=${isPageVisible}`);
+            // }
+
+            // Only update visualization if page is visible
+            if (isPageVisible) {
+                updateVolumeIndicator(data);
+            }
+        });
+
+        // Segment-based transcription tracking (Whisper-Live pattern)
+        let previewSegments = [];  // [{id, text, start, end}, ...]
+        let previewLastEndTime = 0;
+        let previewLastSegmentCount = 0;
+        let previewLastInProgressText = '';
+
+        // Update transcription preview - uses Whisper-Live's temporal validation pattern
+        function updateTranscriptionPreview(data) {
+            const preview = document.getElementById('transcription_preview');
+            const segments = data.segments || [];
+            const inProgressSegment = data.in_progress_segment;
+
+            const hasSegments = segments && segments.length > 0;
+            const hasInProgress = inProgressSegment && inProgressSegment.text && inProgressSegment.text.trim();
+
+            if (!hasSegments && !hasInProgress) {
+                preview.innerHTML = '<p style="color: #999; text-align: center; margin: 30px 0;">No transcriptions yet. Start speaking...</p>';
+                previewSegments = [];
+                previewLastEndTime = 0;
+                previewLastSegmentCount = 0;
+                previewLastInProgressText = '';
+                return;
+            }
+
+            // Process completed segments - use ID for ordering (chronological from DB)
+            let segmentsChanged = false;
+            segments.forEach(seg => {
+                if (seg.completed === true) {
+                    // Check for duplicate by ID only - no temporal validation
+                    // ID ordering from database is already chronological
+                    const exists = previewSegments.some(s => s.id === seg.id);
+                    if (!exists) {
+                        previewSegments.push({
+                            id: seg.id,
+                            text: seg.text,
+                            start: parseFloat(seg.start) || 0,
+                            end: parseFloat(seg.end) || 0
+                        });
+                        segmentsChanged = true;
+                    }
+                }
+            });
+            // Sort by ID to ensure correct order
+            previewSegments.sort((a, b) => a.id - b.id);
+
+            const inProgressText = hasInProgress ? inProgressSegment.text : '';
+
+            // Check if anything changed
+            if (!segmentsChanged && inProgressText === previewLastInProgressText && previewSegments.length === previewLastSegmentCount) {
+                return;
+            }
+
+            previewLastInProgressText = inProgressText;
+            previewLastSegmentCount = previewSegments.length;
+
+            // Build display from validated segments
+            let fullText = previewSegments.map(s => s.text).join(' ');
+
+            // Build display HTML
+            let displayHTML = '';
+            if (fullText) {
+                displayHTML = `<span class="finalized-text">${fullText}</span>`;
+            }
+            if (hasInProgress) {
+                if (displayHTML) {
+                    displayHTML += ' ';
+                }
+                displayHTML += `<span class="in-progress-text">${inProgressSegment.text}</span>`;
+            }
+
+            preview.innerHTML = `<div class="preview-flow">${displayHTML}</div>`;
+
+            // Scroll to bottom to show latest text
+            preview.scrollTop = preview.scrollHeight;
+        }
+
+        // Audio visualization data
+        let energyThreshold = 3500; // Will be updated from config
+        let peakEnergy = 0;
+        let peakHoldTime = 0;
+        const PEAK_HOLD_DURATION = 2000; // Hold peak for 2 seconds
+
+        // Timeline data - store last 60 seconds (120 samples at 0.5s intervals)
+        const timelineData = [];
+        const maxTimelinePoints = 120; // 60 seconds of history
+
+        // Update audio visualization
+        function updateVolumeIndicator(data) {
+            const level = data.level || 0;
+            const db = data.db !== undefined ? data.db : -60;
+            const energy = data.energy !== undefined ? data.energy : 0;
+
+            // Debug logging
+            //console.log('updateVolumeIndicator called - energy:', energy, 'level:', level, 'db:', db);
+
+            // Track peak energy with hold
+            const currentTime = Date.now();
+            if (energy > peakEnergy || currentTime - peakHoldTime > PEAK_HOLD_DURATION) {
+                peakEnergy = energy;
+                peakHoldTime = currentTime;
+            }
+
+            // Update text displays
+            const volumeCurrent = document.getElementById('volume_current');
+            const volumePeak = document.getElementById('volume_peak');
+            const volumeStatus = document.getElementById('volume_status');
+
+            if (volumeCurrent) volumeCurrent.textContent = Math.round(energy);
+            if (volumePeak) volumePeak.textContent = Math.round(peakEnergy);
+
+            // Update status text
+            if (volumeStatus) {
+                const thresholdPercent = (energy / energyThreshold) * 100;
+                if (thresholdPercent < 30) {
+                    volumeStatus.textContent = 'Quiet';
+                    volumeStatus.style.color = '#666';
+                } else if (thresholdPercent < 100) {
+                    volumeStatus.textContent = 'Active';
+                    volumeStatus.style.color = '#ed8936';
+                } else {
+                    volumeStatus.textContent = 'Speaking';
+                    volumeStatus.style.color = '#48bb78';
+                }
+            }
+
+            // Add to timeline data
+            timelineData.push({
+                energy: energy,
+                timestamp: currentTime
+            });
+
+            // Keep only last N points
+            if (timelineData.length > maxTimelinePoints) {
+                timelineData.shift();
+            }
+
+            // Draw timeline
+            drawTimeline();
+        }
+
+        // Draw oscilloscope-style timeline
+        function drawTimeline() {
+            const canvas = document.getElementById('audio_timeline');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerY = height / 2;
+
+            // Clear canvas
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, width, height);
+
+            if (timelineData.length === 0) {
+                // Draw "waiting" message
+                ctx.fillStyle = '#666';
+                ctx.font = '14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('Waiting for audio data...', width / 2, centerY);
+                return;
+            }
+
+            // Draw grid lines (horizontal)
+            ctx.strokeStyle = '#2a2a2a';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = (height / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Draw threshold line
+            const maxScale = Math.max(energyThreshold * 2, Math.max(...timelineData.map(d => d.energy)));
+            const thresholdY = height - (energyThreshold / maxScale) * height;
+            ctx.strokeStyle = '#bb86fc';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(0, thresholdY);
+            ctx.lineTo(width, thresholdY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw threshold label (position it to avoid cutoff)
+            ctx.fillStyle = '#bb86fc';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'left';
+            const labelText = `Activation Threshold (${energyThreshold})`;
+            const labelY = thresholdY > 15 ? thresholdY - 5 : thresholdY + 15; // Position above or below based on space
+            ctx.fillText(labelText, 15, labelY);
+
+            // Draw waveform
+            if (timelineData.length > 1) {
+                ctx.beginPath();
+                ctx.lineWidth = 2;
+
+                // Draw the line with gradient color
+                const gradient = ctx.createLinearGradient(0, 0, width, 0);
+                gradient.addColorStop(0, '#4299e1');
+                gradient.addColorStop(0.5, '#48bb78');
+                gradient.addColorStop(1, '#ed8936');
+                ctx.strokeStyle = gradient;
+
+                const pointSpacing = width / maxTimelinePoints;
+
+                for (let i = 0; i < timelineData.length; i++) {
+                    const x = i * pointSpacing;
+                    const normalizedValue = timelineData[i].energy / maxScale;
+                    const y = height - (normalizedValue * height);
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+
+                // Fill area under curve with gradient
+                ctx.lineTo(timelineData.length * pointSpacing, height);
+                ctx.lineTo(0, height);
+                ctx.closePath();
+
+                const fillGradient = ctx.createLinearGradient(0, 0, 0, height);
+                fillGradient.addColorStop(0, 'rgba(72, 187, 120, 0.3)');
+                fillGradient.addColorStop(1, 'rgba(72, 187, 120, 0.05)');
+                ctx.fillStyle = fillGradient;
+                ctx.fill();
+
+                // Draw current value indicator (vertical line at end)
+                const lastX = (timelineData.length - 1) * pointSpacing;
+                const lastY = height - (timelineData[timelineData.length - 1].energy / maxScale) * height;
+
+                ctx.strokeStyle = '#bb86fc';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([2, 2]);
+                ctx.beginPath();
+                ctx.moveTo(lastX, 0);
+                ctx.lineTo(lastX, height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw value dot
+                ctx.fillStyle = '#bb86fc';
+                ctx.beginPath();
+                ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize timeline with empty data
+        setTimeout(() => {
+            drawTimeline();
+        }, 100);
+
+        // Load model status from model manager
+        async function loadModelStatus() {
+            try {
+                const response = await fetch('/api/models/manager');
+                const data = await response.json();
+
+                if (data.success) {
+                    const liveModel = data.live_model;
+                    const fileModel = data.file_transcription_model;
+
+                    // Update live model status
+                    const liveStatus = document.getElementById('live_model_status');
+                    if (liveModel.type === 'whisper') {
+                        // Check for faster-whisper backend
+                        const isFasterWhisper = liveModel.backend === 'faster-whisper';
+                        const prefix = isFasterWhisper ? 'Faster Whisper' : 'Whisper';
+                        liveStatus.textContent = `${prefix} ${liveModel.whisper?.model || 'tiny'}`;
+                    } else if (liveModel.type === 'huggingface') {
+                        liveStatus.textContent = `HF: ${liveModel.huggingface?.model_id?.split('/')[1] || 'model'}`;
+                    } else if (liveModel.type === 'custom') {
+                        liveStatus.textContent = `Custom: ${liveModel.custom?.model_name || 'model'}`;
+                    } else {
+                        liveStatus.textContent = 'Not configured';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading model status:', error);
+            }
+        }
+
+        // Check audio device availability and update status
+        async function checkAudioDeviceStatus() {
+            try {
+                const response = await fetch('/api/audio-devices');
+                const data = await response.json();
+
+                const liveStatus = document.getElementById('live_model_status');
+                if (!data.success || !data.devices || data.devices.length === 0) {
+                    // No audio devices available
+                    if (liveStatus.textContent === 'Loading...' || liveStatus.textContent === 'Not configured') {
+                        liveStatus.textContent = 'No audio device available';
+                        liveStatus.style.color = '#f56565'; // Red color for error
+                    }
+                } else {
+                    // Audio devices available, restore normal color
+                    liveStatus.style.color = '#666'; // Normal gray color
+                }
+            } catch (error) {
+                console.error('Error checking audio device status:', error);
+            }
+        }
+
+        // Load audio devices
+        async function loadAudioDevices() {
+            try {
+                const response = await fetch('/api/audio-devices');
+                const data = await response.json();
+
+                const select = document.getElementById('audio_device');
+                select.innerHTML = '';
+
+                if (data.success) {
+                    if (data.devices && data.devices.length > 0) {
+                        data.devices.forEach(device => {
+                            const option = document.createElement('option');
+                            option.value = device.device_id;  // Use device_id (e.g., 'plughw:1,0') for proper identification
+                            option.textContent = device.name + (device.is_default ? ' (Default)' : '');
+                            option.selected = device.is_default;
+                            select.appendChild(option);
+                        });
+
+                        // Select saved device if it exists
+                        if (window.savedAudioDevice) {
+                            select.value = window.savedAudioDevice;
+                            // If saved device not found, keep the default selection
+                            if (select.value === '') {
+                                // Find and select the default device
+                                const defaultOption = Array.from(select.options).find(opt =>
+                                    opt.textContent.includes('(Default)')
+                                );
+                                if (defaultOption) {
+                                    select.value = defaultOption.value;
+                                }
+                            }
+                        }
+                    } else {
+                        // No devices found
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = 'No audio devices found';
+                        option.disabled = true;
+                        select.appendChild(option);
+                    }
+                } else {
+                    // API error
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'Error loading devices';
+                    option.disabled = true;
+                    select.appendChild(option);
+                }
+            } catch (error) {
+                console.error('Error loading audio devices:', error);
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Connection error';
+                option.disabled = true;
+                select.appendChild(option);
+            }
+        }
+
+        // Check transcription status and lock audio device if running
+        function checkAndLockAudioDevice() {
+            const isRunning = transcriptionState?.running || false;
+            const audioDeviceSelect = document.getElementById('audio_device');
+
+            if (audioDeviceSelect) {
+                if (isRunning) {
+                    audioDeviceSelect.disabled = true;
+                    audioDeviceSelect.style.opacity = '0.6';
+                    audioDeviceSelect.style.cursor = 'not-allowed';
+                    audioDeviceSelect.title = 'Stop live transcription before changing audio device';
+                } else {
+                    audioDeviceSelect.disabled = false;
+                    audioDeviceSelect.style.opacity = '1';
+                    audioDeviceSelect.style.cursor = '';
+                    audioDeviceSelect.title = '';
+                }
+            }
+
+            // Show/hide warning banner
+            const warningBanner = document.getElementById('audio_device_lock_warning');
+            if (warningBanner) {
+                warningBanner.style.display = isRunning ? 'block' : 'none';
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', async () => {
+            await loadSettings();          // must complete first — sets window.savedAudioDevice
+            updateVADAvailability();
+            loadModelStatus();
+            await loadLiveModelConfig();   // already calls loadAvailableFasterWhisperModels internally
+            loadAudioDevices().then(() => { // runs after savedAudioDevice is set
+                checkAudioDeviceStatus();
+            });
+            updateStatus();
+            checkAndLockAudioDevice(); // Initial check
+            // Poll status every 2 seconds
+            setInterval(updateStatus, 2000);
+            setInterval(checkAudioDeviceStatus, 5000); // Check audio devices every 5 seconds
+            setInterval(checkAndLockAudioDevice, 2000); // Check lock status
+        });
+
+        // Unsaved changes detection
+        let unsavedChanges = false;
+        let saveBtnVisible = true;
+
+        function markDirty() {
+            if (!unsavedChanges) {
+                unsavedChanges = true;
+                if (!saveBtnVisible) {
+                    document.getElementById('unsaved-bar').style.display = 'flex';
+                }
+            }
+        }
+
+        function markClean() {
+            unsavedChanges = false;
+            document.getElementById('unsaved-bar').style.display = 'none';
+        }
+
+        (function() {
+            const panel = document.querySelector('.settings-panel');
+            panel.addEventListener('input', markDirty);
+            panel.addEventListener('change', markDirty);
+
+            const saveBtn = document.getElementById('main-save-btn');
+            const observer = new IntersectionObserver(([entry]) => {
+                saveBtnVisible = entry.isIntersecting;
+                if (unsavedChanges) {
+                    document.getElementById('unsaved-bar').style.display = saveBtnVisible ? 'none' : 'flex';
+                }
+            });
+            observer.observe(saveBtn);
+        })();
+
+        // Calibration functions
+        let calibrationResults = null;
+
+        function startCalibration() {
+            document.getElementById('calibrationModal').style.display = 'flex';
+            document.getElementById('calibration_instructions').style.display = 'block';
+            document.getElementById('calibration_progress').style.display = 'none';
+            document.getElementById('calibration_results').style.display = 'none';
+            document.getElementById('calibration_controls').style.display = 'block';
+        }
+
+        async function runCalibration() {
+            try {
+                // Clear previous results to ensure fresh data is displayed
+                calibrationResults = null;
+
+                // Hide instructions, show progress
+                document.getElementById('calibration_instructions').style.display = 'none';
+                document.getElementById('calibration_controls').style.display = 'none';
+                document.getElementById('calibration_progress').style.display = 'block';
+
+                // Start calibration (15 seconds per step)
+                const skipStep1 = document.getElementById('skip_step1_checkbox')?.checked || false;
+                const startResponse = await fetch('/api/calibration/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duration: 15, skip_step1: skipStep1 })
+                });
+
+                const startData = await startResponse.json();
+                if (!startData.success) {
+                    showAlert('Failed to start calibration: ' + startData.error, 'error');
+                    return;
+                }
+
+                // Poll for progress (two-step calibration)
+                const progressInterval = setInterval(async () => {
+                    const statusResponse = await fetch('/api/calibration/status');
+                    const statusData = await statusResponse.json();
+
+                    if (statusData.calibrating) {
+                        const progress = Math.round(statusData.progress);
+                        const step = statusData.step || 1;
+                        const step1_complete = statusData.step1_complete || false;
+
+                        // Debug logging (commented out for production)
+                        // console.log(`[Calibration] step=${step}, step1_complete=${step1_complete}, progress=${progress}%, elapsed=${statusData.elapsed}s`);
+
+                        // Update progress bar
+                        document.getElementById('calibration_bar').style.width = progress + '%';
+
+                        // Check if Step 1 is complete but Step 2 hasn't started yet
+                        if (step === 1 && step1_complete) {
+                            // console.log('[Calibration] Showing "Start Step 2" button');
+                            // Show "Start Step 2" button
+                            document.getElementById('calibration_status').innerHTML =
+                                `Step 1 Complete! <button onclick="startStep2()" class="btn-save" style="background: #48bb78; margin-left: 10px; padding: 8px 16px; cursor: pointer;">Start Step 2</button>`;
+                        } else {
+                            // Normal progress display
+                            let message = '';
+                            if (step === 1) {
+                                message = `Step 1 of 2: Stay quiet... ${progress}% (${Math.round(statusData.elapsed)}s / ${statusData.duration}s)`;
+                            } else if (step === 2) {
+                                message = `Step 2 of 2: Speak normally... ${progress}% (${Math.round(statusData.elapsed)}s / ${statusData.duration}s)`;
+                            }
+
+                            document.getElementById('calibration_status').textContent = message;
+                        }
+                    } else {
+                        clearInterval(progressInterval);
+
+                        // Get results
+                        const resultsResponse = await fetch('/api/calibration/results');
+                        const resultsData = await resultsResponse.json();
+
+                        if (resultsData.success) {
+                            displayCalibrationResults(resultsData);
+                        } else {
+                            showAlert('Calibration failed: ' + resultsData.error, 'error');
+                            closeCalibrationModal();
+                        }
+                    }
+                }, 500);
+
+            } catch (error) {
+                showAlert('Error during calibration: ' + error.message, 'error');
+                closeCalibrationModal();
+            }
+        }
+
+        function displayCalibrationResults(data) {
+            calibrationResults = data;
+
+            document.getElementById('calibration_progress').style.display = 'none';
+            document.getElementById('calibration_results').style.display = 'block';
+
+            const current = data.current_settings;
+            const suggested = data.suggested_settings;
+            const analysis = data.analysis;
+
+            let html = `
+                <div style="background: var(--bg-elevated); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: var(--text-primary);">
+                    <h4 style="margin-top: 0; color: #ffffff;">Environment Analysis</h4>
+                    <p><strong>Confidence:</strong> ${data.confidence.toUpperCase()}</p>
+            `;
+
+            if (analysis.noise_level) {
+                html += `
+                    <p><strong>Noise Level:</strong> ${analysis.noise_level.environment}
+                       (avg: ${analysis.noise_level.average}, max: ${analysis.noise_level.maximum})</p>
+                `;
+            }
+
+            if (analysis.pause_pattern) {
+                html += `
+                    <p><strong>Speech Pattern:</strong> ${analysis.pause_pattern.total_pauses} pauses detected
+                       (median: ${analysis.pause_pattern.median_pause}s)</p>
+                `;
+            }
+
+            html += `</div>`;
+
+            // Settings comparison
+            html += `
+                <table style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
+                    <tr style="background: var(--bg-elevated);">
+                        <th style="padding: 10px; text-align: left; color: #ffffff;">Setting</th>
+                        <th style="padding: 10px; text-align: center; color: #ffffff;">Current</th>
+                        <th style="padding: 10px; text-align: center; color: #ffffff;">Suggested</th>
+                    </tr>
+            `;
+
+            // Energy Threshold
+            if (suggested.energy_threshold !== undefined) {
+                const change = suggested.energy_threshold !== current.energy_threshold ? 'changed' : 'unchanged';
+                html += `
+                    <tr>
+                        <td style="padding: 10px;">Energy Threshold (${change})</td>
+                        <td style="padding: 10px; text-align: center;">${current.energy_threshold}</td>
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #48bb78;">
+                            ${suggested.energy_threshold}
+                        </td>
+                    </tr>
+                `;
+            }
+
+            // Phrase Timeout
+            if (suggested.phrase_timeout !== undefined) {
+                const change = suggested.phrase_timeout !== current.phrase_timeout ? 'changed' : 'unchanged';
+                html += `
+                    <tr>
+                        <td style="padding: 10px;">Phrase Timeout (${change})</td>
+                        <td style="padding: 10px; text-align: center;">${current.phrase_timeout}s</td>
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #48bb78;">
+                            ${suggested.phrase_timeout}s
+                        </td>
+                    </tr>
+                `;
+            }
+
+            // VAD Settings
+            if (suggested.vad_threshold !== undefined) {
+                const change = suggested.vad_threshold !== current.vad_threshold ? 'changed' : 'unchanged';
+                html += `
+                    <tr>
+                        <td style="padding: 10px;">VAD Threshold (${change})</td>
+                        <td style="padding: 10px; text-align: center;">${current.vad_threshold}</td>
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #48bb78;">
+                            ${suggested.vad_threshold}
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += `</table>`;
+
+            document.getElementById('results_content').innerHTML = html;
+        }
+
+        async function applyCalibrationResults() {
+            if (!calibrationResults) return;
+
+            const suggested = calibrationResults.suggested_settings;
+
+            // Update UI form fields
+            if (suggested.energy_threshold !== undefined) {
+                document.getElementById('energy_threshold').value = suggested.energy_threshold;
+                updateThresholdDisplay(suggested.energy_threshold);
+            }
+
+            if (suggested.phrase_timeout !== undefined) {
+                document.getElementById('phrase_timeout').value = suggested.phrase_timeout;
+                document.getElementById('phraseValue').textContent = suggested.phrase_timeout;
+            }
+
+            if (suggested.vad_threshold !== undefined) {
+                document.getElementById('vad_threshold').value = suggested.vad_threshold;
+                document.getElementById('vadValue').textContent = suggested.vad_threshold;
+            }
+
+            if (suggested.vad_enabled !== undefined) {
+                document.getElementById('vad_enabled').checked = suggested.vad_enabled;
+            }
+
+            closeCalibrationModal();
+            showAlert('Calibration settings applied to form.\n\nClick "Save Settings" to persist changes.', 'success');
+        }
+
+        function closeCalibrationModal() {
+            document.getElementById('calibrationModal').style.display = 'none';
+            calibrationResults = null;
+        }
+
+        async function startStep2() {
+            try {
+                const response = await fetch('/api/calibration/continue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // The progress polling will automatically update to show Step 2
+                    // console.log('Step 2 started');
+                } else {
+                    showAlert('Failed to start Step 2: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error starting Step 2: ' + error.message, 'error');
+            }
+        }
+
+        // ========================================
+        // Live Model Configuration Functions
+        // ========================================
+
+        /**
+         * Update UI based on selected model type (Faster Whisper vs Downloaded)
+         */
+        function updateLiveModelTypeUI() {
+            const modelType = document.getElementById('live_model_type').value;
+            const whisperConfig = document.getElementById('live_whisper_config');
+            const fasterWhisperConfig = document.getElementById('live_faster_whisper_config');
+            const downloadedConfig = document.getElementById('live_downloaded_config');
+
+            whisperConfig.style.display = 'none';
+            fasterWhisperConfig.style.display = 'none';
+            downloadedConfig.style.display = 'none';
+
+            if (modelType === 'whisper') {
+                whisperConfig.style.display = 'block';
+                loadAvailableWhisperModels();
+            } else if (modelType === 'faster_whisper') {
+                fasterWhisperConfig.style.display = 'block';
+                loadAvailableFasterWhisperModels();
+            } else if (modelType === 'downloaded') {
+                downloadedConfig.style.display = 'block';
+                loadAvailableDownloadedModels();
+            }
+        }
+
+        /**
+         * Load available downloaded models for the dropdown
+         */
+        async function loadAvailableDownloadedModels() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                const select = document.getElementById('live_downloaded_model_select');
+                select.innerHTML = '<option value="">Select a downloaded model</option>';
+
+                if (data.success && data.downloaded_models && data.downloaded_models.length > 0) {
+                    data.downloaded_models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.path;
+                        option.textContent = model.name;
+                        option.dataset.type = model.type;
+                        select.appendChild(option);
+                    });
+                } else {
+                    select.innerHTML = '<option value="">No models downloaded</option>';
+                }
+            } catch (error) {
+                console.error('Error loading downloaded models:', error);
+                document.getElementById('live_downloaded_model_select').innerHTML =
+                    '<option value="">Error loading models</option>';
+            }
+        }
+
+        /**
+         * Load available downloaded Faster Whisper models for the dropdown
+         */
+        async function loadAvailableWhisperModels() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+                const select = document.getElementById('live_whisper_model_select');
+                const currentVal = select.value;
+
+                if (data.success && data.whisper_models) {
+                    const downloaded = data.whisper_models.filter(m => m.downloaded);
+                    if (downloaded.length > 0) {
+                        select.innerHTML = '';
+                        downloaded.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.name;
+                            option.textContent = `${model.name} (${model.desc}) - ${model.size}`;
+                            select.appendChild(option);
+                        });
+                        if (currentVal) select.value = currentVal;
+                    } else {
+                        select.innerHTML = '<option value="">No Whisper models downloaded -- visit Model Manager</option>';
+                    }
+                } else {
+                    select.innerHTML = '<option value="">Error loading models</option>';
+                }
+            } catch (error) {
+                console.error('Error loading Whisper models:', error);
+                document.getElementById('live_whisper_model_select').innerHTML =
+                    '<option value="">Error loading models</option>';
+            }
+        }
+
+        async function loadAvailableFasterWhisperModels() {
+            try {
+                const response = await fetch('/api/models/faster-whisper/list');
+                const data = await response.json();
+
+                const select = document.getElementById('live_faster_whisper_model_select');
+                select.innerHTML = '';
+
+                if (data.success && data.models) {
+                    // Filter to only show downloaded models
+                    const downloadedModels = data.models.filter(m => m.downloaded);
+
+                    if (downloadedModels.length > 0) {
+                        downloadedModels.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.name;
+                            option.textContent = `${model.name} (${model.params} - ${model.size})`;
+                            select.appendChild(option);
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">No Faster Whisper models downloaded</option>';
+                    }
+                } else {
+                    select.innerHTML = '<option value="">Error loading models</option>';
+                }
+            } catch (error) {
+                console.error('Error loading Faster Whisper models:', error);
+                document.getElementById('live_faster_whisper_model_select').innerHTML =
+                    '<option value="">Error loading models</option>';
+            }
+        }
+
+        /**
+         * Load current live model configuration from server
+         */
+        async function loadLiveModelConfig() {
+            try {
+                const response = await fetch('/api/models/manager');
+                const data = await response.json();
+
+                if (data.success) {
+                    const liveModel = data.live_model;
+                    const modelName = liveModel.whisper?.model || 'tiny';
+
+                    // Determine model type from type + backend
+                    let modelType;
+                    if (liveModel.type === 'huggingface' || liveModel.type === 'custom') {
+                        modelType = 'downloaded';
+                    } else if (liveModel.type === 'whisper' && liveModel.backend === 'faster-whisper') {
+                        modelType = 'faster_whisper';
+                    } else {
+                        modelType = 'whisper';
+                    }
+                    document.getElementById('live_model_type').value = modelType;
+
+                    if (modelType === 'whisper') {
+                        await loadAvailableWhisperModels();
+                        document.getElementById('live_whisper_model_select').value = modelName;
+                    } else if (modelType === 'faster_whisper') {
+                        await loadAvailableFasterWhisperModels();
+                        document.getElementById('live_faster_whisper_model_select').value = modelName;
+                    } else if (modelType === 'downloaded') {
+                        await loadAvailableDownloadedModels();
+                        const downloadedPath = liveModel.huggingface?.model_id ||
+                                             liveModel.custom?.model_path || '';
+                        document.getElementById('live_downloaded_model_select').value = downloadedPath;
+                    }
+
+                    // Update UI visibility without reloading models
+                    document.getElementById('live_whisper_config').style.display = modelType === 'whisper' ? 'block' : 'none';
+                    document.getElementById('live_faster_whisper_config').style.display = modelType === 'faster_whisper' ? 'block' : 'none';
+                    document.getElementById('live_downloaded_config').style.display = modelType === 'downloaded' ? 'block' : 'none';
+                }
+            } catch (error) {
+                console.error('Error loading live model config:', error);
+            }
+        }
+
+    </script>
+
+    <!-- Calibration Modal -->
+    <div id="calibrationModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: #1e1e1e; padding: 30px; border-radius: 10px; max-width: 600px; width: 90%; color: var(--text-primary);">
+            <h2 style="margin-top: 0; color: #ffffff;">Settings Calibration</h2>
+
+            <div id="calibration_instructions" style="margin-bottom: 20px;">
+                <p>This two-step calibration will analyze your environment to suggest optimal settings (30 seconds total).</p>
+
+                <label style="display: block; margin: 15px 0; padding: 12px; background: var(--bg-elevated); border-radius: 8px; cursor: pointer;">
+                    <input type="checkbox" id="skip_step1_checkbox" style="margin-right: 8px; transform: scale(1.2);">
+                    <strong>Skip Step 1 (Noise Floor)</strong> - Only calibrate speech patterns
+                    <br>
+                    <small style="margin-left: 28px; color: #999;">
+                        Use this if you only need phrase timeout and window duration suggestions.
+                        Energy Threshold will use your current config value.
+                    </small>
+                </label>
+
+                <div style="background: var(--bg-elevated); padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <p><strong>Step 1: Noise Floor (15 seconds)</strong></p>
+                    <ul style="margin: 5px 0;">
+                        <li>Stay quiet and avoid making noise</li>
+                        <li>This measures your background noise level</li>
+                    </ul>
+                </div>
+                <div style="background: var(--bg-elevated); padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <p><strong>Step 2: Speech Calibration (15 seconds)</strong></p>
+                    <ul style="margin: 5px 0;">
+                        <li>Speak normally as you would during dictation</li>
+                        <li>Include natural pauses between sentences</li>
+                        <li>This measures your typical speech patterns</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="calibration_progress" style="display: none;">
+                <div style="background: var(--bg-elevated); border-radius: 10px; padding: 4px; margin-bottom: 10px;">
+                    <div id="calibration_bar" style="background: #48bb78; height: 30px; border-radius: 8px; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <p id="calibration_status" style="color: var(--text-primary);">Starting calibration...</p>
+            </div>
+
+            <div id="calibration_results" style="display: none;">
+                <h3 style="color: #ffffff;">Analysis Results</h3>
+                <div id="results_content"></div>
+
+                <div style="margin-top: 20px;">
+                    <button onclick="applyCalibrationResults()" class="btn-save" style="background: #48bb78;">Apply Suggested Settings</button>
+                    <button onclick="closeCalibrationModal()" class="btn-save" style="background: #666;">Cancel</button>
+                </div>
+            </div>
+
+            <div id="calibration_controls">
+                <button onclick="runCalibration()" class="btn-save" style="background: #48bb78;">Start Calibration</button>
+                <button onclick="closeCalibrationModal()" class="btn-save" style="background: #666;">Cancel</button>
+            </div>
+        </div>
+    </div>
+{% endblock %}

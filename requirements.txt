@@ -1,0 +1,46 @@
+# Core dependencies
+setuptools>=65.0.0
+wheel
+
+# Audio dependencies (may need system packages: python3-dev portaudio19-dev)
+# On Debian/Ubuntu: sudo apt-get install python3-dev portaudio19-dev libasound2-dev
+pyaudio>=0.2.13
+SpeechRecognition>=3.10.0
+
+# PyTorch - standard PyPI build supports CUDA (Linux/Windows) and MPS (macOS ARM) automatically
+# On Linux with NVIDIA GPU, install CUDA-enabled PyTorch manually:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Core ML dependencies
+numpy<2.0.0
+git+https://github.com/openai/whisper.git
+faster-whisper>=1.0.0
+transformers>=4.35.0
+huggingface_hub>=0.19.0
+accelerate>=0.24.0
+datasets>=2.14.0
+
+# Audio processing
+soundfile>=0.12.0
+librosa>=0.10.0
+pydub>=0.25.1
+
+# Web framework
+flask>=2.3.0
+flask-socketio>=5.3.0
+flask-cors>=4.0.0
+python-socketio>=5.9.0
+
+# Text-to-Speech
+edge-tts>=6.1.0
+piper-tts>=1.2.0
+
+# Utilities
+pytz>=2023.3
+silero-vad>=4.0.0
+smbprotocol>=1.10.0
+
+# Optional: For better performance
+# ffmpeg-python>=0.2.0  # Requires ffmpeg installed on system

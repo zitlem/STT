@@ -1,0 +1,1533 @@
+{% extends "base.html" %}
+
+{% block title %}Word Highlighting - Speech to Text{% endblock %}
+{% block page_title %}Word Highlighting{% endblock %}
+
+{% block extra_css %}
+        /* Highlighting Panel */
+        .highlighting-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+
+        .add-word-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .add-word-container input[type="text"] {
+            flex: 2;
+            min-width: 150px;
+            padding: 7px;
+            background: var(--bg-base);
+            border: 2px solid var(--border);
+            color: var(--text-primary);
+            border-radius: var(--radius-sm);
+            font-size: 0.85em;
+        }
+
+        .add-word-container textarea {
+            width: 100%;
+            min-width: 0;
+            padding: 7px;
+            background: var(--bg-base);
+            border: 2px solid var(--border);
+            color: var(--text-primary);
+            border-radius: var(--radius-sm);
+            font-size: 0.85em;
+            font-family: inherit;
+        }
+
+        .add-word-container input[type="color"] {
+            width: 40px;
+            height: 30px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+
+        .add-word-container label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            font-size: 0.85em;
+            color: var(--text-primary);
+        }
+
+        .word-list {
+            padding-right: 5px;
+        }
+
+        .word-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: var(--bg-base);
+            border-radius: var(--radius-sm);
+            margin-right: 8px;
+            margin-bottom: 8px;
+            border: 2px solid var(--border);
+            transition: all 0.3s ease;
+            color: var(--text-primary);
+            font-size: 0.85em;
+            max-width: 100%;
+        }
+
+        .word-item:hover {
+            border-color: var(--accent);
+            box-shadow: 0 2px 8px rgba(187, 134, 252, 0.1);
+        }
+
+        .word-color-box {
+            flex: 0 0 32px;
+            height: 32px;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--border);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .word-info {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .word-info strong {
+            font-size: 0.9em;
+            color: var(--text-primary);
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .word-info .case-sensitive {
+            font-size: 0.7em;
+            color: var(--text-secondary);
+            margin-left: 4px;
+            background: var(--bg-card);
+            padding: 1px 4px;
+            border-radius: var(--radius-sm);
+        }
+
+        .word-actions {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 4px;
+        }
+
+        .empty-state {
+            color: var(--text-secondary);
+            font-style: italic;
+            text-align: center;
+            padding: 40px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            border: 2px dashed var(--border);
+        }
+
+        .info-box code {
+            background: var(--bg-base);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: var(--accent);
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        .color-group {
+            margin-bottom: 20px;
+            background: var(--bg-base);
+            border: 2px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px;
+        }
+
+        .color-group-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 10px;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .color-group-header .word-color-box {
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .color-group-header .word-color-box:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .bulk-color-picker {
+            position: absolute;
+            z-index: 1000;
+            background: var(--bg-base);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .bulk-color-picker input[type="color"] {
+            width: 60px;
+            height: 40px;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .bulk-color-picker .picker-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .bulk-color-picker .btn {
+            flex: 1;
+        }
+
+        .color-group-words {
+            margin-left: 20px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .color-group.disabled {
+            opacity: 0.5;
+        }
+
+        .color-group.disabled .color-group-header span {
+            text-decoration: line-through;
+        }
+
+        .btn-toggle-group {
+            background: #2a5a2a;
+            border: 1px solid #3a7a3a;
+            color: #7fbf7f;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-toggle-group:hover {
+            background: #3a7a3a;
+        }
+
+        .btn-toggle-group.disabled {
+            background: #5a2a2a;
+            border-color: #7a3a3a;
+            color: #bf7f7f;
+        }
+
+        .btn-toggle-group.disabled:hover {
+            background: #7a3a3a;
+        }
+
+        .regex-examples {
+            font-size: 0.7em;
+            color: #888;
+            margin-top: 4px;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .regex-examples span {
+            display: inline-block;
+            background: var(--bg-base);
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin: 2px 3px 2px 0;
+            color: var(--accent);
+        }
+
+        .duplicates-section {
+            background: #3a2a1a;
+            border: 2px solid #fa8c16;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+
+        .duplicates-section h5 {
+            color: #fa8c16;
+            margin: 0 0 10px 0;
+            font-size: 0.9em;
+        }
+
+        .duplicate-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .duplicate-item {
+            background: var(--bg-base);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: var(--text-primary);
+            cursor: pointer;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .duplicate-item:hover {
+            background: var(--border);
+            border-color: #fa8c16;
+        }
+
+        .duplicate-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            background: var(--bg-elevated);
+            border: 2px solid #fa8c16;
+            border-radius: 6px;
+            padding: 6px 0;
+            min-width: 200px;
+            max-width: 400px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            margin-top: 4px;
+        }
+
+        .duplicate-dropdown-item {
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 0.8em;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.2s;
+        }
+
+        .duplicate-dropdown-item:hover {
+            background: var(--border);
+        }
+
+        .duplicate-dropdown-item .pattern-color {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .duplicate-item .count {
+            color: #fa8c16;
+            font-weight: 600;
+            margin-left: 4px;
+        }
+
+        .btn-matches-toggle {
+            background: transparent;
+            border: 1px solid #805ad5;
+            color: #805ad5;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 0.7em;
+            cursor: pointer;
+            margin-left: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-matches-toggle:hover {
+            background: #805ad5;
+            color: white;
+        }
+
+        @keyframes highlight-flash {
+            0% { background: #fa8c16; }
+            100% { background: var(--bg-elevated); }
+        }
+
+        .word-item.flash {
+            animation: highlight-flash 1s ease-out;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-panel {
+                max-height: none;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .add-word-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .add-word-container input[type="text"] {
+                min-width: auto;
+            }
+
+            .word-item {
+                flex-direction: column;
+                text-align: center;
+                gap: 8px;
+            }
+
+            .word-actions {
+                justify-content: center;
+            }
+        }
+{% endblock %}
+
+{% block content %}
+        <div class="main-content">
+            <!-- Settings Panel -->
+            <div class="settings-panel">
+                <h3>🎨 Word Highlighting</h3>
+
+                <!-- Alert Display -->
+                <div id="alert_message" class="alert"></div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="word_highlighting_enabled" onchange="toggleWordHighlighting()">
+                    <label for="word_highlighting_enabled">Enable word highlighting in transcription</label>
+                </div>
+
+                <small>Toggle word highlighting feature on/off</small>
+
+                <h3 style="margin-top: 12px;">➕ Add New Words</h3>
+
+                <div class="add-word-container">
+                    <textarea id="new_words" placeholder="Enter words (comma-separated: word1, word2, word3)" rows="3" style="resize: vertical;"></textarea>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="color" id="new_word_color" value="#ffff00" title="Choose color">
+                        <input type="text" id="new_word_color_text" value="#ffff00" placeholder="#RRGGBB" style="width: 80px; padding: 7px; background: var(--bg-elevated); border: 2px solid var(--border); color: var(--text-primary); border-radius: 5px; font-size: 0.85em; font-family: monospace;">
+                    </div>
+                    <label>
+                        <input type="checkbox" id="new_word_case_sensitive">
+                        <span>Case sensitive</span>
+                    </label>
+                    <label>
+                        <input type="checkbox" id="new_word_is_regex">
+                        <span>Use as regex pattern</span>
+                    </label>
+                    <button class="btn btn-primary" onclick="addHighlightedWords()">Add Words</button>
+                </div>
+
+                <small style="font-size: 0.7em;">Add multiple words separated by commas, or enter a single regex pattern</small>
+
+                <div class="info-box" style="font-size: 0.75em; margin-top: 12px;">
+                    <strong>📖 Pattern Examples:</strong>
+                    <table style="width: 100%; margin-top: 8px; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <th style="text-align: left; padding: 4px;">Pattern</th>
+                            <th style="text-align: center; padding: 4px;">Regex?</th>
+                            <th style="text-align: left; padding: 4px;">Matches</th>
+                        </tr>
+                        <tr><td style="padding: 3px;"><code>god</code></td><td style="text-align: center;">No</td><td>"god" (exact word)</td></tr>
+                        <tr><td style="padding: 3px;"><code>god|lord|jesus</code></td><td style="text-align: center;">Yes</td><td>"god", "lord", or "jesus"</td></tr>
+                        <tr><td style="padding: 3px;"><code>walk.*</code></td><td style="text-align: center;">Yes</td><td>"walk", "walks", "walked"</td></tr>
+                        <tr><td style="padding: 3px;"><code>Быти[еяию]</code></td><td style="text-align: center;">Yes</td><td>Бытие, Бытия, Бытии, Бытию</td></tr>
+                        <tr><td style="padding: 3px;"><code>Матфе[йяем]+</code></td><td style="text-align: center;">Yes</td><td>Матфей, Матфея, Матфеем</td></tr>
+                        <tr><td style="padding: 3px;"><code>colou?r</code></td><td style="text-align: center;">Yes</td><td>"color" or "colour"</td></tr>
+                    </table>
+                </div>
+
+                <div class="info-box" style="font-size: 0.75em; margin-top: 8px;">
+                    ℹ️ <strong>Tip:</strong> Use <code>?wordHighlightColor=ff0000</code> in the URL to override all highlight colors.
+                </div>
+
+                <h3 style="margin-top: 16px;">🔇 Hallucination Filter</h3>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="hallucination_filter_enabled" onchange="toggleHallucinationFilter()">
+                    <label for="hallucination_filter_enabled">Enable Hallucination Filter</label>
+                </div>
+
+                <small>Filter out phantom Whisper subtitles from training data (transcription & translation)</small>
+
+                <div class="checkbox-group" style="margin-top: 6px;">
+                    <input type="checkbox" id="cjk_filter_enabled" onchange="toggleCjkFilter()">
+                    <label for="cjk_filter_enabled">Filter CJK Character Hallucinations</label>
+                </div>
+                <small>Remove hallucinated Chinese/Japanese/Korean characters from Latin-language transcriptions</small>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="hallucination_phrases">Filter Phrases (one per line)</label>
+                    <textarea id="hallucination_phrases" rows="5" placeholder="Субтитры сделал DimaTorzok&#10;Thank you for watching&#10;Please subscribe" onblur="saveHallucinationPhrases()"></textarea>
+                    <small>Exact phrase match (case/punctuation insensitive). Changes saved on blur.</small>
+                </div>
+
+                <div class="info-box" style="font-size: 0.75em; margin-top: 8px;">
+                    <strong>What are Whisper hallucinations?</strong><br>
+                    Phantom text from training data (YouTube subtitles) during silence.<br><br>
+                    <strong>Common examples:</strong><br>
+                    • <code>Субтитры сделал DimaTorzok</code> (Russian subtitle credit)<br>
+                    • <code>Thank you for watching</code><br>
+                    • <code>Please subscribe</code><br><br>
+                    <strong>How it works:</strong> Exact phrase match<br>
+                    ✓ <code>THANK YOU FOR WATCHING!</code> → filtered (case/punctuation insensitive)<br>
+                    ✓ <code>dont forget to subscribe</code> → filtered (apostrophe insensitive)<br>
+                    ✗ <code>Thank you</code> → NOT filtered (partial phrase)
+                </div>
+            </div>
+
+            <!-- Highlighting Panel -->
+            <div class="highlighting-panel">
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Processing...</p>
+                </div>
+
+                <!-- Word List Card -->
+                <div class="settings-card">
+                    <h4>📝 Highlighted Words</h4>
+                    <div id="highlighted_words_list" class="word-list">
+                        <!-- Words will be loaded here -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        // Load highlighted words on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadHighlightedWords();
+            loadHallucinationFilter();
+
+            // Sync color picker with hex text input
+            document.getElementById('new_word_color').addEventListener('input', function() {
+                document.getElementById('new_word_color_text').value = this.value.toUpperCase();
+            });
+
+            document.getElementById('new_word_color_text').addEventListener('input', function() {
+                const hexValue = this.value.trim();
+                // Validate hex color format
+                if (/^#[0-9A-F]{6}$/i.test(hexValue)) {
+                    document.getElementById('new_word_color').value = hexValue;
+                }
+            });
+        });
+
+        // Expand a single pattern with character classes into multiple words
+        function expandCharacterClasses(pattern) {
+            // Handle \s* and \s+ first - replace with space
+            let cleaned = pattern
+                .replace(/\\s\*/g, ' ')
+                .replace(/\\s\+/g, ' ')
+                .replace(/\\s/g, ' ');
+
+            // Find character class with optional quantifier: [abc]? or [abc]
+            // Match the FIRST character class found
+            const charClassMatch = cleaned.match(/^(.*?)\[([^\]]+)\](\?)?(.*)$/);
+
+            if (!charClassMatch) {
+                // No character class found - check for parentheses groups with alternation
+                const groupMatch = cleaned.match(/^(.*?)\(([^)]+)\)(\?|\+|\*)?(.*)$/);
+
+                if (groupMatch) {
+                    const [, gPrefix, inner, gQuantifier, gSuffix] = groupMatch;
+                    const alternatives = inner.split('|');
+                    const results = [];
+
+                    for (const alt of alternatives) {
+                        const expanded = gPrefix + alt + gSuffix;
+                        results.push(...expandCharacterClasses(expanded));
+                    }
+
+                    // If optional group, also include version without it
+                    if (gQuantifier === '?') {
+                        const withoutGroup = gPrefix + gSuffix;
+                        results.push(...expandCharacterClasses(withoutGroup));
+                    }
+
+                    return results;
+                }
+
+                // No more groups - clean up remaining regex syntax
+                return [cleaned
+                    .replace(/\?/g, '')   // Remove optional markers
+                    .replace(/\+/g, '')   // Remove one-or-more markers
+                    .replace(/\*/g, '')   // Remove zero-or-more markers
+                    .replace(/\\\\/g, '\\') // Unescape backslashes
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                ].filter(s => s.length > 0);
+            }
+
+            const [, prefix, chars, optional, suffix] = charClassMatch;
+            const results = [];
+
+            // Expand each character in the class
+            for (const char of chars) {
+                // Skip special chars like ^ at start of class
+                if (char === '^') continue;
+
+                const expanded = prefix + char + suffix;
+                // Recursively expand any remaining character classes
+                results.push(...expandCharacterClasses(expanded));
+            }
+
+            // If optional (?), also include version without the character
+            if (optional) {
+                const withoutChar = prefix + suffix;
+                results.push(...expandCharacterClasses(withoutChar));
+            }
+
+            return results;
+        }
+
+        // Extract example matches from a regex pattern
+        function getRegexExamples(pattern) {
+            const alternatives = [];
+
+            // Split by | at the top level (not inside groups or character classes)
+            let depth = 0;
+            let bracketDepth = 0;
+            let current = '';
+
+            for (let i = 0; i < pattern.length; i++) {
+                const char = pattern[i];
+                const prevChar = i > 0 ? pattern[i-1] : '';
+
+                if (char === '(' && prevChar !== '\\') depth++;
+                else if (char === ')' && prevChar !== '\\') depth--;
+                else if (char === '[' && prevChar !== '\\') bracketDepth++;
+                else if (char === ']' && prevChar !== '\\') bracketDepth--;
+                else if (char === '|' && depth === 0 && bracketDepth === 0) {
+                    if (current.trim()) alternatives.push(current.trim());
+                    current = '';
+                    continue;
+                }
+                current += char;
+            }
+            if (current.trim()) alternatives.push(current.trim());
+
+            // Expand each alternative
+            const allExamples = [];
+            for (const alt of alternatives) {
+                const expanded = expandCharacterClasses(alt);
+                allExamples.push(...expanded);
+            }
+
+            // Remove duplicates and empty strings
+            return [...new Set(allExamples)].filter(ex => ex.length > 0);
+        }
+
+        // Jump to a word item by index
+        function jumpToWord(index) {
+            const el = document.getElementById('word-item-' + index);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Add flash animation
+                el.classList.remove('flash');
+                void el.offsetWidth; // Trigger reflow to restart animation
+                el.classList.add('flash');
+            }
+        }
+
+        // Toggle matches visibility for regex patterns
+        function toggleMatches(btn) {
+            const wordItem = btn.closest('.word-item');
+            const examples = wordItem.querySelector('.regex-examples');
+            if (examples) {
+                if (examples.style.display === 'none') {
+                    examples.style.display = 'block';
+                    btn.textContent = '▼ Hide';
+                } else {
+                    examples.style.display = 'none';
+                    btn.textContent = '▶ Show';
+                }
+            }
+        }
+
+        // Show dropdown for duplicate/overlapping matches
+        let currentDuplicateDropdown = null;
+
+        function showDuplicateDropdown(event, idx, matchedWord) {
+            event.stopPropagation();
+            closeDuplicateDropdown();
+
+            const items = window.duplicatesData[idx];
+            if (!items || items.length === 0) return;
+
+            const dropdown = document.createElement('div');
+            dropdown.className = 'duplicate-dropdown';
+            dropdown.innerHTML = `
+                <div style="padding: 4px 12px 8px; color: #fa8c16; font-size: 0.75em; border-bottom: 1px solid var(--border); margin-bottom: 4px;">
+                    Jump to pattern for "${matchedWord}":
+                </div>
+                ${items.map(item => `
+                    <div class="duplicate-dropdown-item" onclick="jumpToWordAndClose(${item.originalIndex})">
+                        <span class="pattern-color" style="background: ${item.color};"></span>
+                        ${item.word.length > 35 ? item.word.substring(0, 35) + '...' : item.word}
+                    </div>
+                `).join('')}
+            `;
+
+            const parentItem = event.target.closest('.duplicate-item');
+            if (!parentItem) return;
+            parentItem.appendChild(dropdown);
+            currentDuplicateDropdown = dropdown;
+
+            // Close on outside click
+            setTimeout(() => {
+                document.addEventListener('click', closeDuplicateDropdownOnOutsideClick);
+            }, 0);
+        }
+
+        function jumpToWordAndClose(index) {
+            closeDuplicateDropdown();
+            jumpToWord(index);
+        }
+
+        function closeDuplicateDropdownOnOutsideClick(event) {
+            if (currentDuplicateDropdown && !currentDuplicateDropdown.contains(event.target)) {
+                closeDuplicateDropdown();
+            }
+        }
+
+        function closeDuplicateDropdown() {
+            if (currentDuplicateDropdown) {
+                currentDuplicateDropdown.remove();
+                currentDuplicateDropdown = null;
+                document.removeEventListener('click', closeDuplicateDropdownOnOutsideClick);
+            }
+        }
+
+        async function loadHighlightedWords() {
+            try {
+                const response = await fetch('/api/word-highlighting/words');
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('word_highlighting_enabled').checked = data.enabled;
+                    window.disabledColors = data.disabled_colors || [];
+                    renderHighlightedWords(data.words);
+                } else {
+                    showAlert('Error loading highlighted words: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading highlighted words:', error);
+                showAlert('Error loading highlighted words: ' + error.message, 'error');
+            }
+        }
+
+        function renderHighlightedWords(words) {
+            const container = document.getElementById('highlighted_words_list');
+
+            if (words.length === 0) {
+                container.innerHTML = '<div class="empty-state">No highlighted words yet. Add one above!</div>';
+                return;
+            }
+
+            // Find duplicate/overlapping words using expanded matches
+            const matchToEntries = {};  // Maps each expanded match to list of entries that produce it
+
+            words.forEach((word, index) => {
+                let matches = [];
+                if (word.is_regex) {
+                    // Use getRegexExamples to expand regex patterns
+                    matches = getRegexExamples(word.word);
+                } else {
+                    // Plain word - just use itself
+                    matches = [word.word];
+                }
+
+                // For each match this pattern produces, track which entry it came from
+                matches.forEach(match => {
+                    const key = match.toLowerCase();
+                    if (!matchToEntries[key]) {
+                        matchToEntries[key] = [];
+                    }
+                    // Only add if this entry isn't already in the list for this match
+                    if (!matchToEntries[key].some(e => e.originalIndex === index)) {
+                        matchToEntries[key].push({ ...word, originalIndex: index, matchedWord: match });
+                    }
+                });
+            });
+
+            // Filter to only matches that appear in multiple entries (overlapping patterns)
+            const duplicates = Object.entries(matchToEntries)
+                .filter(([, items]) => items.length > 1)
+                .sort((a, b) => a[0].localeCompare(b[0]));  // Sort alphabetically
+
+            // Group words by color
+            const colorGroups = {};
+            words.forEach((word, index) => {
+                const color = word.color;
+                if (!colorGroups[color]) {
+                    colorGroups[color] = [];
+                }
+                colorGroups[color].push({ ...word, originalIndex: index });
+            });
+
+            // Render duplicates section if any
+            let html = '';
+            if (duplicates.length > 0) {
+                // Store duplicates data for dropdown functionality
+                window.duplicatesData = {};
+
+                html += `
+                    <div class="duplicates-section">
+                        <h5>⚠️ Overlapping Matches (${duplicates.length})</h5>
+                        <div class="duplicate-list">
+                `;
+                duplicates.forEach(([matchedWord, items], idx) => {
+                    // Store data for this duplicate
+                    window.duplicatesData[idx] = items;
+
+                    // Show the actual matched word and how many patterns match it
+                    const displayWord = matchedWord.length > 20 ? matchedWord.substring(0, 20) + '...' : matchedWord;
+                    html += `
+                        <div class="duplicate-item" onclick="showDuplicateDropdown(event, ${idx}, '${matchedWord.replace(/'/g, "\\'")}')">
+                            ${displayWord}<span class="count">(${items.length} patterns)</span>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Render color groups
+            const disabledColors = window.disabledColors || [];
+            for (const color in colorGroups) {
+                const groupWords = colorGroups[color];
+                const wordIndices = groupWords.map(w => w.originalIndex).join(',');
+                const isDisabled = disabledColors.includes(color.toLowerCase());
+
+                html += `
+                    <div class="color-group${isDisabled ? ' disabled' : ''}">
+                        <div class="color-group-header">
+                            <div class="word-color-box" style="background: ${color};" onclick="showBulkColorPicker(event, '${color}', [${wordIndices}])" title="Click to change color for all ${groupWords.length} word(s)"></div>
+                            <span>${color.toUpperCase()} (${groupWords.length} word${groupWords.length !== 1 ? 's' : ''})</span>
+                            <button class="btn-toggle-group${isDisabled ? ' disabled' : ''}" onclick="toggleColorGroup('${color}')" title="${isDisabled ? 'Enable' : 'Disable'} this color group">${isDisabled ? 'Disabled' : 'Enabled'}</button>
+                            <button class="btn btn-danger" onclick="bulkDeleteColor([${wordIndices}])" style="font-size: 0.7em;" title="Delete all words in this group">Delete All</button>
+                        </div>
+                        <div class="color-group-words">
+                `;
+
+                groupWords.forEach(word => {
+                    // Get regex examples if this is a regex pattern
+                    let examplesHtml = '';
+                    let matchesToggle = '';
+                    if (word.is_regex) {
+                        const examples = getRegexExamples(word.word);
+                        if (examples.length > 0) {
+                            matchesToggle = `<button class="btn-matches-toggle" onclick="toggleMatches(this)">▶ Show</button>`;
+                            examplesHtml = `<div class="regex-examples" style="display: none;">Matches: ${examples.map(e => '<span>' + e + '</span>').join('')}</div>`;
+                        }
+                    }
+
+                    html += `
+                        <div class="word-item" id="word-item-${word.originalIndex}" style="${word.is_regex ? 'flex-direction: column; align-items: flex-start;' : ''}">
+                            <div style="display: flex; align-items: center; gap: 6px; width: 100%;">
+                                <div class="word-info" style="flex: 1;">
+                                    <strong>${word.word}</strong>
+                                    ${word.case_sensitive ? '<span class="case-sensitive">Aa</span>' : ''}
+                                </div>
+                                <div class="word-actions">
+                                    ${word.is_regex ? '<span class="is-regex" style="background: #805ad5; color: white; padding: 1px 6px; border-radius: 3px; font-size: 0.7em;">regex</span>' : ''}
+                                    ${matchesToggle}
+                                    <button class="btn btn-primary" onclick="moveWordToColor(${word.originalIndex}, '${word.word.replace(/'/g, "\\'")}', '${word.color}', ${word.case_sensitive}, ${word.is_regex || false})" title="Move to different color">Move</button>
+                                    <button class="btn btn-warning" onclick="editHighlightedWord(${word.originalIndex}, '${word.word.replace(/'/g, "\\'")}', '${word.color}', ${word.case_sensitive}, ${word.is_regex || false})">Edit</button>
+                                    <button class="btn btn-danger" onclick="deleteHighlightedWord(${word.originalIndex})">Delete</button>
+                                </div>
+                            </div>
+                            ${examplesHtml}
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function toggleWordHighlighting() {
+            showLoading(true);
+
+            try {
+                const response = await fetch('/api/word-highlighting/toggle', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ Word highlighting ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Hallucination Filter Functions
+        async function loadHallucinationFilter() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    const config = data.config;
+                    document.getElementById('hallucination_filter_enabled').checked = config.hallucination_filter?.enabled !== false;
+                    document.getElementById('cjk_filter_enabled').checked = config.hallucination_filter?.cjk_filter_enabled !== false;
+                    const defaultHallucinations = ['Субтитры сделал DimaTorzok', 'Thank you for watching', 'Please subscribe'];
+                    const hallucinationPhrases = config.hallucination_filter?.phrases || defaultHallucinations;
+                    document.getElementById('hallucination_phrases').value = Array.isArray(hallucinationPhrases) ? hallucinationPhrases.join('\n') : hallucinationPhrases;
+                }
+            } catch (error) {
+                console.error('Error loading hallucination filter:', error);
+            }
+        }
+
+        async function toggleHallucinationFilter() {
+            try {
+                const response = await fetch('/api/hallucination-filter/toggle', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ Hallucination filter ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleCjkFilter() {
+            try {
+                const response = await fetch('/api/hallucination-filter/cjk-toggle', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ CJK character filter ${data.cjk_filter_enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function saveHallucinationPhrases() {
+            const phrases = document.getElementById('hallucination_phrases').value.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+
+            try {
+                const response = await fetch('/api/hallucination-filter/phrases', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phrases })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('✅ Hallucination phrases saved', 'success');
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function addHighlightedWords() {
+            const wordsInput = document.getElementById('new_words').value.trim();
+            const color = document.getElementById('new_word_color').value;
+            const caseSensitive = document.getElementById('new_word_case_sensitive').checked;
+            const isRegex = document.getElementById('new_word_is_regex').checked;
+
+            if (!wordsInput) {
+                showAlert('Please enter at least one word', 'error');
+                return;
+            }
+
+            // If regex mode, treat the entire input as a single pattern (don't split by comma)
+            // Otherwise, split by comma for multiple words
+            const words = isRegex
+                ? [wordsInput]  // Single regex pattern
+                : wordsInput.split(',').map(w => w.trim()).filter(w => w.length > 0);
+
+            if (words.length === 0) {
+                showAlert('No valid words found', 'error');
+                return;
+            }
+
+            // Check for duplicates
+            try {
+                const existingResponse = await fetch('/api/word-highlighting/words');
+                const existingData = await existingResponse.json();
+                if (existingData.success) {
+                    const existingWords = existingData.words.map(w => w.word.toLowerCase());
+                    const duplicates = words.filter(w => existingWords.includes(w.toLowerCase()));
+
+                    if (duplicates.length > 0) {
+                        const proceed = confirm(`The following word(s) already exist:\n\n${duplicates.join(', ')}\n\nDo you want to add them anyway (this will create duplicates)?`);
+                        if (!proceed) {
+                            // Remove duplicates from the list
+                            const uniqueWords = words.filter(w => !existingWords.includes(w.toLowerCase()));
+                            if (uniqueWords.length === 0) {
+                                showAlert('All words already exist. No new words added.', 'error');
+                                return;
+                            }
+                            words.length = 0;
+                            words.push(...uniqueWords);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error checking duplicates:', e);
+            }
+
+            showLoading(true);
+
+            let successCount = 0;
+            let failCount = 0;
+            let errors = [];
+
+            // Add each word sequentially
+            for (const word of words) {
+                try {
+                    const response = await fetch('/api/word-highlighting/words', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ word, color, case_sensitive: caseSensitive, is_regex: isRegex })
+                    });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        errors.push(`"${word}": ${data.error}`);
+                    }
+                } catch (error) {
+                    failCount++;
+                    errors.push(`"${word}": ${error.message}`);
+                }
+            }
+
+            showLoading(false);
+
+            // Show summary
+            if (successCount > 0) {
+                showAlert(`✅ Added ${successCount} word(s) successfully${failCount > 0 ? `, ${failCount} failed` : ''}`, 'success');
+            } else {
+                showAlert(`❌ Failed to add words: ${errors.join(', ')}`, 'error');
+            }
+
+            // Reset form
+            document.getElementById('new_words').value = '';
+            document.getElementById('new_word_color').value = '#ffff00';
+            document.getElementById('new_word_case_sensitive').checked = false;
+
+            // Reload word list
+            loadHighlightedWords();
+        }
+
+        async function deleteHighlightedWord(index) {
+            if (!confirm('Are you sure you want to delete this highlighted word?')) {
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                const response = await fetch(`/api/word-highlighting/words/${index}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('✅ Word deleted successfully', 'success');
+                    loadHighlightedWords();
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function editHighlightedWord(index, currentWord, currentColor, currentCaseSensitive, currentIsRegex = false) {
+            const newWord = prompt('Edit word/pattern:', currentWord);
+            if (newWord === null) return; // User cancelled
+
+            const newColor = prompt('Edit color (hex with #):', currentColor);
+            if (newColor === null) return;
+
+            const newCaseSensitive = confirm('Case sensitive?');
+            const newIsRegex = confirm('Use as regex pattern?');
+
+            showLoading(true);
+
+            try {
+                const response = await fetch(`/api/word-highlighting/words/${index}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        word: newWord,
+                        color: newColor,
+                        case_sensitive: newCaseSensitive,
+                        is_regex: newIsRegex
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('✅ Word updated successfully', 'success');
+                    loadHighlightedWords();
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            const cards = document.querySelectorAll('.settings-card, .info-box');
+
+            if (show) {
+                loading.style.display = 'block';
+                cards.forEach(card => {
+                    card.style.opacity = '0.5';
+                    card.style.pointerEvents = 'none';
+                });
+            } else {
+                loading.style.display = 'none';
+                cards.forEach(card => {
+                    card.style.opacity = '1';
+                    card.style.pointerEvents = 'auto';
+                });
+            }
+        }
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert_message');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 3000);
+        }
+
+        // Move word to different color
+        async function moveWordToColor(index, word, currentColor, caseSensitive, isRegex) {
+            // Create a color picker popup similar to bulk picker
+            closeBulkColorPicker();
+
+            // Get existing colors from the word list
+            let existingColors = [];
+            try {
+                const response = await fetch('/api/word-highlighting/words');
+                const data = await response.json();
+                if (data.success) {
+                    existingColors = [...new Set(data.words.map(w => w.color))].filter(c => c !== currentColor);
+                }
+            } catch (e) {
+                console.error('Error fetching existing colors:', e);
+            }
+
+            // Build quick color selection HTML
+            let quickColorsHtml = '';
+            if (existingColors.length > 0) {
+                quickColorsHtml = `
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: #888; font-size: 0.75em; margin-bottom: 6px;">Quick select:</div>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            ${existingColors.map(color => `
+                                <div class="quick-color-box" onclick="selectMoveColor('${color}')"
+                                     style="width: 28px; height: 28px; background: ${color}; border-radius: 4px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;"
+                                     onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 0 8px ${color}';"
+                                     onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';"
+                                     title="${color.toUpperCase()}"></div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            const picker = document.createElement('div');
+            picker.className = 'bulk-color-picker';
+            picker.innerHTML = `
+                <div style="color: var(--text-primary); font-size: 0.85em; margin-bottom: 8px;">
+                    <strong>Move "${word.substring(0, 30)}${word.length > 30 ? '...' : ''}" to color:</strong>
+                </div>
+                ${quickColorsHtml}
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="color" id="move-color-input" value="${currentColor}">
+                    <input type="text" id="move-color-text" value="${currentColor.toUpperCase()}"
+                           style="width: 80px; padding: 7px; background: var(--bg-base); border: 2px solid var(--border); color: var(--text-primary); border-radius: 5px; font-size: 0.85em; font-family: monospace;">
+                </div>
+                <div class="picker-buttons">
+                    <button class="btn btn-primary" onclick="applyMoveWord(${index}, '${word.replace(/'/g, "\\'")}', ${caseSensitive}, ${isRegex})">Move</button>
+                    <button class="btn btn-danger" onclick="closeBulkColorPicker()">Cancel</button>
+                </div>
+            `;
+
+            // Position in center of screen
+            picker.style.position = 'fixed';
+            picker.style.left = '50%';
+            picker.style.top = '50%';
+            picker.style.transform = 'translate(-50%, -50%)';
+
+            document.body.appendChild(picker);
+            currentBulkPicker = picker;
+
+            // Sync color picker with text input
+            const colorInput = document.getElementById('move-color-input');
+            const textInput = document.getElementById('move-color-text');
+
+            colorInput.addEventListener('input', function() {
+                textInput.value = this.value.toUpperCase();
+            });
+
+            textInput.addEventListener('input', function() {
+                const hexValue = this.value.trim();
+                if (/^#[0-9A-F]{6}$/i.test(hexValue)) {
+                    colorInput.value = hexValue;
+                }
+            });
+
+            setTimeout(() => {
+                document.addEventListener('click', closeBulkColorPickerOnOutsideClick);
+            }, 0);
+        }
+
+        function selectMoveColor(color) {
+            const colorInput = document.getElementById('move-color-input');
+            const textInput = document.getElementById('move-color-text');
+            if (colorInput) colorInput.value = color;
+            if (textInput) textInput.value = color.toUpperCase();
+        }
+
+        async function applyMoveWord(index, word, caseSensitive, isRegex) {
+            const newColor = document.getElementById('move-color-input').value;
+
+            closeBulkColorPicker();
+            showLoading(true);
+
+            try {
+                const response = await fetch(`/api/word-highlighting/words/${index}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        word: word,
+                        color: newColor,
+                        case_sensitive: caseSensitive,
+                        is_regex: isRegex
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ Moved word to ${newColor.toUpperCase()}`, 'success');
+                    loadHighlightedWords();
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Bulk color change functionality
+        let currentBulkPicker = null;
+
+        async function showBulkColorPicker(event, currentColor, wordIndices) {
+            event.stopPropagation();
+
+            // Remove any existing picker
+            closeBulkColorPicker();
+
+            // Get existing colors from the word list for quick select
+            let existingColors = [];
+            try {
+                const response = await fetch('/api/word-highlighting/words');
+                const data = await response.json();
+                if (data.success) {
+                    existingColors = [...new Set(data.words.map(w => w.color))].filter(c => c !== currentColor);
+                }
+            } catch (e) {
+                console.error('Error fetching existing colors:', e);
+            }
+
+            // Build quick color selection HTML
+            let quickColorsHtml = '';
+            if (existingColors.length > 0) {
+                quickColorsHtml = `
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: #888; font-size: 0.75em; margin-bottom: 6px;">Quick select:</div>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            ${existingColors.map(color => `
+                                <div class="quick-color-box" onclick="selectBulkColor('${color}')"
+                                     style="width: 28px; height: 28px; background: ${color}; border-radius: 4px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;"
+                                     onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 0 8px ${color}';"
+                                     onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';"
+                                     title="${color.toUpperCase()}"></div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Create picker element
+            const picker = document.createElement('div');
+            picker.className = 'bulk-color-picker';
+            picker.innerHTML = `
+                <div style="color: var(--text-primary); font-size: 0.85em; margin-bottom: 8px;">
+                    <strong>Change color for ${wordIndices.length} word(s)</strong>
+                </div>
+                ${quickColorsHtml}
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="color" id="bulk-color-input" value="${currentColor}">
+                    <input type="text" id="bulk-color-text" value="${currentColor.toUpperCase()}"
+                           style="width: 80px; padding: 7px; background: var(--bg-base); border: 2px solid var(--border); color: var(--text-primary); border-radius: 5px; font-size: 0.85em; font-family: monospace;">
+                </div>
+                <div class="picker-buttons">
+                    <button class="btn btn-primary" onclick="applyBulkColorChange([${wordIndices.join(',')}])">Apply</button>
+                    <button class="btn btn-danger" onclick="closeBulkColorPicker()">Cancel</button>
+                </div>
+            `;
+
+            // Position picker near the clicked element
+            const rect = event.target.getBoundingClientRect();
+            picker.style.position = 'fixed';
+            picker.style.left = `${rect.left}px`;
+            picker.style.top = `${rect.bottom + 5}px`;
+
+            document.body.appendChild(picker);
+            currentBulkPicker = picker;
+
+            // Sync color picker with text input
+            const colorInput = document.getElementById('bulk-color-input');
+            const textInput = document.getElementById('bulk-color-text');
+
+            colorInput.addEventListener('input', function() {
+                textInput.value = this.value.toUpperCase();
+            });
+
+            textInput.addEventListener('input', function() {
+                const hexValue = this.value.trim();
+                if (/^#[0-9A-F]{6}$/i.test(hexValue)) {
+                    colorInput.value = hexValue;
+                }
+            });
+
+            // Close picker when clicking outside
+            setTimeout(() => {
+                document.addEventListener('click', closeBulkColorPickerOnOutsideClick);
+            }, 0);
+        }
+
+        function selectBulkColor(color) {
+            const colorInput = document.getElementById('bulk-color-input');
+            const textInput = document.getElementById('bulk-color-text');
+            if (colorInput) colorInput.value = color;
+            if (textInput) textInput.value = color.toUpperCase();
+        }
+
+        function closeBulkColorPickerOnOutsideClick(event) {
+            if (currentBulkPicker && !currentBulkPicker.contains(event.target)) {
+                closeBulkColorPicker();
+            }
+        }
+
+        function closeBulkColorPicker() {
+            if (currentBulkPicker) {
+                currentBulkPicker.remove();
+                currentBulkPicker = null;
+                document.removeEventListener('click', closeBulkColorPickerOnOutsideClick);
+            }
+        }
+
+        async function applyBulkColorChange(wordIndices) {
+            const newColor = document.getElementById('bulk-color-input').value;
+
+            closeBulkColorPicker();
+            showLoading(true);
+
+            let successCount = 0;
+            let failCount = 0;
+
+            // We need to get the current words first to preserve their other properties
+            try {
+                const response = await fetch('/api/word-highlighting/words');
+                const data = await response.json();
+
+                if (!data.success) {
+                    showAlert('❌ Error loading words: ' + data.error, 'error');
+                    showLoading(false);
+                    return;
+                }
+
+                const words = data.words;
+
+                // Update each word with the new color (in reverse order to maintain indices)
+                const sortedIndices = [...wordIndices].sort((a, b) => b - a);
+
+                for (const index of wordIndices) {
+                    const word = words[index];
+                    if (!word) continue;
+
+                    try {
+                        const updateResponse = await fetch(`/api/word-highlighting/words/${index}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                word: word.word,
+                                color: newColor,
+                                case_sensitive: word.case_sensitive,
+                                is_regex: word.is_regex || false
+                            })
+                        });
+                        const updateData = await updateResponse.json();
+
+                        if (updateData.success) {
+                            successCount++;
+                        } else {
+                            failCount++;
+                        }
+                    } catch (error) {
+                        failCount++;
+                    }
+                }
+
+                showLoading(false);
+
+                if (successCount > 0) {
+                    showAlert(`✅ Updated color for ${successCount} word(s)${failCount > 0 ? `, ${failCount} failed` : ''}`, 'success');
+                } else {
+                    showAlert(`❌ Failed to update colors`, 'error');
+                }
+
+                // Reload word list
+                loadHighlightedWords();
+
+            } catch (error) {
+                showLoading(false);
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function bulkDeleteColor(indices) {
+            if (!confirm(`Delete all ${indices.length} word(s) in this color group?`)) {
+                return;
+            }
+
+            showLoading(true);
+
+            // Delete in reverse order to maintain index validity
+            const sorted = [...indices].sort((a, b) => b - a);
+            let deleted = 0;
+            let failed = 0;
+
+            for (const index of sorted) {
+                try {
+                    const response = await fetch(`/api/word-highlighting/words/${index}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        deleted++;
+                    } else {
+                        failed++;
+                    }
+                } catch (e) {
+                    failed++;
+                }
+            }
+
+            showLoading(false);
+
+            if (deleted > 0) {
+                showAlert(`✅ Deleted ${deleted} word(s)${failed > 0 ? `, ${failed} failed` : ''}`, 'success');
+            } else {
+                showAlert('❌ Failed to delete words', 'error');
+            }
+
+            loadHighlightedWords();
+        }
+
+        async function toggleColorGroup(color) {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/word-highlighting/toggle-color', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ color: color })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    window.disabledColors = data.disabled ?
+                        [...(window.disabledColors || []), color.toLowerCase()] :
+                        (window.disabledColors || []).filter(c => c !== color.toLowerCase());
+                    loadHighlightedWords();
+                    showAlert(data.disabled ? `Color group ${color} disabled` : `Color group ${color} enabled`, 'success');
+                } else {
+                    showAlert('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error toggling color group: ' + error.message, 'error');
+            }
+            showLoading(false);
+        }
+    </script>
+{% endblock %}

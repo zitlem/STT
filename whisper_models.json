@@ -1,0 +1,90 @@
+{
+  "models": {
+    "tiny.en": {
+      "params": "39M",
+      "size": "~75MB",
+      "desc": "Fastest",
+      "lang": "English-only"
+    },
+    "tiny": {
+      "params": "39M",
+      "size": "~75MB",
+      "desc": "Fastest",
+      "lang": "Multilingual"
+    },
+    "base.en": {
+      "params": "74M",
+      "size": "~142MB",
+      "desc": "Balanced",
+      "lang": "English-only"
+    },
+    "base": {
+      "params": "74M",
+      "size": "~142MB",
+      "desc": "Balanced",
+      "lang": "Multilingual"
+    },
+    "small.en": {
+      "params": "244M",
+      "size": "~466MB",
+      "desc": "Good accuracy",
+      "lang": "English-only"
+    },
+    "small": {
+      "params": "244M",
+      "size": "~466MB",
+      "desc": "Good accuracy",
+      "lang": "Multilingual"
+    },
+    "medium.en": {
+      "params": "769M",
+      "size": "~1.5GB",
+      "desc": "Better accuracy",
+      "lang": "English-only"
+    },
+    "medium": {
+      "params": "769M",
+      "size": "~1.5GB",
+      "desc": "Better accuracy",
+      "lang": "Multilingual"
+    },
+    "large-v1": {
+      "params": "1550M",
+      "size": "~3GB",
+      "desc": "Best accuracy v1",
+      "lang": "Multilingual"
+    },
+    "large-v2": {
+      "params": "1550M",
+      "size": "~3GB",
+      "desc": "Best accuracy v2",
+      "lang": "Multilingual"
+    },
+    "large-v3": {
+      "params": "1550M",
+      "size": "~3GB",
+      "desc": "Best accuracy v3",
+      "lang": "Multilingual"
+    },
+    "large": {
+      "params": "1550M",
+      "size": "~3GB",
+      "desc": "Best accuracy",
+      "lang": "Multilingual"
+    },
+    "large-v3-turbo": {
+      "params": "809M",
+      "size": "~1.6GB",
+      "desc": "Fast large model",
+      "lang": "Multilingual"
+    },
+    "turbo": {
+      "params": "809M",
+      "size": "~1.6GB",
+      "desc": "Fastest large model",
+      "lang": "Multilingual"
+    }
+  },
+  "timestamp": 1771176609.4759192,
+  "last_updated": "2026-02-15T12:30:09.475920"
+}

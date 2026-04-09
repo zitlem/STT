@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Authentication Required - Speech to Text{% endblock %}
+
+{% block page_title %}Authentication Required{% endblock %}
+
+{% block max_width %}500px{% endblock %}
+
+{% block extra_css %}
+        .nav-links { display: none; }
+        .header { justify-content: center; }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .auth-container {
+            padding: 40px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .info-box {
+            background: var(--bg-card);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-left: none;
+            font-size: inherit;
+            margin-top: 0;
+            line-height: normal;
+        }
+
+        .info-box p {
+            color: #aaa;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .info-box p:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-box code {
+            background: var(--bg-base);
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #4a9eff;
+            font-size: 13px;
+        }
+
+        label {
+            display: block;
+            color: #bbb;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        input[type="password"] {
+            padding: 12px 15px;
+            background: var(--bg-card);
+            border: 1px solid #333;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        input[type="password"]:focus {
+            border-color: #4a9eff;
+            background: var(--bg-elevated);
+            box-shadow: none;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #4a9eff 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: linear-gradient(135deg, #357abd 0%, #2a5f99 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: #333;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: #3a1a1a;
+            border: 1px solid #551111;
+            color: #ff6b6b;
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success-message {
+            background: #1a3a1a;
+            border: 1px solid #115511;
+            color: #6bff6b;
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .back-link a {
+            color: #4a9eff;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s;
+        }
+
+        .back-link a:hover {
+            color: #6bb3ff;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spinner 0.6s linear infinite;
+            margin-left: 8px;
+            text-align: left;
+            padding: 0;
+            color: transparent;
+        }
+
+        @keyframes spinner {
+            to { transform: rotate(360deg); }
+        }
+{% endblock %}
+
+{% block content %}
+    <div class="auth-container">
+        <h1>🔒 Authentication Required</h1>
+        <p class="subtitle">Enter password to access this page</p>
+
+        <div class="info-box">
+            <p><strong>Access Restricted</strong></p>
+            <p>Your IP address is not in the whitelist. Enter the password to create a temporary session.</p>
+            <p>Session will expire after 60 minutes of inactivity.</p>
+        </div>
+
+        <div id="error-message" class="error-message"></div>
+        <div id="success-message" class="success-message"></div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Enter password"
+                    autocomplete="off"
+                    required
+                    autofocus
+                >
+            </div>
+
+            <button type="submit" id="login-btn" class="btn">
+                Login
+            </button>
+        </form>
+
+        <div class="back-link">
+            <a href="/">← Back to Home</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        const form = document.getElementById('login-form');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('login-btn');
+        const errorMessage = document.getElementById('error-message');
+        const successMessage = document.getElementById('success-message');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            successMessage.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            errorMessage.style.display = 'none';
+        }
+
+        function hideMessages() {
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const password = passwordInput.value.trim();
+            if (!password) {
+                showError('Please enter a password');
+                return;
+            }
+
+            // Disable button and show loading
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = 'Logging in<span class="loading"></span>';
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showSuccess('Login successful! Redirecting...');
+
+                    // Store session token in localStorage as backup
+                    localStorage.setItem('auth_session', data.session_token);
+
+                    // Reload the page - the cookie is already set by the server
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    showError(data.error || 'Login failed');
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = 'Login';
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Network error. Please try again.');
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = 'Login';
+            }
+        });
+
+        // Clear messages on input
+        passwordInput.addEventListener('input', hideMessages);
+    </script>
+{% endblock %}

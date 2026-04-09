@@ -1,0 +1,6 @@
+models/
+__pycache__/
+logs/
+.claude/
+server.log
+/_AUTOMATIC_BACKUP

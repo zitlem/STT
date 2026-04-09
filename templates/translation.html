@@ -1,0 +1,1167 @@
+{% extends "base.html" %}
+
+{% block title %}Live Translation - Speech to Text{% endblock %}
+{% block page_title %}Live Translation{% endblock %}
+
+{% block extra_css %}
+        /* Status dot override — smaller inside pill badge */
+        .status-indicator .status-dot {
+            width: 6px;
+            height: 6px;
+        }
+
+        /* Translation Panel */
+        .translation-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        /* Translation Preview */
+        .translation-preview {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--success);
+        }
+
+        .translation-preview .section-title {
+            color: var(--success);
+            font-size: 1em;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .preview-content {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .preview-section {
+            background: var(--bg-base);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            min-height: 80px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .preview-section small {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.75em;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .preview-text {
+            color: var(--text-primary);
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .preview-text .in-progress {
+            color: rgba(224, 224, 224, 0.6);
+            font-style: italic;
+        }
+
+        .preview-empty {
+            color: var(--text-muted);
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Language Grid */
+        .language-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: var(--bg-base);
+            border-radius: var(--radius-sm);
+            margin-top: 10px;
+        }
+
+        .language-item {
+            padding: 6px 10px;
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .language-item:hover {
+            background: var(--border);
+            border-color: var(--accent);
+        }
+
+        .language-item.selected {
+            background: var(--accent);
+            color: var(--bg-base);
+            border-color: var(--accent);
+        }
+{% endblock %}
+
+{% block content %}
+        <div class="main-content">
+            <!-- Settings Panel -->
+            <div class="settings-panel">
+                <h3>Live Translation Settings</h3>
+
+                <!-- Alert Display -->
+                <div id="alert_message" class="alert"></div>
+
+                <!-- Enable/Disable Translation -->
+                <div class="checkbox-group">
+                    <input type="checkbox" id="trans_enabled" onchange="toggleTranslation()">
+                    <label for="trans_enabled">Enable Live Translation</label>
+                </div>
+
+                <hr class="divider">
+
+                <div class="form-group">
+                    <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border-left: 4px solid var(--accent); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 500; color: var(--text-primary);">Target Language:</span>
+                            <span id="target_language_label" style="font-size: 0.8em; color: #999;">English</span>
+                        </div>
+                    </div>
+                    <select id="target_language" style="display:none;">
+                        <!-- Populated dynamically -->
+                    </select>
+                    <small style="margin-top: 8px; display: block;">Use <strong>Quick Language Selection</strong> below to change</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="source_language">Source Language</label>
+                    <select id="source_language">
+                        <option value="auto">Auto (use audio language setting)</option>
+                        <!-- Additional languages populated dynamically -->
+                    </select>
+                    <small>Leave as Auto unless source differs from transcription</small>
+                </div>
+
+                <hr class="divider">
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="translate_in_progress">
+                    <label for="translate_in_progress">Translate In-Progress Text</label>
+                </div>
+                <small style="color: #999; font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
+                    Also translate text being typed (may cause flicker)
+                </small>
+
+                <div id="local_translation_settings">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="translation_use_gpu" checked>
+                    <label for="translation_use_gpu">Use GPU for Translation</label>
+                </div>
+                <small style="color: #999; font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
+                    Disable to run NLLB on CPU, freeing GPU VRAM for Whisper
+                </small>
+                </div>
+
+                <hr class="divider">
+
+                <!-- Remote Translation Server -->
+                <div style="margin-bottom: 10px;">
+                    <label style="font-weight: 500; color: #e0e0e0; font-size: 0.85em;">Remote Translation Server</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="remote_translation_enabled">
+                    <label for="remote_translation_enabled">Offload translation to another machine</label>
+                </div>
+                <small id="remote_offload_hint" style="display:none; color: var(--warning); font-size: 0.75em; margin: -4px 0 8px 22px;">
+                    Disabled — this machine is serving paired clients. Unpair all clients to enable offloading.
+                </small>
+                <small style="color: var(--text-secondary); font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
+                    Send text to another PC running this app with translation enabled
+                </small>
+                <div id="remote_translation_fields" style="display:none; margin-bottom: 10px;">
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <label for="remote_translation_endpoint">Machine B URL</label>
+                        <input type="text" id="remote_translation_endpoint" placeholder="http://192.168.X.X:80" style="width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--bg-elevated); border: 1px solid #444; border-radius: 4px; color: #eee; font-size: 0.9em;">
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+                        <button onclick="requestPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Request Pairing</button>
+                        <span id="pair_status_text" style="font-size: 0.85em; color: #aaa;"></span>
+                    </div>
+                    <div id="pair_code_entry" style="display:none; margin-top: 8px; padding: 10px; background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: 6px;">
+                        <div style="margin-bottom: 6px; font-size: 0.85em;">Enter the code shown on Machine B's Translations tab:</div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="pair_code_input" maxlength="6" placeholder="123456"
+                                   style="width: 110px; text-align: center; font-size: 1.4em; letter-spacing: 0.25em; padding: 4px 8px; background: var(--bg-elevated); border: 1px solid #555; border-radius: 4px; color: #eee;">
+                            <button onclick="confirmPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <div class="form-group" id="local_model_settings">
+                    <label for="translation_model">Translation Model</label>
+                    <select id="translation_model">
+                        <!-- Populated dynamically from downloaded NLLB models -->
+                    </select>
+                    <small id="model_hint">Select from downloaded NLLB models</small>
+                </div>
+
+                <hr class="divider">
+
+                <div class="form-group">
+                    <label for="translation_alternatives">Translation Alternatives: <span id="translationAltsValue">3</span></label>
+                    <input type="range" id="translation_alternatives" min="0" max="5" value="3" step="1"
+                           oninput="document.getElementById('translationAltsValue').textContent = this.value"
+                           style="width:100%;">
+                    <small style="color: #999; font-size: 0.75em;">0 = disabled. Higher = more alternatives but slower translation</small>
+                </div>
+
+                <button onclick="saveSettings()" class="btn-save">Save Settings</button>
+                <button onclick="hotSwitchLanguage()" class="btn-save btn-primary">Hot Switch Language</button>
+                <button onclick="clearCache()" class="btn-save btn-warning">Clear Translation Cache</button>
+
+                <hr class="divider">
+
+                <h3 style="color: var(--accent); font-size: 1em; margin: 12px 0 8px;">🔊 Text-to-Speech (TTS)</h3>
+                <small style="color: #999; display: block; margin-bottom: 10px;">Synthesize speech from translated text. Choose Edge TTS (cloud, 400+ voices) or Piper (local/offline).</small>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="tts_enabled">
+                    <label for="tts_enabled">Enable TTS Engine</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="tts_backend">TTS Backend</label>
+                    <select id="tts_backend" onchange="toggleTTSBackendUI()">
+                        <option value="edge">Edge TTS (Cloud - Microsoft, 400+ voices)</option>
+                        <option value="piper">Piper (Local/Offline)</option>
+                    </select>
+                </div>
+
+                <!-- Edge TTS options -->
+                <div id="tts_edge_options">
+                    <div class="form-group">
+                        <label for="tts_edge_voice">Voice</label>
+                        <select id="tts_edge_voice">
+                            <option value="en-US-AriaNeural">Loading voices...</option>
+                        </select>
+                        <small>Filter by translation target language. <button type="button" onclick="_edgeVoicesLoaded=false; loadEdgeVoices()" style="background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: inherit;">Refresh voices</button></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="tts_edge_lang_filter">Filter by language</label>
+                        <input type="text" id="tts_edge_lang_filter" placeholder="e.g. en, ru, de, es" style="width: 100%; padding: 6px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px;" oninput="loadEdgeVoices(document.getElementById('tts_edge_voice').value)">
+                    </div>
+                </div>
+
+                <!-- Piper TTS options -->
+                <div id="tts_piper_options" style="display: none;">
+                    <div class="form-group">
+                        <label for="tts_piper_model">Piper Model</label>
+                        <select id="tts_piper_model">
+                            <option value="">No models downloaded</option>
+                        </select>
+                        <small>Download models from <a href="/model-manager" style="color: var(--accent);">Model Manager</a></small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tts_speed">Speech Speed: <span id="tts_speed_value">1.0x</span></label>
+                    <input type="range" id="tts_speed" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('tts_speed_value').textContent = this.value + 'x'">
+                </div>
+
+                <button onclick="saveTTSSettings()" class="btn-save">Save TTS Settings</button>
+
+                <p style="margin-top: 8px;">
+                    <strong>TTS Status:</strong>
+                    <span id="tts_status_text" style="color: #999;">Disabled</span>
+                </p>
+
+                <div class="info-box" style="margin-top: 14px; border-left: none;">
+                    💡 <strong>Hot Switch:</strong> Change target language instantly while transcription is running.
+                    Previously translated segments keep their language, new segments use the new language.
+                </div>
+
+                <div class="info-box" style="border-left: none;">
+                    💡 <strong>Display Modes:</strong> Configure how translation is displayed on the Live page
+                    using the URL Builder. Options include translated only, side by side, and stacked layouts.
+                </div>
+
+                <div class="warning-box" style="border-left: none;">
+                    ⚠️ <strong>GPU Memory:</strong> The translation model runs alongside Whisper.
+                    NLLB-200-600M uses ~1.5GB VRAM. If you run out of GPU memory, disable translation
+                    or use a smaller Whisper model.
+                </div>
+            </div>
+
+            <!-- Translation Panel -->
+            <div class="translation-panel">
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Saving translation settings...</p>
+                </div>
+
+                <!-- Status Card -->
+                <div class="settings-card">
+                    <h4>Translation Status</h4>
+                    <p>
+                        <strong>Status:</strong>
+                        <span id="status_indicator" class="status-indicator disabled">
+                            <span id="status_dot" class="status-dot"></span>
+                            <span id="status_text">Disabled</span>
+                        </span>
+                    </p>
+                    <p><strong>Target Language:</strong> <span id="current_language">-</span></p>
+                    <p><strong>Model Loaded:</strong> <span id="model_loaded">No</span></p>
+                    <p><strong>Cache Size:</strong> <span id="cache_size">0</span> segments</p>
+                    <p><strong>Transcription:</strong> <span id="transcription_status">-</span></p>
+                    <p id="remote_clients_row" style="display:none;"><strong>Translating for:</strong> <span id="remote_clients_list" style="color: #4caf50;"></span></p>
+                    <p id="trusted_clients_row" style="display:none;"><strong>Paired with:</strong> <span id="trusted_clients_list" style="color: #aaa;"></span></p>
+                </div>
+
+                <!-- Pairing request banner (shown on Machine B when A requests pairing) -->
+                <div id="pair_request_banner" style="display:none; margin-bottom: 12px; padding: 14px; background: #1a2a3a; border: 1px solid #3a6a9a; border-radius: 8px;">
+                    <strong>🔗 Pairing request from <span id="pair_request_ip" style="color: #7ab8f5;"></span></strong>
+                    <div style="margin-top: 8px; font-size: 0.9em; color: #ccc;">Code to give to Machine A:</div>
+                    <div id="pair_request_code" style="font-size: 2em; font-weight: bold; letter-spacing: 0.3em; color: #f0e040; margin: 6px 0;"></div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button onclick="respondToPairing(true)" class="btn-save btn-primary" style="margin: 0; padding: 6px 18px;">Allow</button>
+                        <button onclick="respondToPairing(false)" class="btn-save btn-warning" style="margin: 0; padding: 6px 18px;">Deny</button>
+                    </div>
+                </div>
+
+                <!-- Translation Preview -->
+                <div class="translation-preview">
+                    <div class="section-title">📝 Translation Preview</div>
+                    <div class="preview-content">
+                        <div class="preview-section">
+                            <small>Original</small>
+                            <div id="preview_original" class="preview-text">
+                                <span class="preview-empty">Start transcription to see preview...</span>
+                            </div>
+                        </div>
+                        <div class="preview-section">
+                            <small>Translated</small>
+                            <div id="preview_translated" class="preview-text">
+                                <span class="preview-empty">Enable translation to see translations...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Language Selection -->
+                <div class="settings-card">
+                    <h4>Quick Language Selection</h4>
+                    <small style="color: #999;">Click a language to quickly switch to it</small>
+                    <div class="language-grid" id="language_grid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        let availableLanguages = {};
+        let currentSettings = {};
+
+        // Socket.IO connection for real-time preview
+        const socket = io.connect(window.location.origin, {
+            transports: ['websocket', 'polling']
+        });
+
+        // Listen for translation updates
+        socket.on('translation_update', (data) => {
+            updateTranslationPreview(data);
+        });
+
+        // Also listen for transcription updates (for original text when translation disabled)
+        socket.on('transcription_update', (data) => {
+            updateOriginalPreview(data);
+        });
+
+        function updateTranslationPreview(data) {
+            const originalDiv = document.getElementById('preview_original');
+            const translatedDiv = document.getElementById('preview_translated');
+
+            // Build original text from segments
+            let originalHTML = '';
+            if (data.segments && data.segments.length > 0) {
+                originalHTML = data.segments.map(s => s.original_text || '').join(' ');
+            }
+            if (data.in_progress && data.in_progress.original_text) {
+                if (originalHTML) originalHTML += ' ';
+                originalHTML += `<span class="in-progress">${data.in_progress.original_text}</span>`;
+            }
+
+            // Build translated text from segments
+            let translatedHTML = '';
+            if (data.segments && data.segments.length > 0) {
+                translatedHTML = data.segments.map(s => s.translated_text || '').join(' ');
+            }
+            if (data.in_progress && data.in_progress.translated_text) {
+                if (translatedHTML) translatedHTML += ' ';
+                translatedHTML += `<span class="in-progress">${data.in_progress.translated_text}</span>`;
+            }
+
+            // Update display
+            if (originalHTML) {
+                originalDiv.innerHTML = originalHTML;
+            } else {
+                originalDiv.innerHTML = '<span class="preview-empty">No transcription yet...</span>';
+            }
+
+            if (translatedHTML) {
+                translatedDiv.innerHTML = translatedHTML;
+            } else if (data.segments && data.segments.length > 0) {
+                translatedDiv.innerHTML = '<span class="preview-empty">Translation in progress...</span>';
+            } else {
+                translatedDiv.innerHTML = '<span class="preview-empty">Enable translation to see translations...</span>';
+            }
+
+            // Auto-scroll to bottom
+            originalDiv.parentElement.scrollTop = originalDiv.parentElement.scrollHeight;
+            translatedDiv.parentElement.scrollTop = translatedDiv.parentElement.scrollHeight;
+        }
+
+        function updateOriginalPreview(data) {
+            // Only update original if translation is disabled (otherwise translation_update handles it)
+            if (currentSettings.enabled) return;
+
+            const originalDiv = document.getElementById('preview_original');
+            let originalHTML = '';
+
+            if (data.segments && data.segments.length > 0) {
+                originalHTML = data.segments.map(s => s.text || '').join(' ');
+            }
+            if (data.in_progress_segment && data.in_progress_segment.text) {
+                if (originalHTML) originalHTML += ' ';
+                originalHTML += `<span class="in-progress">${data.in_progress_segment.text}</span>`;
+            }
+
+            if (originalHTML) {
+                originalDiv.innerHTML = originalHTML;
+            } else {
+                originalDiv.innerHTML = '<span class="preview-empty">Start transcription to see preview...</span>';
+            }
+
+            originalDiv.parentElement.scrollTop = originalDiv.parentElement.scrollHeight;
+        }
+
+        // Load settings on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadNLLBModels();
+            loadSettings();
+            checkStatus();
+            // Poll status every 3 seconds
+            setInterval(checkStatus, 3000);
+        });
+
+        async function loadNLLBModels() {
+            try {
+                const response = await fetch('/api/models/nllb-list');
+                const data = await response.json();
+
+                const modelSelect = document.getElementById('translation_model');
+                const modelHint = document.getElementById('model_hint');
+                modelSelect.innerHTML = '';
+
+                if (data.success && data.models) {
+                    // Filter only downloaded models
+                    const downloadedModels = data.models.filter(m => m.downloaded);
+
+                    if (downloadedModels.length === 0) {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = 'No NLLB models downloaded';
+                        option.disabled = true;
+                        modelSelect.appendChild(option);
+                        modelHint.textContent = 'Download NLLB models from the Model Manager page';
+                        modelHint.style.color = '#f56565';
+                    } else {
+                        downloadedModels.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.model_id;
+                            option.textContent = model.name || model.model_id;
+                            modelSelect.appendChild(option);
+                        });
+                        modelHint.textContent = 'Select from downloaded NLLB models';
+                        modelHint.style.color = '#999';
+                    }
+                } else {
+                    // Fallback if API fails
+                    const option = document.createElement('option');
+                    option.value = 'facebook/nllb-200-distilled-600M';
+                    option.textContent = 'NLLB-200 Distilled 600M';
+                    modelSelect.appendChild(option);
+                }
+            } catch (error) {
+                console.error('Error loading NLLB models:', error);
+                // Fallback
+                const modelSelect = document.getElementById('translation_model');
+                modelSelect.innerHTML = '<option value="facebook/nllb-200-distilled-600M">NLLB-200 Distilled 600M</option>';
+            }
+        }
+
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/translation/settings');
+                const data = await response.json();
+
+                if (data.success) {
+                    currentSettings = data.settings;
+                    availableLanguages = data.available_languages;
+
+                    // Populate language dropdowns
+                    populateLanguageDropdowns();
+
+                    // Set form values
+                    document.getElementById('trans_enabled').checked = currentSettings.enabled || false;
+                    document.getElementById('target_language').value = currentSettings.target_language || 'en';
+                    updateTargetLanguageLabel();
+                    document.getElementById('source_language').value = currentSettings.source_language || 'auto';
+                    document.getElementById('translate_in_progress').checked = currentSettings.translate_in_progress || false;
+                    document.getElementById('translation_use_gpu').checked = currentSettings.use_gpu !== false;
+
+                    // Remote translation settings
+                    const remoteCfg = currentSettings.remote || {};
+                    document.getElementById('remote_translation_enabled').checked = remoteCfg.enabled || false;
+                    document.getElementById('remote_translation_endpoint').value = remoteCfg.endpoint || '';
+                    toggleRemoteFields();
+
+                    // Set translation model (wait for dropdown to be populated)
+                    const modelValue = currentSettings.translation_model || 'facebook/nllb-200-distilled-600M';
+                    const modelSelect = document.getElementById('translation_model');
+                    if (modelSelect.querySelector(`option[value="${modelValue}"]`)) {
+                        modelSelect.value = modelValue;
+                    }
+
+                    // Translation alternatives
+                    const altCount = data.translation_count ?? 3;
+                    document.getElementById('translation_alternatives').value = altCount;
+                    document.getElementById('translationAltsValue').textContent = altCount;
+
+                    // Update language grid selection
+                    updateLanguageGrid();
+                } else {
+                    showAlert('Error loading settings: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error loading settings: ' + error.message, 'error');
+            }
+        }
+
+        function populateLanguageDropdowns() {
+            const targetSelect = document.getElementById('target_language');
+            const sourceSelect = document.getElementById('source_language');
+            const languageGrid = document.getElementById('language_grid');
+
+            // Clear existing options (except auto for source)
+            targetSelect.innerHTML = '';
+            sourceSelect.innerHTML = '<option value="auto">Auto (use audio language setting)</option>';
+            languageGrid.innerHTML = '';
+
+            // Sort languages alphabetically by name
+            const sortedLangs = Object.entries(availableLanguages).sort((a, b) => a[1].localeCompare(b[1]));
+
+            for (const [code, name] of sortedLangs) {
+                // Target language dropdown
+                const targetOption = document.createElement('option');
+                targetOption.value = code;
+                targetOption.textContent = name;
+                targetSelect.appendChild(targetOption);
+
+                // Source language dropdown
+                const sourceOption = document.createElement('option');
+                sourceOption.value = code;
+                sourceOption.textContent = name;
+                sourceSelect.appendChild(sourceOption);
+
+                // Language grid item
+                const gridItem = document.createElement('div');
+                gridItem.className = 'language-item';
+                gridItem.dataset.code = code;
+                gridItem.textContent = name;
+                gridItem.onclick = () => quickSelectLanguage(code);
+                languageGrid.appendChild(gridItem);
+            }
+        }
+
+        function updateTargetLanguageLabel() {
+            const code = document.getElementById('target_language').value;
+            const name = availableLanguages[code] || code;
+            const label = document.getElementById('target_language_label');
+            if (label) label.textContent = name;
+        }
+
+        function updateLanguageGrid() {
+            const currentLang = document.getElementById('target_language').value;
+            const items = document.querySelectorAll('.language-item');
+            items.forEach(item => {
+                if (item.dataset.code === currentLang) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        async function quickSelectLanguage(code) {
+            document.getElementById('target_language').value = code;
+            updateTargetLanguageLabel();
+            updateLanguageGrid();
+
+            // If translation is enabled, do a hot switch
+            if (document.getElementById('trans_enabled').checked) {
+                await hotSwitchLanguage();
+            }
+        }
+
+        async function saveSettings() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            const settings = {
+                enabled: document.getElementById('trans_enabled').checked,
+                target_language: document.getElementById('target_language').value,
+                source_language: document.getElementById('source_language').value,
+                translate_in_progress: document.getElementById('translate_in_progress').checked,
+                translation_model: document.getElementById('translation_model').value,
+                use_gpu: document.getElementById('translation_use_gpu').checked,
+                remote: {
+                    enabled: document.getElementById('remote_translation_enabled').checked,
+                    endpoint: document.getElementById('remote_translation_endpoint').value.trim(),
+                },
+                translation_count: parseInt(document.getElementById('translation_alternatives').value),
+            };
+
+            try {
+                const response = await fetch('/api/translation/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('Translation settings saved successfully!', 'success');
+                    checkStatus();
+                } else {
+                    showAlert('Error saving settings: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error saving settings: ' + error.message, 'error');
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        async function toggleTranslation() {
+            // Just save settings when toggle changes
+            await saveSettings();
+        }
+
+        async function hotSwitchLanguage() {
+            const newLanguage = document.getElementById('target_language').value;
+
+            try {
+                const response = await fetch('/api/translation/language', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_language: newLanguage })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert(`Switched to ${data.language_name}. Translations will update shortly.`, 'success');
+                    checkStatus();
+                    updateLanguageGrid();
+
+                    // Update TTS voice/model if auto-switched
+                    if (data.tts_voice) {
+                        if (data.tts_backend === 'edge') {
+                            document.getElementById('tts_edge_lang_filter').value = newLanguage;
+                            await loadEdgeVoices(data.tts_voice);
+                        } else if (data.tts_backend === 'piper') {
+                            await loadPiperModels();
+                            const piperSel = document.getElementById('tts_piper_model');
+                            if (piperSel) piperSel.value = data.tts_voice;
+                        }
+                    }
+                } else {
+                    showAlert('Error switching language: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error switching language: ' + error.message, 'error');
+            }
+        }
+
+        async function clearCache() {
+            try {
+                const response = await fetch('/api/translation/clear-cache', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('Translation cache cleared!', 'success');
+                    checkStatus();
+                } else {
+                    showAlert('Error clearing cache: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error clearing cache: ' + error.message, 'error');
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/translation/status');
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update status indicator with loading state
+                    const indicator = document.getElementById('status_indicator');
+                    const statusDot = document.getElementById('status_dot');
+                    const statusText = document.getElementById('status_text');
+
+                    if (data.model_loading) {
+                        indicator.className = 'status-indicator loading';
+                        statusDot.className = 'status-dot loading';
+                        statusText.textContent = 'Loading Model...';
+                    } else if (data.enabled && data.model_loaded) {
+                        indicator.className = 'status-indicator enabled';
+                        statusDot.className = 'status-dot';
+                        statusText.textContent = 'Enabled';
+                    } else if (data.enabled && !data.model_loaded) {
+                        indicator.className = 'status-indicator loading';
+                        statusDot.className = 'status-dot loading';
+                        statusText.textContent = 'Initializing...';
+                    } else {
+                        indicator.className = 'status-indicator disabled';
+                        statusDot.className = 'status-dot';
+                        statusText.textContent = 'Disabled';
+                    }
+
+                    // Update other status info
+                    document.getElementById('current_language').textContent = data.target_language_name || '-';
+                    if (data.remote_active) {
+                        // Only fetch Machine B's status if we're actually paired
+                        checkPairedStatus().then(paired => {
+                            if (paired) {
+                                document.getElementById('model_loaded').textContent = 'Remote (fetching...)';
+                                document.getElementById('model_loaded').style.color = '#4caf50';
+                                fetchRemoteModel();
+                            } else {
+                                document.getElementById('model_loaded').textContent = 'Remote (not paired)';
+                                document.getElementById('model_loaded').style.color = '#ff9800';
+                            }
+                        });
+                    } else {
+                        document.getElementById('model_loaded').textContent = data.model_loaded ? 'Yes' : (data.model_loading ? 'Loading...' : 'No');
+                        document.getElementById('model_loaded').style.color = '';
+                    }
+                    document.getElementById('cache_size').textContent = data.cache_size || 0;
+                    document.getElementById('transcription_status').textContent =
+                        data.is_transcription_running ? 'Running' : 'Stopped';
+
+                    // Grey out local-only settings when remote is active
+                    const tip = data.remote_active ? 'Not used when remote translation is active' : '';
+                    for (const id of ['local_translation_settings', 'local_model_settings']) {
+                        const el = document.getElementById(id);
+                        if (el) {
+                            el.style.opacity = data.remote_active ? '0.4' : '';
+                            el.style.pointerEvents = data.remote_active ? 'none' : '';
+                            el.title = tip;
+                        }
+                    }
+
+                    // Update currentSettings for use in updateOriginalPreview
+                    currentSettings.enabled = data.enabled;
+
+                    // Remote clients (Machine B view)
+                    const remoteClients = data.remote_clients || [];
+                    const remoteRow = document.getElementById('remote_clients_row');
+                    if (remoteClients.length > 0) {
+                        remoteRow.style.display = '';
+                        document.getElementById('remote_clients_list').textContent = remoteClients.join(', ');
+                    } else {
+                        remoteRow.style.display = 'none';
+                    }
+
+                    const trustedClients = data.trusted_clients || [];
+                    const trustedRow = document.getElementById('trusted_clients_row');
+                    if (trustedClients.length > 0) {
+                        trustedRow.style.display = '';
+                        const listEl = document.getElementById('trusted_clients_list');
+                        listEl.innerHTML = trustedClients.map(ip =>
+                            `${ip} <button onclick="unpairClient('${ip}')" style="margin-left:6px; padding:1px 6px; font-size:0.75em; background:#5a2020; border:1px solid #a04040; border-radius:3px; color:#eee; cursor:pointer;">Unpair</button>`
+                        ).join(' ');
+                    } else {
+                        trustedRow.style.display = 'none';
+                    }
+
+                    // Grey out remote offload if this machine is serving clients (Machine B)
+                    const remoteCheckbox = document.getElementById('remote_translation_enabled');
+                    const remoteHint = document.getElementById('remote_offload_hint');
+                    if (trustedClients.length > 0) {
+                        remoteCheckbox.disabled = true;
+                        remoteCheckbox.checked = false;
+                        document.getElementById('remote_translation_fields').style.display = 'none';
+                        if (remoteHint) remoteHint.style.display = '';
+                    } else {
+                        remoteCheckbox.disabled = false;
+                        if (remoteHint) remoteHint.style.display = 'none';
+                    }
+
+                    // Paired status is now checked inside the remote_active block above
+                }
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        }
+
+        function toggleRemoteFields() {
+            const enabled = document.getElementById('remote_translation_enabled').checked;
+            document.getElementById('remote_translation_fields').style.display = enabled ? '' : 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('remote_translation_enabled').addEventListener('change', toggleRemoteFields);
+        });
+
+        let _currentPairIP = null;
+
+        async function requestPairing() {
+            const endpoint = document.getElementById('remote_translation_endpoint').value.trim();
+            if (!endpoint) {
+                showAlert('Enter Machine B URL first', 'error');
+                return;
+            }
+            // Save endpoint to config first so proxy knows where to forward
+            await saveSettings();
+            document.getElementById('pair_status_text').textContent = 'Requesting...';
+            try {
+                const resp = await fetch('/api/remote-translation/pair/request', {method: 'POST'});
+                const data = await resp.json();
+                if (data.status === 'pending') {
+                    document.getElementById('pair_code_entry').style.display = '';
+                    document.getElementById('pair_status_text').textContent = "Check Machine B's Translations tab for the code";
+                } else {
+                    document.getElementById('pair_status_text').textContent = data.message || data.error || 'Error';
+                }
+            } catch (e) {
+                document.getElementById('pair_status_text').textContent = 'Could not reach Machine B: ' + e.message;
+            }
+        }
+
+        async function confirmPairing() {
+            const code = document.getElementById('pair_code_input').value.trim();
+            if (!code || code.length !== 6) {
+                showAlert('Enter the 6-digit code from Machine B', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/remote-translation/pair/confirm', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({code}),
+                });
+                const data = await resp.json();
+                if (data.status === 'paired') {
+                    document.getElementById('pair_code_entry').style.display = 'none';
+                    document.getElementById('pair_code_input').value = '';
+                    document.getElementById('pair_status_text').textContent = 'Paired ✓';
+                } else {
+                    document.getElementById('pair_status_text').textContent = (data.error || 'Wrong code') + ' — try again';
+                }
+            } catch (e) {
+                document.getElementById('pair_status_text').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function fetchRemoteModel() {
+            try {
+                const resp = await fetch('/api/remote-translation/status');
+                const data = await resp.json();
+                if (data.success) {
+                    const model = data.translation_model || 'unknown';
+                    const loaded = data.model_loaded ? '✓' : (data.model_loading ? 'loading...' : '✗ not loaded');
+                    document.getElementById('model_loaded').textContent = model + ' (' + loaded + ')';
+                }
+            } catch (_) {
+                document.getElementById('model_loaded').textContent = 'Remote (unreachable)';
+                document.getElementById('model_loaded').style.color = '#f44336';
+            }
+        }
+
+        async function checkPairedStatus() {
+            try {
+                const resp = await fetch('/api/remote-translation/pair/status');
+                const data = await resp.json();
+                const statusEl = document.getElementById('pair_status_text');
+                if (data.paired) {
+                    if (!statusEl.innerHTML.includes('Paired')) {
+                        statusEl.innerHTML = '<span style="color: var(--success);">Paired ✓</span> ' +
+                            '<button onclick="unpairFromMachineB()" style="margin-left:6px; padding:2px 8px; font-size:0.75em; background:#5a2020; border:1px solid #a04040; border-radius:4px; color:#eee; cursor:pointer;">Unpair</button>';
+                    }
+                    document.getElementById('pair_code_entry').style.display = 'none';
+                    return true;
+                } else {
+                    if (statusEl.innerHTML.includes('Paired')) {
+                        statusEl.textContent = 'Not paired';
+                    }
+                    return false;
+                }
+            } catch (_) { return false; }
+        }
+
+        async function unpairFromMachineB() {
+            if (!confirm('Unpair from Machine B?')) return;
+            try {
+                const resp = await fetch('/api/remote-translation/unpair', {method: 'POST'});
+                const data = await resp.json();
+                if (data.success) {
+                    document.getElementById('pair_status_text').textContent = 'Unpaired';
+                    showAlert('Unpaired from Machine B', 'success');
+                } else {
+                    showAlert('Unpair failed: ' + (data.error || data.message), 'error');
+                }
+            } catch (e) {
+                showAlert('Error: ' + e.message, 'error');
+            }
+        }
+
+        async function unpairClient(ip) {
+            if (!confirm('Remove pairing with ' + ip + '?')) return;
+            try {
+                await fetch('/api/translate/pair/unpair', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ip}),
+                });
+                checkStatus();
+            } catch (e) {
+                showAlert('Error unpairing: ' + e.message, 'error');
+            }
+        }
+
+        async function respondToPairing(allow) {
+            try {
+                await fetch('/api/translate/pair/respond', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ip: _currentPairIP, allow}),
+                });
+                document.getElementById('pair_request_banner').style.display = 'none';
+                _currentPairIP = null;
+            } catch (e) {
+                console.error('Error responding to pairing:', e);
+            }
+        }
+
+        // SocketIO events for pairing (Machine B receives these)
+        if (typeof socket !== 'undefined') {
+            socket.on('translation_pair_request', ({ip, code}) => {
+                _currentPairIP = ip;
+                document.getElementById('pair_request_ip').textContent = ip;
+                document.getElementById('pair_request_code').textContent = code;
+                document.getElementById('pair_request_banner').style.display = '';
+            });
+
+            socket.on('translation_pair_confirmed', ({ip}) => {
+                if (ip === _currentPairIP) {
+                    document.getElementById('pair_request_banner').style.display = 'none';
+                    _currentPairIP = null;
+                }
+                checkStatus();
+            });
+
+            socket.on('translation_pair_denied', ({ip}) => {
+                if (ip === _currentPairIP) {
+                    document.getElementById('pair_request_banner').style.display = 'none';
+                    _currentPairIP = null;
+                }
+            });
+        }
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert_message');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // =====================================================================
+        // TTS Settings
+        // =====================================================================
+
+        function toggleTTSBackendUI() {
+            const backend = document.getElementById('tts_backend').value;
+            document.getElementById('tts_edge_options').style.display = backend === 'edge' ? '' : 'none';
+            document.getElementById('tts_piper_options').style.display = backend === 'piper' ? '' : 'none';
+        }
+
+        let _edgeVoicesLoaded = false;
+
+        async function loadEdgeVoices(selectedVoice) {
+            const langFilter = (document.getElementById('tts_edge_lang_filter')?.value || '').trim();
+            const sel = document.getElementById('tts_edge_voice');
+            try {
+                const url = '/api/tts/voices' + (langFilter ? '?language=' + encodeURIComponent(langFilter) : '');
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (data.success && data.voices && data.voices.length > 0) {
+                    const currentVal = selectedVoice || sel.value;
+                    sel.innerHTML = '';
+                    for (const v of data.voices) {
+                        const opt = document.createElement('option');
+                        opt.value = v.id;
+                        opt.textContent = `${v.name} (${v.locale}, ${v.gender})`;
+                        sel.appendChild(opt);
+                    }
+                    // Restore selection if still available
+                    if (currentVal) {
+                        for (const opt of sel.options) {
+                            if (opt.value === currentVal) { sel.value = currentVal; break; }
+                        }
+                    }
+                    _edgeVoicesLoaded = true;
+                } else if (data.error) {
+                    sel.innerHTML = '<option value="">Error: ' + data.error + '</option>';
+                } else {
+                    sel.innerHTML = '<option value="">No voices found (edge-tts not installed?)</option>';
+                }
+            } catch (e) {
+                console.error('Error loading edge voices:', e);
+                sel.innerHTML = '<option value="">Failed to load voices</option>';
+            }
+        }
+
+        async function loadPiperModels() {
+            try {
+                const resp = await fetch('/api/models/tts-list');
+                const data = await resp.json();
+                if (data.success) {
+                    const sel = document.getElementById('tts_piper_model');
+                    sel.innerHTML = '';
+                    const downloaded = data.models.filter(m => m.downloaded);
+                    if (downloaded.length === 0) {
+                        sel.innerHTML = '<option value="">No models downloaded - visit Model Manager</option>';
+                    } else {
+                        for (const m of downloaded) {
+                            const opt = document.createElement('option');
+                            opt.value = m.id;
+                            opt.textContent = m.name + ' (' + m.language + ')';
+                            sel.appendChild(opt);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading piper models:', e);
+            }
+        }
+
+        async function loadTTSSettings() {
+            try {
+                const response = await fetch('/api/tts/status');
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('tts_enabled').checked = data.enabled || false;
+                    document.getElementById('tts_speed').value = data.speed || 1.0;
+                    document.getElementById('tts_speed_value').textContent = (data.speed || 1.0) + 'x';
+
+                    // Set backend
+                    const backend = data.backend || 'edge';
+                    document.getElementById('tts_backend').value = backend;
+                    toggleTTSBackendUI();
+
+                    if (backend === 'edge') {
+                        // Load voices on first call or if not loaded yet
+                        if (!_edgeVoicesLoaded) {
+                            await loadEdgeVoices(data.edge_voice || 'en-US-AriaNeural');
+                        }
+                    } else if (backend === 'piper') {
+                        await loadPiperModels();
+                        if (data.piper_model) {
+                            document.getElementById('tts_piper_model').value = data.piper_model;
+                        }
+                    }
+
+                    // Update status
+                    const statusEl = document.getElementById('tts_status_text');
+                    if (data.downloading) {
+                        statusEl.textContent = 'Downloading model...';
+                        statusEl.style.color = '#ff9800';
+                    } else if (data.model_loading) {
+                        statusEl.textContent = 'Loading model...';
+                        statusEl.style.color = '#ff9800';
+                    } else if (!data.enabled) {
+                        statusEl.textContent = 'Disabled';
+                        statusEl.style.color = '#999';
+                    } else if (backend === 'edge') {
+                        statusEl.textContent = 'Edge TTS ready (cloud)';
+                        statusEl.style.color = '#4caf50';
+                    } else if (data.model_loaded) {
+                        statusEl.textContent = 'Piper model loaded';
+                        statusEl.style.color = '#4caf50';
+                    } else {
+                        statusEl.textContent = 'Enabled (model loads on first use)';
+                        statusEl.style.color = '#2196f3';
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading TTS settings:', e);
+            }
+        }
+
+        async function saveTTSSettings() {
+            const backend = document.getElementById('tts_backend').value;
+            const settings = {
+                enabled: document.getElementById('tts_enabled').checked,
+                backend: backend,
+                speed: parseFloat(document.getElementById('tts_speed').value),
+            };
+
+            if (backend === 'edge') {
+                settings.edge_voice = document.getElementById('tts_edge_voice').value;
+            } else if (backend === 'piper') {
+                settings.piper_model = document.getElementById('tts_piper_model').value;
+            }
+
+            try {
+                const response = await fetch('/api/tts/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('TTS settings saved!', 'success');
+                    setTimeout(loadTTSSettings, 1000);
+                } else {
+                    showAlert('Error saving TTS settings: ' + data.error, 'error');
+                }
+            } catch (e) {
+                showAlert('Error saving TTS settings: ' + e.message, 'error');
+            }
+        }
+
+        // Load TTS settings on page load
+        document.addEventListener('DOMContentLoaded', loadTTSSettings);
+        // Refresh TTS status periodically
+        setInterval(loadTTSSettings, 15000);
+    </script>
+{% endblock %}

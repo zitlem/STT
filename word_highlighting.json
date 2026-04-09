@@ -1,0 +1,498 @@
+{
+  "enabled": true,
+  "words": [
+    {
+      "word": "Genesis|Exodus|Leviticus|Numbers|Deuteronomy",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Joshua|Judges|Ruth|Ezra|Nehemiah|Esther|Job",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "(1|First|I)\\s*Samuel|(2|Second|II)\\s*Samuel|(1|First|I)\\s*Kings|(2|Second|II)\\s*Kings|(1|First|I)\\s*Chronicles|(2|Second|II)\\s*Chronicles",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Psalms?|Proverbs?|Ecclesiastes|Song\\s*of\\s*Solomon|Song\\s*of\\s*Songs",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Matthew|Mark|Luke|John|Acts",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Romans|(1|First|I)\\s*Corinthians|(2|Second|II)\\s*Corinthians|Galatians|Ephesians|Philippians|Colossians",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "(1|First|I)\\s*Thessalonians|(2|Second|II)\\s*Thessalonians|(1|First|I)\\s*Timothy|(2|Second|II)\\s*Timothy|Titus|Philemon",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Hebrews|James|(1|First|I)\\s*Peter|(2|Second|II)\\s*Peter|(1|First|I)\\s*John|(2|Second|II)\\s*John|(3|Third|III)\\s*John|Jude|Revelation",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Быти[еєяію]|Бытие|Исход[аеу]?|Левит[аеу]?|Числ[ае]?|Втор[оа]закони[еяюм]?",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Иису[са]?\\s*Навин[аеу]?|Судей|Судь[иям]|Руф[ьи]?|Ездр[ыаеу]|Неемии?|Есфир[ьи]?",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "(1|Перв[аоые][йяе]?)(\\s*книг[аи])?\\s*Царств[аоу|]?|(2|Втор[аоые][йяе]?)(\\s*книг[аи])?\\s*Царств[аоу]?|(3|Треть[яе]?)(\\s*книг[аи])?\\s*Царств[аоу]?|(4|Четвёрт[аоые][йяе]?)(\\s*книг[аи])?\\s*Царств[аоу]?|(1|Перв[аоые][йяе]?)(\\s*книг[аи])?\\s*Паралипоменон|(2|Втор[аоые][йяе]?)(\\s*книг[аи])?\\s*Паралипоменон",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Иов[аеу]?|Псал[оь]?м[аыуеов]?|Притч[иейах]?|Екклесиаст[ауе]?|Песн[ьией]",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Исаи[яию]|Иереми[яию]|Плач[еь]?|Иезекиил[яью]?|Даниил[ауе]?",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Осии?|Иоил[яью]?|Амос[ауе]?|Авди[яию]?|Ион[ыауе]?|Михе[яию]?|Наум[ауе]?|Аввакум[ауе]?|Софони[яию]?|Агге[яию]?|Захари[яию]?|Малахи[яию]?",
+      "color": "#ff4500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Евангели[еияю]|Матфе[яюй]|отs*Матфея|Марк[ауе]?|отs*Марка|Лук[иауе]|отs*Луки|Иоанн[ауе]?|отs*Иоанна|Деяни[яйех]|Деянии",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Римлян[ам]?|(1|Перв[аоые][йяе]?)s*Коринфян[ам]?|Коринфянам|(2|Втор[аоые][йяе]?)s*Коринфян[ам]?|Галат[ам]?|Ефесян[ам]?|Филиппийц[амев]?|Колоссян[ам]?|Колоссянам|Эфесянам",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "(1|Перв[аоые][йяе]?)\\s*Фессалоникийц[амев]?|(2|Втор[аоые][йяе]?)\\s*Фессалоникийц[амев]?|(1|Перв[аоые][йяе]?)\\s*Тимофе[юя]|(2|Втор[аоые][йяе]?)\\s*Тимофе[юя]|Тит[ауе]?|Филимон[ауе]?",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Евре[яюйм]|Евреям|Иаков[ауе]?|(1|Перв[аоые][йяе]?)s*Петр[ауе]?|(2|Втор[аоые][йяе]?)s*Петр[ауе]?|(1|Перв[аоые][йяе]?)s*Иоанн[ауе]?|(2|Втор[аоые][йяе]?)s*Иоанн[ауе]?|(3|Треть[яе]?)s*Иоанн[ауе]?|Иуд[ыауе]?|Откровени[еяю]",
+      "color": "#ff0000",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Gospel|Gospels|Bible|Scripture|Scriptures|Testament",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Olds*Testament|News*Testament",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Jesus|Lord|Savior|Saviour|Messiah|Holys*Spirit|Holys*Ghost",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Apostle|Apostles|Disciple|Disciples|Prophet|Prophets",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Passage|Passages",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Библи[яию]|Писани[еяию]|Святоеs*Писание",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Ветхи[йм]s*Завет[ауе]?|Новы[йм]s*Завет[ауе]?|Завет[ауе]?",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Господ[ьуаеи]?|Спаситель|Спасител[яюем]|Мессия|Мессии|Святойs*Дух|Святогоs*Духа|Святымs*Духом",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Апостол[аыове]?|Ученик[аиове]?|Пророк[аиове]?",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Христ[аоуе]?|Христос|Christ",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "стих[аиове]?|глав[аыуе]?",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Иисус[ауе]?|Иисусом",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Verse|Verses|Chapter|Chapters|Book|Books",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "книг[аиуе]?|отрыв[оке][ка]?",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Angel|Angels|Archangel|Seraph|Seraphim|Cherub|Cherubim",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Ангел[аыове]?|Архангел[аыове]?|Сераф|Серафим[аыове]?|Херувим[аыове]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Satan|Devil|Demon|Demons|Lucifer|Beelzebub",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Сатан[аыуе]?|Дьявол[ауе]?|Бес[аыове]?|Демон[аыове]?|Люцифер[ауе]?|Вельзевул[ауе]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Heaven|Heavens|Paradise|Kingdom\\s*of\\s*God|Kingdom\\s*of\\s*Heaven",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Небес[аыах]?|Небо|Рай|Ра[йяю]|Царств[оаие]\\s*Божи[ейе]|Царств[оаие]\\s*Небесн[оеая][ейе]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Hell|Hades|Gehenna|Sheol|Abyss|Lake\\s*of\\s*Fire",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Ад[ауе]?|Геенн[ауые]?|Шеол[ауе]?|Преисподн[яейюю]|Бездн[ауые]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Prayer|Prayers|Pray|Praying|Worship|Blessing|Blessings",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Молитв[аыуе]?|Молись|Молиться|Поклонени[еяю]|Благословени[еяю]|Благослов[иеять]+",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Sin|Sins|Sinner|Sinners|Sinful|Repent|Repentance|Forgive|Forgiveness",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Грех[аиове]?|Грешник[аиове]?|Грешн[ыоая][йемх]?|Покаяни[еяю]|Покайтесь|Прощени[еяю]|Прости[ть]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Faith|Faithful|Hope|Love|Grace|Mercy|Salvation|Redemption|Eternal\\s*Life",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Вер[аыуе]?|Верн[ыоая][йемх]?|Надежд[ауые]?|Любовь|Любв[ию]|Благодат[ьию]?|Милост[ьию]?|Спасени[еяю]|Искуплени[еяю]|Вечн[аоя][яейю]\\s*жизн[ьию]",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Covenant|Commandment|Commandments|Law|Laws|Sabbath|Tithe|Offering",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Заповед[ьией]|Закон[ауе]?|Суббот[ауые]?|Десятин[ауы]?|Приношени[еяю]|Жертв[ауые]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Baptism|Baptize|Baptized|Communion|Eucharist|Lord'?s\\s*Supper",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Крещени[еяю]|Крестить|Крестил[аи]?|Причасти[еяю]|Евхаристи[яию]|Вечер[яию]\\s*Господн[яейю]",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Resurrection|Ascension|Seconds*Coming|Rapture|Tribulation|Armageddon|Judgments*Day",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Воскресени[еяю]|Вознесени[еяю]|Второеs*Пришестви[еяю]|Восхищени[еяю]|Скорб[ьию]|Армагеддон[ауе]?|Судн[ыоая][йемх]?s*день|Деньs*суд[ауе]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Abraham|Isaac|Jacob|Moses|David|Solomon|Elijah|Elisha|Noah|Adam|Eve",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Авраам[ауе]?|Исаак[ауе]?|Моисе[йяю]|Давид[ауе]?|Соломон[ауе]?|Или[яию]|Елисе[йяю]|Но[йяю]|Адам[ауе]?|Ев[ауые]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Peter|Paul|Andrew|Philip|Thomas|Bartholomew|Simon|Judas",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Пётр|Петр[ауе]?|Павел|Павл[ауе]?|Андре[йяю]|Филипп[ауе]?|Фом[ауые]?|Варфоломе[йяю]|Симон[ауе]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Mary|Virgins*Mary|Joseph|Elizabeth|Sarah|Rebecca|Rachel|Martha|Magdalene",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Мари[яию]|Дев[ауы]s*Мари[яию]|Иосиф[ауе]?|Елисавет[ауые]?|Сарр[ауые]?|Ревекк[ауие]?|Рахил[ьию]?|Марф[ауые]?|Магдалин[ауые]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Pharisee|Pharisees|Sadducee|Sadducees|Scribe|Scribes|Priest|Priests|High\\s*Priest|Levite|Levites",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Фарисе[йяюев]|Саддуке[йяюев]|Книжник[аиове]?|Священник[аиове]?|Первосвященник[аиове]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Israel|Israelite|Israelites|Jew|Jews|Jewish|Gentile|Gentiles",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Израил[ьяюем]|Израильтян[е|ин|ам]?|Иуде[йяюев]|Язычник[аиове]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Jerusalem|Bethlehem|Nazareth|Galilee|Jordan|Sinai|Zion|Calvary|Golgotha|Gethsemane",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Иерусалим[ауе]?|Вифлеем[ауе]?|Назарет[ауе]?|Галиле[яию]|Иордан[ауе]?|Сина[йяю]|Сион[ауе]?|Голгоф[ауые]?|Гефсимани[яию]",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Temple|Tabernacle|Ark\\s*of\\s*the\\s*Covenant|Altar|Cross|Crown\\s*of\\s*Thorns",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Храм[ауе]?|Скини[яию]|Ковчег[ауе]?\\s*Завета|Жертвенник[ауе]?|Крест[ауе]?|Терновы[йм]\\s*венец|Венец\\s*терновый",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Miracle|Miracles|Parable|Parables|Prophecy|Prophecies|Vision|Visions|Dream|Dreams",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Чуд[оае][ауе]?|Чудес[ауе]?|Пророчеств[оауе]?|Видени[еяю]|Сон|Сн[аыове]?|Сновидени[еяю]",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Trinity|Father|Son|Almighty|Creator|Redeemer|Emmanuel|Immanuel",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Троиц[ауые]?|Отец|Отц[ауе]|Сын[ауе]?|Вседержител[ьяю]|Творец|Творц[ауе]|Искупител[ьяю]|Еммануил[ауе]?",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Lambs*ofs*God|Sons*ofs*God|Sons*ofs*Man|Kings*ofs*Kings|Lords*ofs*Lords|Alpha|Omega",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Агнецs*Божий|Сынs*Божий|Сынs*Человеческий|Царьs*царей|Господьs*господствующих|Альф[ауе]?|Омег[ауе]?",
+      "color": "#ffa500",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Church|Churches|Congregation|Ministry|Sermon|Preacher|Pastor|Bishop|Deacon|Elder",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Церков[ьию]|Церкв[иях]|Общин[ауые]?|Служени[еяю]|Пропове[дьи]|Проповедник[аиове]?|Пастор[ауе]?|Пастыр[ьяюем]|Епископ[ауе]?|Диакон[аыове]?|Старейшин[ауые]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Blood|Crucifixion|Crucified|Sacrifice|Atonement|Ransom|Propitiation",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Кров[ьию]?|Распяти[еяю]|Распят|Умилостивлени[еяю]",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Righteous|Righteousness|Holy|Holiness|Sacred|Sanctify|Sanctification|Glory|Glorious",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Праведн[ыоая][йемхи]?|Праведност[ьию]|Свят[оыаие][йемхи]?|Святост[ьию]|Освящени[еяю]|Слав[ауые]?|Славн[ыоая][йемхи]?",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Wisdom|Knowledge|Truth|Light|Life|Way|Word\\s*of\\s*God",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    },
+    {
+      "word": "Мудрост[ьию]?|Знани[еяю]|Истин[ауые]?|Свет[ауе]?|Жизн[ьию]|Путь|Пут[иях]|Слов[оауе]\\s*Божи[ейе]",
+      "color": "#969292",
+      "case_sensitive": false,
+      "is_regex": true
+    }
+  ],
+  "disabled_colors": []
+}

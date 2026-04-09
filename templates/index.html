@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>...</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='all.min.css') }}"
+    />
+    <script src="{{ url_for('static', filename='jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
+
+    <script>
+      var titles = [
+        "I have a few jokes about unemployed people, but none of them work.",
+        "I failed math so many times at school, I can't even count.",
+        "Blunt pencils are really pointless.",
+        "6:30 is the best time on a clock, hands down.",
+        "Two wifi engineers got married, the reception was fantastic.",
+        "The man who invented Velcro has died. RIP.",
+        "The rotation of Earth really makes my day.",
+        "I can tell when people are being judgmental just by looking at them.",
+        "I'm sceptical of anyone who tells me they do yoga every day, that's a bit of a stretch.Geology rocks, but geography's where it's at.",
+        "Whiteboards are remarkable.",
+        "My IQ test results came back, they were negative.",
+        "My math teacher called me average. How mean!",
+        "A fish swam into a concrete wall, Dam!",
+        "Change is inevitable, except from a vending machine.",
+        "When life gives you melons, you might be dyslexic.",
+        "The guy who got hit in the head with a can of soda was lucky it was a soft drink.",
+        "The man who invented knock-knock jokes should get a no bell prize.",
+        "Never trust atoms; they make up everything.",
+        "The first time I got a universal remote control, I thought to myself, 'This changes everything.'",
+        "I heard there were a bunch of break-ins over at the car park. That is wrong on so many levels.",
+        "I can't believe I got fired from the calendar factory. All I did was take a day off.",
+        "Always borrow money from a pessimist. They'll never expect it back.",
+        "Today a man knocked on my door and asked for a small donation toward the local swimming pool. I gave him a glass of water.",
+        "The future, the present, and the past walk into a bar, things got a little tense.",
+        "I didn't think orthopedic shoes would help, but I stand corrected.",
+        "It was an emotional wedding. Even the cake was in tiers.",
+        "Just got fired from my job as a set designer. I left without making a scene.",
+        "The world champion tongue twister got arrested, I hear they're going to give him a tough sentence.",
+        "Refusing to go to the gym is a form of resistance training.",
+        "Are people born with photographic memories, or does it take time to develop?",
+        "My friend's bakery burned down last night. Now his business is toast.",
+        "Four fonts walk into a bar. The bartender says, 'Hey! We don't want your type in here!'",
+        "A ghost walked into a bar and ordered a shot of vodka. The bartender said, 'Sorry, we don't serve spirits here.'",
+        "The kid who started a business tying shoelaces on the playground? It was a knot-for-profit.",
+        "When I lose the TV controller, it's always hidden in some remote destination.",
+        "If you arrest a mime, do you have to tell him he has the right to remain silent?",
+        "The man who survived both mustard gas and pepper spray is a seasoned veteran now.",
+        "Why didn't Han Solo enjoy his steak dinner? It was Chewie.",
+        "My wife told me to stop impersonating a flamingo, I had to put my foot down.",
+        "My wife just found out I replaced our bed with a trampoline, she hit the ceiling!",
+        "A told my girlfriend she drew her eyebrows too high, she seemed surprised.",
+        "The last thing I want to do is hurt you; but it's still on the list.",
+        "A recent study has found that women who carry a little extra weight live longer than the men who mention it.",
+        "Last night my girlfriend was complaining that I never listen to her... or something like that.",
+        "Advice to husbands: Try praising your wife now and then, even if it does startle her at first.",
+        "The problem isn't that obesity runs in your family, it's that no one runs in your family.",
+        "I put my grandma on speed dial the other day. I call it insta-gram.",
+        "Why did the parents not like their son's biology teacher? He had skeletons in his closet.",
+        "I spent a lot of time, money and effort childproofing my house... but the kids still get in.",
+        "My mother was so surprised when I told her I was born again. She said she didn't feel a thing!",
+        "Women should not have children after 35, really, 35 children are enough.",
+        "There are three kinds of people, those who can count and those who can't.",
+        "You are such a good friend that, if we were on a sinking ship together and there was only one life jacket, I'd miss you so much and talk about you fondly to everybody who asked.",
+        "I always take life with a grain of salt, a slice of lemon and a shot of tequila.",
+        "one liner about life and a shot of tequila.",
+        "I used to have a handle on life, but then it broke.",
+        "I know they say that money talks, but all mine says is 'Goodbye.'",
+        "Before you criticize someone, walk a mile in their shoes. That way, when you do criticize them, you're a mile away and you have their shoes.",
+        "Before you marry a person, you should first make them use a computer with a slow Internet connection to see who they really are.",
+        "I never knew what happiness was until I got married—and then it was too late.",
+        "A rich man is one who isn't afraid to ask the clerk to show him something cheaper.",
+        "The trouble with getting to work on time is that it makes the day so long.",
+        "Funny one-liner about being a work on time.",
+        "You'll always stay young if you live honestly, eat slowly, sleep sufficiently, work industriously, worship faithfully and lie about your age.",
+        "How can you tell you're getting old? When you go to an antique auction and three people bid on you.",
+        "Winter: the season when we try to keep the house as hot as it was in the summer, when we complained about the heat.",
+        "Some cause happiness wherever they go, others whenever they go.",
+        "It's not the fall that kills you, it's the sudden stop at the end.",
+        "Give a man a fish, and he will eat for a day. Teach a man to fish, and he will sit in a boat and drink beer all day.",
+        "If supermarkets are lowering prices every day, why isn't anything in the store free yet?",
+        "Corny & Silly One Liners",
+        "Time for some light-hearted cheesy style one-liners, these silly lines are picked release that inner groaner with you!",
+        "I just got kicked out of a secret cooking society, I spilled the beans.",
+        "Silly funny one liner about cooking society.",
+        "I used to think I was indecisive. But now I'm not so sure.",
+        "I was wondering why the frisbee kept getting bigger and bigger, but then it hit me.",
+        "Light travels faster than sound, which is the reason that some people appear bright before you hear them speak.",
+        "People who use selfie sticks really need to have a good, long look at themselves.",
+        "Just burned 2,000 calories. That's the last time I leave brownies in the oven while I nap.",
+        "I don't suffer from insanity, I enjoy every minute of it.",
+        "I'm reading a book about anti-gravity - it's impossible to put down.",
+        "Maybe if we start telling people their brain is an app, they'll want to use it.",
+        "I got a new pair of gloves today, but they're both 'lefts,' which on the one hand is great, but on the other, it's just not right.",
+        "A book fell on my head the other day, I only have my shelf to blame.",
+        "A blind man walked into a bar... and a table... and a chair...",
+        "I went to a seafood disco last week, but ended up pulling a mussel.",
+        "What do you call a guy who's had too much to drink? A cab.",
+        "I buy all my guns from a guy called T-Rex - he's a small arms dealer.",
+        "Corny one liner about a dinosaur.",
+        "How do you make holy water? You boil the hell out of it.",
+        "Did you hear about the guy whose whole left side got amputated, he's all right now.",
+        "I threw a boomerang a couple years ago; I know live in constant fear.",
+        "How does the man in the moon get his hair cut? Eclipse it.",
+        "The claustrophobic astronaut? He just wanted a little more space.",
+        "What do you call a steak that's been knighted by the queen? Sir Loin.",
+        "A computer once beat me at chess, but it was no match for me at kickboxing.",
+        "I was addicted to the hokey pokey, but then I turned myself around.",
+        "Feeling pretty proud of myself. The puzzle I bought said 3-5 years, but I finished it in 18 months.",
+        "Most people are shocked when they find out how bad I am as an electrician.",
+        "If supermarkets are lowering prices every day, why isn't anything in the store free yet?",
+        "The easiest time to add insult to injury is when you're signing somebody's cast.",
+        "Why does someone believe you when you say there are four billion stars but checks when you say the paint is wet?",
+        "When tempted to fight fire with fire, always remember The fire department usually uses water.",
+        "My boss is going to fire the employee with the worst posture. I have a hunch, it might be me.",
+        "Related: Looking for more cheesy humour? Check out our list of Corny Jokes",
+        "Animal One Liners (Perfect For Kids)",
+        "Aimed more for children - nothing beats the charm and laughs produced from jokes about our furry animal friends! Enjoy the end of our list with these final few funny one-liners related to animals.",
+        "Why did the teddy bear say no to dessert? Because he was stuffed.",
+        "funny animal one liner about a bear.",
+        "I was riding a donkey the other day when someone threw a rock at me and I fell off. I guess I was stoned off my ass.",
+        "People who take care of chickens are literally chicken tenders.",
+        "One of the cows didn't produce milk today - it was an udder failure.",
+        "What's a dog's favorite homework assignment? A lab report.",
+        "What do you call a bear with no teeth? A gummy bear.",
+        "Why aren't dogs good dancers? Because they have two left feet.",
+        "What happens to an illegally parked frog? It gets toad away.",
+        "animal one liner about a frog.",
+        "The cat who ate a ball of yarn? She had mittens.",
+        "The racing snail that got rid of his shell? He thought it would make him faster, but it just made him sluggish.",
+        "The veterinarian who prescribes birth-control pills for dogs? It's part of an anti-litter campaign.",
+        "Why don't cats play poker in the jungle? Too many cheetahs.",
+        "Life's like a bird. It's pretty cute until it poops on your head.",
+        "I am not a vegetarian because I love animals. I am a vegetarian because I hate plants.",
+        "Elephants dont use computers, because they're afraid of the mouse!",
+      ];
+      var title = titles[Math.floor(Math.random() * titles.length)]; // pick random item
+
+      document.title = title;
+    </script>
+
+    <script type="text/javascript">
+      var start = 3000;
+      var speed = 250;
+
+      function getParams(startAttr, speedAttr) {
+        var params = window.document.getElementsByTagName("script");
+
+        for (var i = 0; i < params.length; i++) {
+          if (params[i].src.indexOf("title-scroll.js") !== -1) {
+            if (
+              params[i].getAttribute(startAttr) !== null &&
+              params[i].getAttribute(startAttr) !== ""
+            ) {
+              start = params[i].getAttribute(startAttr);
+            }
+
+            if (
+              params[i].getAttribute(speedAttr) !== null &&
+              params[i].getAttribute(speedAttr) !== ""
+            ) {
+              speed = params[i].getAttribute(speedAttr);
+            }
+
+            return;
+          }
+        }
+      }
+
+      window.onload = function (e) {
+        getParams("data-start", "data-speed");
+        var title_ref = window.document.getElementsByTagName("title")[0];
+        var title = title_ref.text;
+        var i = 0;
+
+        setTimeout(function () {
+          setInterval(function () {
+            title_ref.text =
+              title.substr(i, title.length) + "  ---  " + title.substr(0, i);
+            i++;
+
+            if (i === title.length) {
+              i = 0;
+            }
+          }, speed);
+        }, start);
+      };
+    </script>
+
+    <script>
+       // Declare socket globally so it can be used across all functions
+       var socket;
+       
+       // Auto-scroll enabled by default
+       var autoScrollEnabled = true;
+
+       $(document).ready(function () {
+        // Get URL parameters for styling
+        const urlParams = new URLSearchParams(window.location.search);
+
+         // Extract all parameters with defaults
+         const fontSize = urlParams.get('fontSize') || 32;
+         const transparentBg = urlParams.get('transparentBg') === 'true';
+         const bgColor = transparentBg ? 'transparent' : '#' + (urlParams.get('bgColor') || '000000'); // default black
+         const textColor = '#' + (urlParams.get('textColor') || 'ffffff'); // default white
+         const alignment = urlParams.get('alignment') || 'left';
+         const fontFamily = urlParams.get('fontFamily') || 'Arial';
+         const fontWeight = urlParams.get('fontWeight') || '400';
+         const lineHeight = urlParams.get('lineHeight') || '1.5';
+         // Backwards compatible: use single 'padding' as fallback if individual values not set
+         const paddingFallback = urlParams.get('padding') || '20';
+         const paddingTop = urlParams.get('paddingTop') || paddingFallback;
+         const paddingBottom = urlParams.get('paddingBottom') || paddingFallback;
+         const paddingLeft = urlParams.get('paddingLeft') || paddingFallback;
+         const paddingRight = urlParams.get('paddingRight') || paddingFallback;
+         const maxWidth = urlParams.get('maxWidth') || '100';
+         const verticalAlign = urlParams.get('verticalAlign') || 'top';  // top, middle, bottom
+         const showMenu = urlParams.get('showMenu') !== 'false';
+         const uppercase = urlParams.get('uppercase') === 'true';
+         const inProgressStyle = urlParams.get('inProgressStyle') || 'italic';
+         const inProgressOpacity = parseFloat(urlParams.get('inProgressOpacity')) || 0.7;
+         const maxLines = parseInt(urlParams.get('maxLines')) || 0;  // 0 = unlimited, 1-10 = caption mode
+
+         // Translation mode: 'transcribe' (default), 'translate', 'both'
+         const translationMode = urlParams.get('mode') || 'transcribe';
+         // Display layout for 'both' mode: 'stacked', 'side_by_side'
+         const translationLayout = urlParams.get('layout') || 'stacked';
+         // Inverse order: swap original and translated positions
+         const inverseLayout = urlParams.get('inverse') === 'true';
+         // Hide in-progress text for this URL (even if enabled globally)
+         const hideInProgress = urlParams.get('hideInProgress') === 'true';
+         const hideTranslateInProgress = urlParams.get('hideTranslateInProgress') === 'true';
+
+         // Audio streaming URL params
+         const audioStream = urlParams.get('audioStream') === 'true';
+         const ttsAudio = urlParams.get('ttsAudio') === 'true';
+
+         // Store in global scope for use in other functions
+         // Note: showTimestamp is always false for clean book-like flow
+         const showAll = urlParams.get('showAll') === 'true';
+
+         window.displayConfig = {
+           showTimestamp: false,
+           fontFamily,
+           inProgressStyle,
+           inProgressOpacity,
+           maxLines,
+           fontSize: parseInt(fontSize),
+           lineHeight: parseFloat(lineHeight),
+           translationMode,
+           translationLayout,
+           showMenu,
+           hideInProgress,
+           hideTranslateInProgress,
+           showAll,
+           audioStream,
+           ttsAudio
+         };
+
+        // Load word highlighting configuration
+        let wordHighlightingConfig = { enabled: false, words: [], disabled_colors: [] };
+
+        // Check if word highlighting is disabled via URL parameter
+        const disableWordHighlight = urlParams.get('disableWordHighlight') === 'true';
+
+        if (!disableWordHighlight) {
+          fetch('/api/word-highlighting/words')
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                wordHighlightingConfig = {
+                  enabled: data.enabled,
+                  disabled_colors: (data.disabled_colors || []).map(c => c.toLowerCase()),
+                  words: data.words.map(w => {
+                    // Check for global word highlight color override
+                    const globalColorOverride = urlParams.get('wordHighlightColor');
+                    return {
+                      word: w.word,
+                      color: globalColorOverride ? '#' + globalColorOverride : w.color,
+                      case_sensitive: w.case_sensitive,
+                      is_regex: w.is_regex
+                    };
+                  })
+                };
+                // Set window config after successful load
+                window.wordHighlightingConfig = wordHighlightingConfig;
+                // Force re-render to apply highlighting to any existing transcription
+                // This handles the race condition where transcription loads before config
+                if (typeof forceHighlightRerender === 'function') {
+                  forceHighlightRerender();
+                }
+              }
+            })
+            .catch(error => {
+              console.error('Error loading word highlighting:', error);
+              // Set default config on error
+              window.wordHighlightingConfig = wordHighlightingConfig;
+            });
+        } else {
+          // Set config if highlighting is disabled via URL parameter
+          window.wordHighlightingConfig = wordHighlightingConfig;
+        }
+
+        // Apply styles to body
+        if (transparentBg) {
+          $("body").addClass("transparent-bg");
+          $("body").css({
+            "font-size": fontSize + "px",
+            "background": "transparent",
+            "color": textColor,
+            "text-align": alignment,
+            "font-family": fontFamily,
+            "font-weight": fontWeight,
+            "line-height": lineHeight
+          });
+        } else {
+          $("body").removeClass("transparent-bg");
+          $("body").css({
+            "font-size": fontSize + "px",
+            "background": bgColor,
+            "color": textColor,
+            "text-align": alignment,
+            "font-family": fontFamily,
+            "font-weight": fontWeight,
+            "line-height": lineHeight
+          });
+        }
+
+        // Hide menu buttons and status container if disabled
+        if (!showMenu) {
+          $('.font-size-controls').hide();
+          $('.status-container').hide();
+        }
+
+        // Handle "both" mode - use iframes for side-by-side or stacked view
+        if (translationMode === 'both') {
+          // Hide normal transcription display
+          document.querySelector('.main-container').style.display = 'none';
+
+          // Show and configure iframe container
+          const bothContainer = document.getElementById('both-mode-container');
+          bothContainer.style.display = 'flex';
+          bothContainer.className = translationLayout === 'side_by_side' ? 'side-by-side' : 'stacked';
+
+          // Build iframe URLs with all current params except mode, layout, and inverse
+          const baseParams = new URLSearchParams(window.location.search);
+          baseParams.delete('mode');
+          baseParams.delete('layout');
+          baseParams.delete('inverse');
+          baseParams.set('showMenu', 'false'); // Hide menu in iframes
+
+          // Original transcription iframe
+          const transcribeParams = new URLSearchParams(baseParams);
+          transcribeParams.set('mode', 'transcribe');
+
+          // Translated text iframe
+          const translateParams = new URLSearchParams(baseParams);
+          translateParams.set('mode', 'translate');
+
+          // Assign sources based on inverse setting
+          // Normal: original first, translated second
+          // Inverse: translated first, original second
+          const iframeFirst = document.getElementById('iframe-original');
+          const iframeSecond = document.getElementById('iframe-translated');
+
+          if (inverseLayout) {
+            iframeFirst.src = '/?' + translateParams.toString();
+            iframeSecond.src = '/?' + transcribeParams.toString();
+          } else {
+            iframeFirst.src = '/?' + transcribeParams.toString();
+            iframeSecond.src = '/?' + translateParams.toString();
+          }
+        }
+
+        // Apply container styles with individual padding values
+        $("#table-container").css({
+          "margin-top": paddingTop + "px",
+          "margin-left": "auto",
+          "margin-right": "auto",
+          "padding-bottom": paddingBottom + "px",
+          "padding-left": paddingLeft + "px",
+          "padding-right": paddingRight + "px",
+          "max-width": maxWidth + "%"
+        });
+
+        // Apply vertical alignment using flex-direction
+        // column-reverse makes content stack from bottom to top (subtitle-style)
+        if (verticalAlign === 'bottom') {
+          $("#table-container").css({
+            "display": "flex",
+            "flex-direction": "column-reverse"
+          });
+        } else if (verticalAlign === 'middle') {
+          $("#table-container").css({
+            "display": "flex",
+            "flex-direction": "column",
+            "justify-content": "center"
+          });
+        }
+
+        // Apply uppercase transform if enabled
+        if (uppercase) {
+          $("body").css("text-transform", "uppercase");
+        }
+
+        // Apply caption mode if maxLines is set
+        if (maxLines > 0) {
+          $("body").addClass("caption-mode");
+
+          // First set padding so measurement is accurate
+          $("#table-container").css({
+            "padding": "0 20px"
+          });
+
+          // Measure actual rendered line height using a temporary table structure
+          // This ensures we get the responsive font-size from td (28px at ≤800px, 24px at ≤480px)
+          const measureTable = $('<table style="visibility: hidden; position: absolute;"><tbody><tr><td><div class="transcription-text"><span>Xg</span></div></td></tr></tbody></table>');
+          measureTable.find('.transcription-text').css({
+            'line-height': lineHeight,
+            'font-family': fontFamily
+          });
+          $("#table-container").append(measureTable);
+          const actualLineHeight = measureTable.find('.transcription-text').height();
+          measureTable.remove();
+
+          // Store line height globally for scroll alignment
+          window.captionLineHeight = actualLineHeight;
+
+          // Use exact line height - floor to prevent any partial line showing above
+          const captionMaxHeight = Math.floor(maxLines * actualLineHeight);
+          $("#table-container").css({
+            "max-height": captionMaxHeight + "px"
+          });
+
+          // Hide empty state icon if it would be cropped in caption mode
+          const emptyState = document.getElementById('empty-state');
+          const emptyIcon = emptyState ? emptyState.querySelector('i') : null;
+          if (emptyIcon && emptyState.scrollHeight > captionMaxHeight) {
+              emptyIcon.style.display = 'none';
+          }
+        }
+
+        socket = io.connect({
+          reconnection: true,
+          reconnectionDelay: 500,
+          reconnectionDelayMax: 3000,
+          reconnectionAttempts: Infinity,
+          timeout: 5000
+        });
+
+        // Force reconnect when page becomes visible again (mobile wake / tab switch)
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') {
+            if (!socket.connected) {
+              socket.connect();
+            }
+            // Resume AudioContext if it was suspended by the browser
+            if (typeof audioStreamCtx !== 'undefined' && audioStreamCtx && audioStreamCtx.state === 'suspended') {
+              audioStreamCtx.resume();
+            }
+          }
+        });
+
+        // Initialize socket monitoring for dual status indicators
+        initializeSocketMonitoring();
+
+        // Unified transcription update (segments with temporal data)
+        socket.on("transcription_update", function (data) {
+          // console.log("[UPDATE] segments:", data.segments?.length || 0,
+          //             "in_progress:", data.in_progress_segment?.text?.substring(0, 40) || "none");
+          const mode = window.displayConfig?.translationMode || 'transcribe';
+          // Only update if NOT in translate/both mode - those modes are handled by translation_update
+          if (mode === 'transcribe') {
+            updateTranscriptionDisplay(data);
+          }
+        });
+
+        // Listen for word highlighting config updates (real-time sync)
+        socket.on("word_highlighting_update", function (data) {
+          window.wordHighlightingConfig = {
+            enabled: data.enabled,
+            words: data.words,
+            disabled_colors: (data.disabled_colors || []).map(c => c.toLowerCase())
+          };
+          // Re-render transcription with updated highlighting
+          if (typeof forceHighlightRerender === 'function') {
+            forceHighlightRerender();
+          }
+        });
+
+        // Listen for translation updates (live translation feature)
+        socket.on("translation_update", function (data) {
+          const mode = window.displayConfig?.translationMode || 'transcribe';
+          if (mode === 'translate' || mode === 'both') {
+            updateTranslationDisplay(data);
+          }
+        });
+
+        // Handle correction applied (update display with corrected text)
+        socket.on("correction_applied", function (data) {
+          if (data.segment_id) {
+            const seg = allSegments.find(s => s.id === data.segment_id);
+            if (seg) {
+              seg.text = data.new_text;
+              if (typeof forceHighlightRerender === 'function') forceHighlightRerender();
+            }
+          }
+        });
+
+      });
+    </script>
+
+    <style>
+      :root {
+        --primary-gradient: linear-gradient(135deg, #bb86fc 0%, #805ad5 100%);
+        --secondary-gradient: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+        --success-gradient: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        --card-bg: #1c1c1c;
+        --text-primary: #e0e0e0;
+        --text-secondary: #999;
+        --border-color: #3a3a3a;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #111111;
+        height: 100vh;
+        height: 100dvh;
+        font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        font-size: 32px;
+        color: #e0e0e0;
+        overflow: hidden;
+      }
+      
+      body.transparent-bg {
+        background: transparent;
+      }
+
+      /* Status in Upper Right Corner */
+      .status-container {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 999;
+        transition: transform 0.2s;
+      }
+
+      .status-container:hover {
+        transform: scale(1.05);
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        background: #2a2a2a;
+        border-radius: 6px;
+        font-size: 14px;
+        border: 1px solid #444;
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+
+      .status-dot.active {
+        background: #48bb78;
+      }
+
+      .status-dot.starting {
+        background: #f6ad55;
+      }
+
+      .status-dot.warning {
+        background: #f6ad55;
+        animation: pulse 2s infinite;
+      }
+
+      .status-dot.error {
+        background: #f56565;
+        animation: pulse 2s infinite;
+      }
+
+      .status-dot.inactive {
+        background: #cbd5e0;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+
+      /* Main Content Container */
+      .main-container {
+        background: transparent;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
+        width: 100vw;
+      }
+
+      /* Transcription Container */
+      #table-container {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 20px;
+        /* scroll-behavior: smooth removed - was causing issues with manual scroll */
+      }
+
+      #table-container::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      #table-container::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+      }
+
+      #table-container::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+      }
+
+      #table-container::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      #transcription-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        display: none;
+      }
+
+      #transcription-table.has-content {
+        display: table;
+      }
+
+      tbody tr {
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        box-shadow: none;
+        transition: all 0.3s ease;
+      }
+
+      body.transparent-bg tbody tr {
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      tbody tr:hover {
+        box-shadow: none;
+      }
+
+       td {
+         padding: 0;
+         color: inherit;
+         word-wrap: break-word;
+         overflow-wrap: break-word;
+         word-break: break-word;
+         line-height: inherit;
+         border-radius: 4px;
+         vertical-align: top;
+         text-align: inherit;
+       }
+
+      /* Floating Action Buttons */
+      .font-size-controls {
+        position: fixed;
+        right: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 1000;
+      }
+
+      .font-size-controls button {
+        width: 48px;
+        height: 48px;
+        border-radius: 6px;
+        background: #2a2a2a;
+        color: #ffffff;
+        border: 1px solid #444;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        transition: all 0.2s ease;
+      }
+
+      .font-size-controls button:hover {
+        background: #3a3a3a;
+        border-color: #666;
+      }
+
+      .font-size-controls button:active {
+        transform: scale(0.95);
+      }
+
+      .font-size-controls button i {
+        pointer-events: none;
+      }
+
+      /* Dark Mode Styles */
+      .dark-mode {
+        background: #111111;
+      }
+
+      .dark-mode .main-container {
+        background: rgba(28, 28, 28, 0.95);
+      }
+
+      .dark-mode .status-indicator {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border: 1px solid #444;
+      }
+
+      .dark-mode tbody tr {
+        background: #1c1c1c;
+        border: 1px solid #2a2a2a;
+      }
+
+      .dark-mode td {
+        color: #e0e0e0;
+      }
+
+      /* Light Mode Styles */
+      body.light-mode {
+        background: #f5f5f5;
+      }
+
+      /* Empty State */
+      .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: rgba(224, 224, 224, 0.5);
+        display: block;
+        align-self: center;
+      }
+
+      body.transparent-bg .empty-state {
+        color: rgba(224, 224, 224, 0.5);
+      }
+
+      .empty-state i {
+        font-size: 48px;
+        margin-bottom: 12px;
+        opacity: 0.5;
+      }
+
+      .empty-state h3 {
+        font-size: 18px;
+        margin-bottom: 6px;
+        font-weight: 400;
+      }
+
+      /* Responsive Design */
+      @media (max-width: 800px) {
+        .font-size-controls {
+          right: 10px;
+          gap: 8px;
+        }
+
+        .font-size-controls button {
+          width: 48px;
+          height: 48px;
+          font-size: 18px;
+        }
+
+        #table-container {
+          padding: 15px;
+        }
+
+        /* Caption mode: no vertical padding for precise line clipping */
+        .caption-mode #table-container {
+          padding: 0 15px;
+        }
+
+        td {
+          padding: 15px;
+          font-size: 28px;
+        }
+
+        /* Caption mode: remove td vertical padding for clean line boundaries */
+        .caption-mode td {
+          padding: 0 15px;
+          font-size: inherit;  /* Don't override - use URL param font-size */
+        }
+      }
+
+      @media (max-width: 480px) {
+        .status-indicator {
+          display: none;
+        }
+
+        /* Caption mode: no vertical padding for precise line clipping */
+        .caption-mode #table-container {
+          padding: 0 10px;
+        }
+
+        td {
+          font-size: 24px;
+        }
+
+        /* Caption mode: remove td vertical padding for clean line boundaries */
+        .caption-mode td {
+          padding: 0 10px;
+          font-size: inherit;  /* Don't override - use URL param font-size */
+        }
+      }
+
+
+       /* Book-like Flow Design */
+       .transcription-flow {
+         display: block;
+         text-align: inherit;
+         white-space: pre-wrap;
+         word-wrap: break-word;
+         overflow-wrap: break-word;
+         word-break: break-word;
+       }
+
+       .transcription-text {
+         font-size: inherit;
+         line-height: inherit;
+         color: inherit;
+         display: block;
+         text-align: inherit;
+       }
+
+       /* In-progress text - subtle styling, no visual separation */
+       /* opacity is set via inline style from inProgressOpacity URL parameter */
+       .in-progress-text {
+         font-style: italic;
+       }
+
+       .in-progress-text.normal-style {
+         font-style: normal;
+       }
+
+      /* Connection banner removed - status indicators in upper right provide all feedback */
+
+      /* Segment wrapper (display only, no editing on client page) */
+      .segment-text {
+        display: inline;
+      }
+
+      /* Caption mode - position at bottom of screen like TV captions */
+      .caption-mode .main-container {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: auto;
+        min-height: 0;
+      }
+
+      .caption-mode #table-container {
+        overflow-y: scroll !important;  /* Allow JS scrolling */
+        flex: none;
+        /* max-height set dynamically via JavaScript */
+        /* Hide scrollbar but keep scroll functionality */
+        scrollbar-width: none;  /* Firefox */
+        -ms-overflow-style: none;  /* IE/Edge */
+      }
+
+      .caption-mode #table-container::-webkit-scrollbar {
+        display: none;  /* Chrome/Safari/Opera */
+      }
+
+      .caption-mode #transcription-table {
+        width: 100%;
+      }
+
+      /* Caption mode: ensure no vertical padding on td for clean line boundaries */
+      .caption-mode td {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+      }
+
+      /* Both Mode - iframe container for side-by-side or stacked translation view */
+      #both-mode-container {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        background: #121212;
+      }
+
+      #both-mode-container iframe {
+        border: none;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      #both-mode-container.side-by-side {
+        flex-direction: row;
+      }
+
+      #both-mode-container.side-by-side #iframe-original {
+        border-right: 1px solid #3a3a3a;
+      }
+
+      #both-mode-container.stacked {
+        flex-direction: column;
+      }
+
+      #both-mode-container.stacked #iframe-original {
+        border-bottom: 1px solid #3a3a3a;
+      }
+
+      /* Hidden click zones for font size adjustment */
+      .font-click-zone {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        width: 15%;
+        z-index: 500;
+        cursor: pointer;
+        background: transparent;
+      }
+
+      #font-zone-left {
+        left: 0;
+      }
+
+      #font-zone-right {
+        right: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Status in Upper Right Corner (clickable to open settings) -->
+    <div class="status-container" onclick="redirectBasedOnAuth()" style="cursor: pointer;" title="Click to open settings">
+      <div class="status-indicator">
+        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <div class="status-dot" id="server-status-dot"></div>
+            <span id="server-status-text">Server</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <div class="status-dot" id="transcription-status-dot"></div>
+            <span id="transcription-status-text">Transcription</span>
+          </div>
+          <div id="disk-status-container" style="display: flex; align-items: center; gap: 6px; display: none;">
+            <div class="status-dot" id="disk-status-dot"></div>
+            <span id="disk-status-text">Disk Space</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-container">
+      <div id="table-container">
+        <div class="empty-state" id="empty-state">
+          <i class="fas fa-microphone"></i>
+          <h3>No transcriptions yet</h3>
+        </div>
+        <table id="transcription-table">
+          <tbody id="transcription-table-body">
+            <!-- Transcriptions will appear here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Both Mode Container (iframes for side-by-side or stacked view) -->
+    <div id="both-mode-container">
+      <iframe id="iframe-original" title="Original Transcription"></iframe>
+      <iframe id="iframe-translated" title="Translated Text"></iframe>
+    </div>
+
+    <!-- Hidden click zones for font size control -->
+    <div id="font-zone-left" class="font-click-zone"></div>
+    <div id="font-zone-right" class="font-click-zone"></div>
+
+    <script>
+      // Toast notifications and connection banner removed - status indicators provide all feedback
+
+      // Redirect based on authentication status
+      async function redirectBasedOnAuth() {
+        try {
+          const response = await fetch('/api/auth/status');
+          const data = await response.json();
+
+          if (data.success && data.redirect_url) {
+            window.location.href = data.redirect_url;
+          } else {
+            // Fallback to url-builder if auth check fails
+            window.location.href = '/url-builder';
+          }
+        } catch (error) {
+          console.error('Auth check failed:', error);
+          // Fallback to url-builder on error
+          window.location.href = '/url-builder';
+        }
+      }
+
+      // Real-time Status Updates
+      function updateServerStatus(isConnected) {
+        const dot = document.getElementById('server-status-dot');
+        const text = document.getElementById('server-status-text');
+
+        if (isConnected) {
+          dot.classList.add('active');
+          dot.classList.remove('inactive');
+          text.textContent = 'Server: Online';
+        } else {
+          dot.classList.add('inactive');
+          dot.classList.remove('active');
+          text.textContent = 'Server: Offline';
+        }
+      }
+
+      function updateTranscriptionStatus(status) {
+        const dot = document.getElementById('transcription-status-dot');
+        const text = document.getElementById('transcription-status-text');
+
+        // Remove all status classes
+        dot.classList.remove('active', 'starting', 'inactive', 'error');
+
+        // Handle status parameter - could be boolean (legacy) or string (new)
+        if (typeof status === 'boolean') {
+          // Legacy boolean support
+          if (status) {
+            dot.classList.add('active');
+            text.textContent = 'Transcription: Running';
+          } else {
+            dot.classList.add('inactive');
+            text.textContent = 'Transcription: Stopped';
+          }
+        } else if (typeof status === 'object' && status.status) {
+          // New object format with status property
+          const statusValue = status.status;
+          if (statusValue === 'running') {
+            dot.classList.add('active');
+            text.textContent = 'Transcription: Running';
+          } else if (statusValue === 'starting') {
+            dot.classList.add('starting');
+            text.textContent = 'Transcription: Starting...';
+          } else if (statusValue === 'stopping') {
+            dot.classList.add('starting'); // Use yellow for stopping too
+            text.textContent = 'Transcription: Stopping...';
+          } else if (statusValue === 'error') {
+            dot.classList.add('error');
+            const errorMsg = status.error || 'Unknown error';
+            text.textContent = 'Transcription: Error';
+            text.title = errorMsg;
+          } else {
+            dot.classList.add('inactive');
+            text.textContent = 'Transcription: Stopped';
+          }
+        } else {
+          // Fallback
+          dot.classList.add('inactive');
+          text.textContent = 'Transcription: Stopped';
+        }
+      }
+
+      // Legacy function for compatibility
+      function updateStatus(isActive) {
+        updateServerStatus(isActive);
+      }
+
+       // Force re-render of transcription to apply word highlighting
+       // Called when word highlighting config loads after transcription is already displayed
+       function forceHighlightRerender() {
+         // Only re-render if there's content to display
+         if (allSegments.length === 0 && !lastIncompleteSegment) {
+           return;
+         }
+
+         const tableBody = $("#transcription-table-body");
+
+         // Build display text from existing segments
+         let displayText = allSegments.map(s => s.text).join(' ');
+         let inProgressHTML = '';
+
+         if (lastIncompleteSegment && lastIncompleteSegment.text && !window.displayConfig?.hideInProgress) {
+           if (displayText) {
+             displayText += ' ';
+           }
+           const highlightedInProgress = applyWordHighlighting(lastIncompleteSegment.text);
+           const styleClass = (window.displayConfig?.inProgressStyle === 'normal') ? 'in-progress-text normal-style' : 'in-progress-text';
+           const opacity = window.displayConfig?.inProgressOpacity || 0.7;
+           inProgressHTML = '<span class="' + styleClass + '" style="opacity: ' + opacity + '">' + highlightedInProgress + '</span>';
+         }
+
+         // Apply word highlighting with now-loaded config
+         const highlightedText = applyWordHighlighting(displayText);
+
+         // Re-render
+         tableBody.empty();
+         const row = $("<tr>");
+         const cellHTML = '<div class="transcription-flow"><div class="transcription-text">' +
+                          highlightedText + inProgressHTML + '</div></div>';
+         const textCell = $("<td>").html(cellHTML).css({"font-family": "inherit"});
+         row.append(textCell);
+         tableBody.append(row);
+       }
+
+       // Function to apply word highlighting to text
+       function applyWordHighlighting(text) {
+         const config = window.wordHighlightingConfig || { enabled: false, words: [], disabled_colors: [] };
+
+         if (!config.enabled || config.words.length === 0) {
+           return text;
+         }
+
+         let highlightedText = text;
+         const disabledColors = config.disabled_colors || [];
+
+         config.words.forEach(function (wordConfig) {
+           const word = wordConfig.word;
+           const color = wordConfig.color;
+           const caseSensitive = wordConfig.case_sensitive;
+           const isRegex = wordConfig.is_regex;
+
+           // Skip words whose color group is disabled
+           if (disabledColors.includes(color.toLowerCase())) {
+             return;
+           }
+
+           // Create regex pattern with Unicode support
+           const flags = caseSensitive ? 'gu' : 'giu';
+
+           let pattern;
+           if (isRegex) {
+             // Use pattern with Unicode word boundaries to match whole words only
+             try {
+               pattern = new RegExp('(?<![\\p{L}\\p{N}])(' + word + ')(?![\\p{L}\\p{N}])', flags);
+             } catch (e) {
+               console.error('Invalid regex pattern:', word, e);
+               return; // Skip invalid patterns
+             }
+           } else {
+             // Escape special regex characters and add word boundaries
+             const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+             // Match whole words only - use Unicode-aware word boundaries
+             // \p{L} matches any Unicode letter, \p{N} matches any Unicode number
+             pattern = new RegExp('(?<![\\p{L}\\p{N}])(' + escapedWord + ')(?![\\p{L}\\p{N}])', flags);
+           }
+
+           // Replace with colored text version
+           highlightedText = highlightedText.replace(pattern, function(match) {
+             return '<span style="color: ' + color + ';">' + match + '</span>';
+           });
+         });
+
+         return highlightedText;
+       }
+
+       // Segment-based transcription tracking (Whisper-Live pattern)
+       // Only completed segments that pass temporal validation are stored
+       let allSegments = [];  // [{id, text, start, end}, ...]
+       let lastIncompleteSegment = null;  // Current in-progress segment
+       let lastEndTime = 0;  // Track the end time of the last added segment
+       let lastSegmentCount = 0;  // Track segment count for change detection
+       let lastInProgressText = '';  // Track in-progress text for change detection
+
+       // Unified transcription display - uses Whisper-Live's temporal validation pattern
+       function updateTranscriptionDisplay(data) {
+         const tableBody = $("#transcription-table-body");
+         const table = document.getElementById('transcription-table');
+         const emptyState = document.getElementById('empty-state');
+
+         const segments = data.segments || [];
+         const inProgressSegment = data.in_progress_segment;
+
+         // Handle empty state
+         const hasSegments = segments && segments.length > 0;
+         const hasInProgress = inProgressSegment && inProgressSegment.text && inProgressSegment.text.trim();
+
+         if (!hasSegments && !hasInProgress) {
+           allSegments = [];
+           lastIncompleteSegment = null;
+           lastEndTime = 0;
+           lastSegmentCount = 0;
+           lastInProgressText = '';
+           tableBody.empty();
+           emptyState.style.display = 'block';
+           table.classList.remove('has-content');
+           return;
+         } else {
+           emptyState.style.display = 'none';
+           table.classList.add('has-content');
+         }
+
+         // Process completed segments - use ID for ordering (chronological from DB)
+         let segmentsChanged = false;
+         segments.forEach(function(seg) {
+           if (seg.completed === true) {
+             // Check for duplicate by ID only - no temporal validation
+             // ID ordering from database is already chronological
+             const existingIdx = allSegments.findIndex(s => s.id === seg.id);
+             if (existingIdx === -1) {
+               allSegments.push({
+                 id: seg.id,
+                 text: seg.text,
+                 start: parseFloat(seg.start) || 0,
+                 end: parseFloat(seg.end) || 0,
+               });
+               segmentsChanged = true;
+             } else if (allSegments[existingIdx].text !== seg.text) {
+               // Update text if it changed (e.g., after correction)
+               allSegments[existingIdx].text = seg.text;
+               segmentsChanged = true;
+             }
+           }
+         });
+         // Sort by ID to ensure correct order
+         allSegments.sort((a, b) => a.id - b.id);
+
+         // Track the incomplete segment separately
+         const inProgressText = hasInProgress ? inProgressSegment.text : '';
+
+         // Check if anything changed
+         if (!segmentsChanged && inProgressText === lastInProgressText && allSegments.length === lastSegmentCount) {
+           return;  // Nothing changed, skip DOM update
+         }
+
+         lastInProgressText = inProgressText;
+         lastSegmentCount = allSegments.length;
+         lastIncompleteSegment = hasInProgress ? inProgressSegment : null;
+
+         // Build display text from segments (client-facing: word highlighting only, no confidence)
+         let fullText = allSegments.map(s => s.text).join(' ');
+
+         // In-progress text
+         let inProgressHTML = '';
+         if (hasInProgress && !window.displayConfig?.hideInProgress) {
+           if (fullText) fullText += ' ';
+           const highlightedInProgress = applyWordHighlighting(inProgressSegment.text);
+           const styleClass = (window.displayConfig?.inProgressStyle === 'normal') ? 'in-progress-text normal-style' : 'in-progress-text';
+           const opacity = window.displayConfig?.inProgressOpacity || 0.7;
+           inProgressHTML = `<span class="${styleClass}" style="opacity: ${opacity}">${highlightedInProgress}</span>`;
+         }
+
+         // Apply word highlighting to finalized text
+         const highlightedText = applyWordHighlighting(fullText);
+
+         // Create a single flowing text display
+         tableBody.empty();
+
+         const row = $("<tr>");
+         const cellHTML = `<div class="transcription-flow"><div class="transcription-text">${highlightedText}${inProgressHTML}</div></div>`;
+
+         const textCell = $("<td>").html(cellHTML).css({
+           "font-family": "inherit",
+         });
+
+         row.append(textCell);
+         tableBody.append(row);
+
+         // Auto-scroll to show latest content (including in caption mode)
+         if (autoScrollEnabled) {
+           const container = document.getElementById('table-container');
+           if (window.setProgrammaticScroll) {
+             window.setProgrammaticScroll(true);
+           }
+           // Use requestAnimationFrame to ensure DOM is rendered before scrolling
+           requestAnimationFrame(() => {
+             let targetScroll = container.scrollHeight;
+             // In caption mode, snap scroll to line boundary to avoid partial line cutoff
+             if (window.captionLineHeight) {
+               const lineHeight = window.captionLineHeight;
+               // Calculate how much content is hidden above
+               const hiddenAbove = container.scrollHeight - container.clientHeight;
+               // Round up to next line boundary so we don't show partial line
+               const snappedHidden = Math.ceil(hiddenAbove / lineHeight) * lineHeight;
+               targetScroll = snappedHidden;
+             }
+             container.scrollTop = targetScroll;
+             setTimeout(() => {
+               container.scrollTop = targetScroll;
+               if (window.setProgrammaticScroll) {
+                 window.setProgrammaticScroll(false);
+               }
+             }, 10);
+           });
+         }
+       }
+
+       // Translation display state
+       let allTranslatedSegments = [];
+       let lastTranslationInProgress = null;
+       let lastTranslatedSegmentCount = 0;
+       let lastTranslatedInProgressText = '';
+
+       // Update translation display - handles translated content
+       function updateTranslationDisplay(data) {
+         const mode = window.displayConfig?.translationMode || 'transcribe';
+         const layout = window.displayConfig?.translationLayout || 'stacked';
+
+         // Only process if translation is enabled in the data
+         if (!data.enabled) return;
+
+         const segments = data.segments || [];
+         const inProgress = window.displayConfig?.hideTranslateInProgress ? null : data.in_progress;
+
+         // Handle empty state
+         const hasSegments = segments && segments.length > 0;
+         const hasInProgress = inProgress && inProgress.translated_text && inProgress.translated_text.trim();
+
+         if (!hasSegments && !hasInProgress) {
+           allTranslatedSegments = [];
+           lastTranslationInProgress = null;
+           lastTranslatedSegmentCount = 0;
+           lastTranslatedInProgressText = '';
+
+           // Clear translation display if in translate-only mode
+           if (mode === 'translate') {
+             const tableBody = $("#transcription-table-body");
+             const emptyState = document.getElementById('empty-state');
+             tableBody.empty();
+             emptyState.style.display = 'block';
+           }
+           return;
+         }
+
+         // Process translated segments
+         let segmentsChanged = false;
+         segments.forEach(function(seg) {
+           const exists = allTranslatedSegments.some(s => s.id === seg.id);
+           if (!exists) {
+             allTranslatedSegments.push({
+               id: seg.id,
+               original_text: seg.original_text,
+               translated_text: seg.translated_text,
+               start: parseFloat(seg.start) || 0,
+               end: parseFloat(seg.end) || 0
+             });
+             segmentsChanged = true;
+           } else {
+             // Update existing segment if translation changed
+             const existingIdx = allTranslatedSegments.findIndex(s => s.id === seg.id);
+             if (existingIdx >= 0 && allTranslatedSegments[existingIdx].translated_text !== seg.translated_text) {
+               allTranslatedSegments[existingIdx].translated_text = seg.translated_text;
+               segmentsChanged = true;
+             }
+           }
+         });
+
+         // Sort by ID
+         allTranslatedSegments.sort((a, b) => a.id - b.id);
+
+         const inProgressText = hasInProgress ? inProgress.translated_text : '';
+
+         // Check if anything changed
+         if (!segmentsChanged && inProgressText === lastTranslatedInProgressText &&
+             allTranslatedSegments.length === lastTranslatedSegmentCount) {
+           return;
+         }
+
+         lastTranslatedInProgressText = inProgressText;
+         lastTranslatedSegmentCount = allTranslatedSegments.length;
+         lastTranslationInProgress = hasInProgress ? inProgress : null;
+
+         const tableBody = $("#transcription-table-body");
+         const table = document.getElementById('transcription-table');
+         const emptyState = document.getElementById('empty-state');
+
+         emptyState.style.display = 'none';
+         table.classList.add('has-content');
+
+         if (mode === 'translate') {
+           // Translate-only mode: show only translated text
+           let fullText = allTranslatedSegments.map(s => s.translated_text).join(' ');
+           let inProgressHTML = '';
+
+           if (hasInProgress) {
+             if (fullText) fullText += ' ';
+             const highlightedInProgress = applyWordHighlighting(inProgress.translated_text);
+             const styleClass = (window.displayConfig?.inProgressStyle === 'normal') ? 'in-progress-text normal-style' : 'in-progress-text';
+             const opacity = window.displayConfig?.inProgressOpacity || 0.7;
+             inProgressHTML = `<span class="${styleClass}" style="opacity: ${opacity}">${highlightedInProgress}</span>`;
+           }
+
+           const highlightedText = applyWordHighlighting(fullText);
+
+           tableBody.empty();
+           const row = $("<tr>");
+           const cellHTML = `<div class="transcription-flow"><div class="transcription-text">${highlightedText}${inProgressHTML}</div></div>`;
+           const textCell = $("<td>").html(cellHTML).css({ "font-family": "inherit" });
+           row.append(textCell);
+           tableBody.append(row);
+         }
+         // Note: 'both' mode is handled by iframes, not here
+
+         // Auto-scroll to show latest content (including in caption mode)
+         if (autoScrollEnabled) {
+           const container = document.getElementById('table-container');
+           if (window.setProgrammaticScroll) {
+             window.setProgrammaticScroll(true);
+           }
+           // Use requestAnimationFrame to ensure DOM is rendered before scrolling
+           requestAnimationFrame(() => {
+             let targetScroll = container.scrollHeight;
+             // In caption mode, snap scroll to line boundary to avoid partial line cutoff
+             if (window.captionLineHeight) {
+               const lineHeight = window.captionLineHeight;
+               // Calculate how much content is hidden above
+               const hiddenAbove = container.scrollHeight - container.clientHeight;
+               // Round up to next line boundary so we don't show partial line
+               const snappedHidden = Math.ceil(hiddenAbove / lineHeight) * lineHeight;
+               targetScroll = snappedHidden;
+             }
+             container.scrollTop = targetScroll;
+             setTimeout(() => {
+               container.scrollTop = targetScroll;
+               if (window.setProgrammaticScroll) {
+                 window.setProgrammaticScroll(false);
+               }
+             }, 10);
+           });
+         }
+       }
+
+      // Socket.IO Connection Monitoring
+      // Check transcription status on page load and periodically
+      function checkTranscriptionStatus() {
+        fetch('/api/transcription/status')
+          .then(response => response.json())
+          .then(data => {
+            // Pass the full state object if available, otherwise fall back to boolean
+            if (data.success && data.state) {
+              updateTranscriptionStatus(data.state);
+            } else {
+              updateTranscriptionStatus(data.running || false);
+            }
+          })
+          .catch(error => {
+            console.error('Error checking transcription status:', error);
+            updateTranscriptionStatus(false);
+          });
+      }
+
+      // Check disk space and update status if >= 75%
+      function checkDiskSpace() {
+        fetch('/api/disk-space')
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              const diskSpace = data.disk_space;
+              const percentUsed = diskSpace.percent_used;
+
+              const container = document.getElementById('disk-status-container');
+              const dot = document.getElementById('disk-status-dot');
+              const text = document.getElementById('disk-status-text');
+
+              if (percentUsed >= 75) {
+                // Show disk space warning
+                container.style.display = 'flex';
+
+                // Set color based on severity
+                dot.classList.remove('warning', 'error', 'inactive');
+                if (percentUsed >= 90) {
+                  dot.classList.add('error');
+                  text.textContent = `Disk: ${percentUsed}% (Critical!)`;
+                } else {
+                  dot.classList.add('warning');
+                  text.textContent = `Disk: ${percentUsed}% Used`;
+                }
+              } else {
+                // Hide disk space status if below 75%
+                container.style.display = 'none';
+              }
+            }
+          })
+          .catch(error => {
+            console.error('Error checking disk space:', error);
+          });
+      }
+
+      // Initialize socket connection monitoring (called after socket is created)
+      function initializeSocketMonitoring() {
+        // Only run status polling if menu is shown (not in embedded/OBS mode)
+        // In embedded mode, fetch calls may fail but WebSocket still works
+        if (window.displayConfig.showMenu) {
+          // Check status on load
+          checkTranscriptionStatus();
+          checkDiskSpace();
+
+          // Check status every 5 seconds
+          setInterval(checkTranscriptionStatus, 5000);
+          // Check disk space every 30 seconds
+          setInterval(checkDiskSpace, 30000);
+        }
+
+        socket.on('connect', function() {
+          // console.log('WebSocket connected');
+          updateServerStatus(true);
+          if (window.displayConfig.showMenu) {
+            checkTranscriptionStatus();
+            checkDiskSpace();
+          }
+          if (window.displayConfig.showAll) {
+            socket.emit('request_all_entries');
+            socket.emit('request_all_translation_entries');
+          }
+          // Join audio streaming rooms if enabled via URL params
+          if (window.displayConfig.audioStream) {
+            socket.emit('join_audio_stream');
+          }
+          if (window.displayConfig.ttsAudio) {
+            socket.emit('join_tts_audio');
+          }
+        });
+
+        socket.on('disconnect', function() {
+          // console.log('WebSocket disconnected');
+          updateServerStatus(false);
+        });
+
+        socket.on('reconnecting', function(attemptNumber) {
+          // console.log('Reconnecting attempt:', attemptNumber);
+        });
+
+        socket.on('reconnect', function() {
+          // console.log('Reconnected - reloading transcription history');
+          updateServerStatus(true);
+          if (window.displayConfig.showMenu) {
+            checkTranscriptionStatus();
+          }
+          // Clear segment state to reload fresh data on reconnect
+          allSegments = [];
+          lastIncompleteSegment = null;
+          lastEndTime = 0;
+          lastSegmentCount = 0;
+          lastInProgressText = '';
+          // Re-join audio streaming rooms after reconnect (e.g. server restart)
+          if (window.displayConfig.audioStream) {
+            socket.emit('join_audio_stream');
+            // Reset audio scheduling so playback resumes cleanly
+            audioStreamNextPlayTime = 0;
+            if (audioStreamCtx && audioStreamCtx.state === 'suspended') {
+              audioStreamCtx.resume();
+            }
+          }
+          if (window.displayConfig.ttsAudio) {
+            socket.emit('join_tts_audio');
+          }
+        });
+
+        socket.on('error', function(error) {
+          console.error('Socket error:', error);
+        });
+
+        // =====================================================================
+        // Live Audio Stream Playback (Web Audio API)
+        // =====================================================================
+        var audioStreamCtx = null;
+        var audioStreamNextPlayTime = 0;
+        var audioStreamSampleRate = 16000;
+
+        socket.on('audio_stream_info', function(data) {
+          audioStreamSampleRate = data.sample_rate || 16000;
+        });
+
+        socket.on('audio_chunk', function(data) {
+          if (!window.displayConfig.audioStream) return;
+
+          // Initialize AudioContext on first chunk (requires prior user gesture or autoplay policy)
+          if (!audioStreamCtx) {
+            try {
+              audioStreamCtx = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: audioStreamSampleRate
+              });
+            } catch(e) {
+              console.error('Failed to create AudioContext:', e);
+              return;
+            }
+          }
+          if (audioStreamCtx.state === 'suspended') {
+            audioStreamCtx.resume();
+          }
+
+          // Convert Int16 PCM bytes to Float32 for Web Audio API
+          var int16Array = new Int16Array(data);
+          var float32Array = new Float32Array(int16Array.length);
+          for (var i = 0; i < int16Array.length; i++) {
+            float32Array[i] = int16Array[i] / 32768.0;
+          }
+
+          // Create and schedule audio buffer for gapless playback
+          var buffer = audioStreamCtx.createBuffer(1, float32Array.length, audioStreamSampleRate);
+          buffer.getChannelData(0).set(float32Array);
+
+          var source = audioStreamCtx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioStreamCtx.destination);
+
+          var currentTime = audioStreamCtx.currentTime;
+          // Only snap forward if not yet started (first chunk or after reconnect reset)
+          if (audioStreamNextPlayTime === 0) {
+            audioStreamNextPlayTime = currentTime + 0.02;
+          }
+          source.start(audioStreamNextPlayTime);
+          audioStreamNextPlayTime += buffer.duration;
+        });
+
+        // =====================================================================
+        // TTS Audio Playback (for translated text)
+        // =====================================================================
+        var ttsQueue = [];
+        var ttsPlaying = false;
+        var ttsAudioCtx = null;
+
+        socket.on('tts_audio', function(data) {
+          if (!window.displayConfig.ttsAudio) return;
+          ttsQueue.push(data);
+          ttsQueue.sort(function(a, b) { return a.segment_id - b.segment_id; });
+          // Limit queue size - drop old unplayed segments
+          if (ttsQueue.length > 5) {
+            ttsQueue = ttsQueue.slice(-3);
+          }
+          playNextTTS();
+        });
+
+        function playNextTTS() {
+          if (ttsPlaying || ttsQueue.length === 0) return;
+          ttsPlaying = true;
+
+          var item = ttsQueue.shift();
+          try {
+            if (!ttsAudioCtx) {
+              ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (ttsAudioCtx.state === 'suspended') {
+              ttsAudioCtx.resume();
+            }
+
+            // Decode base64 OGG audio
+            var binaryStr = atob(item.audio);
+            var bytes = new Uint8Array(binaryStr.length);
+            for (var i = 0; i < binaryStr.length; i++) {
+              bytes[i] = binaryStr.charCodeAt(i);
+            }
+
+            ttsAudioCtx.decodeAudioData(bytes.buffer.slice(0), function(audioBuffer) {
+              var source = ttsAudioCtx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(ttsAudioCtx.destination);
+              source.onended = function() {
+                ttsPlaying = false;
+                playNextTTS();
+              };
+              source.start();
+            }, function(err) {
+              console.error('TTS decode error:', err);
+              ttsPlaying = false;
+              playNextTTS();
+            });
+          } catch(e) {
+            console.error('TTS playback error:', e);
+            ttsPlaying = false;
+            playNextTTS();
+          }
+        }
+      }
+
+
+
+      // Detect manual scrolling and disable auto-scroll
+      $(document).ready(function() {
+        const container = $('#table-container')[0];
+        let isUserScrolling = false;
+        let programmaticScroll = false; // Flag to ignore programmatic scrolls
+
+        // Scroll to bottom on page load
+        setTimeout(() => {
+          container.scrollTop = container.scrollHeight;
+        }, 100);
+
+        $(container).on('scroll', function() {
+           // Ignore scroll events triggered by our own code
+           if (programmaticScroll) {
+             return;
+           }
+
+           // Check if user is at bottom
+           const scrollTop = container.scrollTop;
+           const scrollHeight = container.scrollHeight;
+           const clientHeight = container.clientHeight;
+           const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10; // 10px threshold (more sensitive)
+
+           if (!isAtBottom) {
+             // User scrolled up, disable auto-scroll
+             autoScrollEnabled = false;
+             isUserScrolling = true;
+           } else {
+             // User is at bottom, immediately re-enable auto-scroll
+             autoScrollEnabled = true;
+             isUserScrolling = false;
+           }
+        });
+
+        // Expose programmaticScroll flag globally for typing animation
+        window.setProgrammaticScroll = function(value) {
+          programmaticScroll = value;
+        };
+
+        // Hidden click zones for font size control
+        $('#font-zone-left').on('click', function() {
+          const currentSize = parseInt($('body').css('font-size'));
+          const newSize = Math.max(currentSize - 4, 12);
+          updateFontSize(newSize);
+          // If inside an iframe, notify parent to update its URL
+          if (window.parent !== window) {
+            window.parent.postMessage({ type: 'iframeFontSizeChanged', size: newSize }, '*');
+          }
+        });
+
+        $('#font-zone-right').on('click', function() {
+          const currentSize = parseInt($('body').css('font-size'));
+          const newSize = Math.min(currentSize + 4, 120);
+          updateFontSize(newSize);
+          if (window.parent !== window) {
+            window.parent.postMessage({ type: 'iframeFontSizeChanged', size: newSize }, '*');
+          }
+        });
+
+        function updateFontSize(size) {
+          // Update both body and td to override responsive CSS
+          $('body').css('font-size', size + 'px');
+          $('td').css('font-size', size + 'px');
+          // Update URL
+          const url = new URL(window.location);
+          url.searchParams.set('fontSize', size);
+          window.history.replaceState({}, '', url);
+
+          // Recalculate caption mode if active
+          const maxLines = parseInt(url.searchParams.get('maxLines')) || 0;
+          if (maxLines > 0) {
+            // Re-measure line height with new font size
+            const lineHeight = url.searchParams.get('lineHeight') || '1.5';
+            const fontFamily = url.searchParams.get('fontFamily') || 'Arial';
+            const measureTable = $('<table style="visibility: hidden; position: absolute;"><tbody><tr><td><div class="transcription-text"><span>Xg</span></div></td></tr></tbody></table>');
+            measureTable.find('.transcription-text').css({
+              'font-size': size + 'px',
+              'line-height': lineHeight,
+              'font-family': fontFamily
+            });
+            $("#table-container").append(measureTable);
+            const actualLineHeight = measureTable.find('.transcription-text').height();
+            measureTable.remove();
+
+            // Update global line height and max-height
+            window.captionLineHeight = actualLineHeight;
+            const captionMaxHeight = Math.floor(maxLines * actualLineHeight);
+            $("#table-container").css("max-height", captionMaxHeight + "px");
+          }
+
+          // Scroll to bottom after font size change
+          const container = document.getElementById('table-container');
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+
+          // Propagate to iframes in "both" mode
+          const iframeOriginal = document.getElementById('iframe-original');
+          const iframeTranslated = document.getElementById('iframe-translated');
+          if (iframeOriginal?.contentWindow) {
+            iframeOriginal.contentWindow.postMessage({ type: 'updateFontSize', size: size }, '*');
+          }
+          if (iframeTranslated?.contentWindow) {
+            iframeTranslated.contentWindow.postMessage({ type: 'updateFontSize', size: size }, '*');
+          }
+        }
+
+        // Listen for font size updates from parent (when running inside an iframe in "both" mode)
+        window.addEventListener('message', function(event) {
+          if (event.data?.type === 'updateFontSize') {
+            updateFontSize(event.data.size);
+          }
+          // Listen for font size changes from iframes (when running as parent in "both" mode)
+          if (event.data?.type === 'iframeFontSizeChanged') {
+            const size = event.data.size;
+            // Update parent URL
+            const url = new URL(window.location);
+            url.searchParams.set('fontSize', size);
+            window.history.replaceState({}, '', url);
+            // Update parent body CSS
+            $('body').css('font-size', size + 'px');
+            // Sync the other iframe
+            const iframeOriginal = document.getElementById('iframe-original');
+            const iframeTranslated = document.getElementById('iframe-translated');
+            if (iframeOriginal?.contentWindow) {
+              iframeOriginal.contentWindow.postMessage({ type: 'updateFontSize', size: size }, '*');
+            }
+            if (iframeTranslated?.contentWindow) {
+              iframeTranslated.contentWindow.postMessage({ type: 'updateFontSize', size: size }, '*');
+            }
+          }
+        });
+
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1150 @@
+{% extends "base.html" %}
+
+{% block title %}Server Settings - Speech to Text{% endblock %}
+{% block page_title %}Server Settings{% endblock %}
+
+{% block extra_css %}
+        /* Server Panel */
+        .server-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+
+        /* Masonry/Pinterest-style grid layout */
+        .masonry-grid {
+            column-count: 2;
+            column-gap: 16px;
+        }
+
+        .masonry-grid .settings-card {
+            break-inside: avoid;
+            margin-bottom: 16px;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .description {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .description code {
+            background: var(--bg-base);
+            color: var(--accent);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        /* API Endpoints Styles */
+        .endpoint-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 8px 12px;
+            background: #1e1e1e;
+            border-radius: var(--radius-sm);
+            margin-bottom: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+        }
+
+        .endpoint-item:hover {
+            background: var(--bg-base);
+        }
+
+        .endpoint-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .endpoint-path {
+            color: var(--text-primary);
+            word-break: break-all;
+            display: block;
+        }
+
+        .endpoint-description {
+            color: #888;
+            font-size: 0.85em;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin-top: 2px;
+        }
+
+        .endpoint-example {
+            color: #63b3ed;
+            font-size: 0.8em;
+            font-family: 'Courier New', monospace;
+            margin-top: 3px;
+            padding: 3px 6px;
+            background: var(--bg-card);
+            border-radius: 3px;
+            display: inline-block;
+            max-width: 100%;
+            word-break: break-all;
+        }
+
+        .endpoint-methods {
+            color: var(--success);
+            margin-right: 12px;
+            font-size: 0.8em;
+            min-width: 50px;
+        }
+
+        .endpoint-copy-btn {
+            background: var(--border);
+            border: none;
+            color: var(--accent);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            flex-shrink: 0;
+        }
+
+        .endpoint-copy-btn:hover {
+            background: #4a4a4a;
+        }
+
+        .endpoint-category {
+            color: var(--accent);
+            font-size: 0.8em;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .endpoint-group {
+            margin-bottom: 12px;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .settings-panel {
+                max-height: none;
+            }
+
+            .masonry-grid {
+                column-count: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .settings-card {
+                padding: 12px;
+            }
+
+            .endpoint-item {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .endpoint-methods {
+                min-width: auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .settings-panel {
+                padding: 12px;
+            }
+
+            .settings-card {
+                padding: 10px;
+            }
+
+            .info-box, .warning-box {
+                padding: 10px;
+                font-size: 0.8em;
+            }
+        }
+
+        .unsaved-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid var(--accent);
+            padding: 10px 24px;
+            z-index: 1000;
+        }
+        .unsaved-bar-inner {
+            max-width: 1300px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .unsaved-bar span { color: var(--warning); font-size: 0.85em; font-weight: 600; }
+{% endblock %}
+
+{% block content %}
+        <div class="main-content">
+            <!-- Settings Panel -->
+            <div class="settings-panel">
+                <form id="serverForm" onsubmit="saveSettings(event)">
+                <h3>🌐 Server Settings</h3>
+
+                <!-- Alert Display -->
+                <div id="alert_message" class="alert"></div>
+
+                <div style="background: #3a1a1a; border: 1px solid #5a2d2d; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
+                    <span style="color: var(--danger); font-weight: 600;">⚠️ Important</span><br>
+                    <small style="color: var(--text-primary);">Changes to Host, Port, and Update Interval require server restart to take effect. Stop the server and restart it after saving.</small>
+                </div>
+
+                <div class="info-box">
+                    🕐 <strong>Current Date & Time (Server):</strong><br>
+                    <span id="current_datetime" style="font-size: 0.95em; color: var(--accent);">Loading...</span>
+                    <div id="timezone_warning" style="display: none; margin-top: 8px; padding: 8px; background: #4a3000; border: 1px solid #ff9800; border-radius: 4px; color: #ffcc80;">
+                        ⚠️ <strong>Timezone Mismatch:</strong> Your browser time differs from server time by <span id="time_diff"></span>. File paths will use server time.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="host">Host Address</label>
+                    <select id="host" name="web_server.host" required>
+                        <option value="0.0.0.0">0.0.0.0 (Accessible from network)</option>
+                        <option value="127.0.0.1">127.0.0.1 (Localhost only)</option>
+                    </select>
+                    <small>Choose who can access the server (requires server restart)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="port">Port Number (1-65535)</label>
+                    <input type="number" id="port" name="web_server.port" min="1" max="65535" step="1" required>
+                    <small>Port 80 requires admin privileges (requires server restart)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="update_interval">Update Interval (seconds)</label>
+                    <input type="number" id="update_interval" name="web_server.update_interval" min="0.1" max="5.0" step="0.1" required>
+                    <small>How often UI refreshes - 0.5-1.0s recommended (requires server restart)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="ip_whitelist">IP Whitelist (one per line)</label>
+                    <textarea id="ip_whitelist" name="web_server.settings_ip_whitelist" rows="4" placeholder="127.0.0.1&#10;::1&#10;192.168.2.0/24"></textarea>
+                    <small>IPs that can access settings pages</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="database_path">Database Base Path</label>
+                    <input type="text" id="database_path" name="database.path" placeholder="_AUTOMATIC_BACKUP (default)">
+                    <small>Custom base path. Leave blank to use: _AUTOMATIC_BACKUP</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="database_path_format">Database Path Format</label>
+                    <input type="text" id="database_path_format" name="database.path_format" placeholder="%Y/%m" oninput="updatePreview()">
+                    <small>Python strftime format for subdirectories. Default: %Y/%m</small>
+                    <div style="margin-top: 8px; padding: 8px; background: var(--bg-card); border-left: 3px solid var(--accent); border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 0.85em; color: var(--text-primary);">
+                        <strong>Full Path:</strong> <span id="database_path_preview">_AUTOMATIC_BACKUP/2025/01/20250108_143527.db</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="database_filename_format">Database Filename Format</label>
+                    <input type="text" id="database_filename_format" name="database.filename_format" placeholder="%Y-%m-%d_%H%M%S" oninput="updatePreview()">
+                    <small>Python strftime format for database filenames. Default: %Y-%m-%d_%H%M%S</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="database_filename_prefix">Session Filename Prefix</label>
+                    <input type="text" id="database_filename_prefix" name="database.filename_prefix" placeholder="e.g. Church, Meeting" oninput="updatePreview()">
+                    <small>Optional. Leave blank for date-only filenames, or set a label like "Church" to get 2025-01-08__14-30-00_Church.db</small>
+                </div>
+
+
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="srt_generation_enabled" name="database.srt_enabled">
+                    <label for="srt_generation_enabled">Save Transcription SRT</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="html_generation_enabled" name="database.html_enabled">
+                    <label for="html_generation_enabled">Save Transcription HTML</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="translation_srt_enabled" name="live_translation.srt_enabled">
+                    <label for="translation_srt_enabled">Save Translation SRT</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="translation_html_enabled" name="live_translation.html_enabled">
+                    <label for="translation_html_enabled">Save Translation HTML</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="audio_backup_wav_enabled" name="audio_backup.wav_enabled">
+                    <label for="audio_backup_wav_enabled">Enable .wav Audio Backup (final session file)</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="audio_backup_ts_enabled" name="audio_backup.ts_enabled">
+                    <label for="audio_backup_ts_enabled">Enable .ts Audio Backup (continuous/power-fail safe)</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="audio_backup_path">Audio Backup Base Path</label>
+                    <input type="text" id="audio_backup_path" name="audio_backup.base_directory" placeholder="_AUTOMATIC_BACKUP (default)" oninput="updatePreview()">
+                    <small>Custom base path. Leave blank to use: _AUTOMATIC_BACKUP</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="audio_backup_path_format">Audio Backup Path Format</label>
+                    <input type="text" id="audio_backup_path_format" name="audio_backup.path_format" placeholder="%Y/%m" oninput="updatePreview()">
+                    <small>Python strftime format for subdirectories. Default: %Y/%m</small>
+                    <div style="margin-top: 8px; padding: 8px; background: var(--bg-card); border-left: 3px solid var(--accent); border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 0.85em; color: var(--text-primary);">
+                        <strong>Full Paths:</strong><br>
+                        <span id="audio_path_preview_wav">.wav: _AUTOMATIC_BACKUP/2025/01/20250108_143527.wav</span><br>
+                        <span id="audio_path_preview_ts">.ts: _AUTOMATIC_BACKUP/2025/01/20250108_143527.ts</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="audio_backup_filename_format">Audio Filename Format</label>
+                    <input type="text" id="audio_backup_filename_format" name="audio_backup.filename_format" placeholder="%Y-%m-%d_%H%M%S" oninput="updatePreview()">
+                    <small>Python strftime format for audio filenames. Default: %Y-%m-%d_%H%M%S</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="audio_filename_prefix">Audio Filename Prefix</label>
+                    <input type="text" id="audio_filename_prefix" name="audio_backup.filename_prefix" placeholder="Recording" oninput="updatePreview()">
+                    <small>Optional prefix. Example: 2025-01-08_143527_Recording.wav</small>
+                </div>
+
+                <button id="main-save-btn" type="submit" class="btn-save" style="background: var(--accent);">💾 Save Settings</button>
+                <button type="button" onclick="restartServer()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">🔄 Restart Server</button>
+                <button type="button" onclick="resetAllToDefaults()" class="btn-save" style="background: #e53e3e; margin-top: 10px; width: 100%;">⚠️ Reset ALL Settings to Default (Nuclear)</button>
+                <button type="button" onclick="logout()" class="btn-save" style="background: var(--warning); margin-top: 10px; width: 100%;">🚪 Logout</button>
+            </div>
+            </form>
+
+            <!-- Server Panel -->
+            <div class="server-panel">
+                <!-- Disk Space Display -->
+                <div class="settings-card" style="border-left-color: var(--success);">
+                    <h4>💾 Disk Space Usage</h4>
+                    <div id="disk_space_info" style="font-size: 0.9em; color: var(--text-primary);">
+                        <div style="margin-bottom: 10px;">
+                            <strong>Path:</strong> <span id="disk_path">Loading...</span>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span><strong>Total:</strong> <span id="disk_total">-</span></span>
+                                <span><strong>Free:</strong> <span id="disk_free">-</span></span>
+                                <span><strong>Used:</strong> <span id="disk_used">-</span></span>
+                            </div>
+                            <div style="background: #3a3a3a; border-radius: 10px; height: 20px; overflow: hidden;">
+                                <div id="disk_usage_bar" style="background: linear-gradient(135deg, var(--success) 0%, #38a169 100%); height: 100%; width: 0%; transition: width 0.5s, background 0.5s; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 0.75em; font-weight: 600;"></div>
+                            </div>
+                        </div>
+                        <div style="text-align: center; font-size: 0.85em; color: var(--text-secondary);">
+                            <span id="disk_percentage">0%</span> used
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        💡 <strong>Tip:</strong> Monitor disk space regularly to ensure you have enough room for audio backups and database files. The application stores files in the current working directory shown above.
+                    </div>
+                </div>
+
+                <!-- API Endpoints Card -->
+                <div class="settings-card" style="border-left-color: #63b3ed;">
+                    <h4>🔌 API Endpoints</h4>
+                    <div class="description" style="margin-bottom: 12px;">
+                        All available API endpoints for integration and automation.
+                    </div>
+                    <div id="api-endpoints-list" style="max-height: 400px; overflow-y: auto;">
+                        <div style="color: var(--text-secondary);">Loading endpoints...</div>
+                    </div>
+                    <div class="info-box">
+                        💡 <strong>Tip:</strong> Click the copy button to copy the full endpoint URL to clipboard.
+                    </div>
+                </div>
+
+                <!-- Masonry grid for info cards -->
+                <div class="masonry-grid">
+                    <!-- Network Access Card -->
+                    <div class="settings-card">
+                        <h4>🌐 Network Access</h4>
+                        <div class="description">
+                            <strong>Host Options:</strong><br>
+                            • <code>0.0.0.0</code> - Accessible from any device on your network<br>
+                            • <code>127.0.0.1</code> - Only accessible from this computer
+                        </div>
+                        <div class="warning-box">
+                            ⚠️ <strong>Security:</strong> Using 0.0.0.0 allows network access. Make sure you trust devices on your network or use IP whitelist below.
+                        </div>
+                    </div>
+
+                    <!-- Port Configuration Card -->
+                    <div class="settings-card">
+                        <h4>🔌 Port Configuration</h4>
+                        <div class="description">
+                            <strong>Common Ports:</strong><br>
+                            • <code>80</code> - Standard HTTP (requires admin/root)<br>
+                            • <code>8080</code> - Alternative HTTP (no special privileges)<br>
+                            • <code>5000</code> - Common development port<br>
+                            • <code>3000</code> - Alternative development port
+                        </div>
+                        <div class="warning-box">
+                            ⚠️ <strong>Note:</strong> Port 80 requires administrator/root privileges.
+                        </div>
+                    </div>
+
+                    <!-- Performance Card -->
+                    <div class="settings-card">
+                        <h4>⚡ Performance Settings</h4>
+                        <div class="description">
+                            <strong>Update Interval:</strong><br>
+                            • <code>0.1-0.5s</code> - Very responsive, higher CPU usage<br>
+                            • <code>0.5-1.0s</code> - Balanced (recommended)<br>
+                            • <code>1.0-5.0s</code> - Lower CPU usage, less responsive
+                        </div>
+                        <div class="info-box">
+                            💡 <strong>Tip:</strong> Lower values = more responsive but use more system resources.
+                        </div>
+                    </div>
+
+                    <!-- Security Card -->
+                    <div class="settings-card">
+                        <h4>🔒 Security Settings</h4>
+                        <div class="description">
+                            <strong>IP Whitelist Examples:</strong><br>
+                            • <code>127.0.0.1</code> or <code>::1</code> - localhost only<br>
+                            • <code>192.168.1.100</code> - specific IP<br>
+                            • <code>192.168.2.0/24</code> - entire subnet<br>
+                            • <code>0.0.0.0/0</code> - allow all (not recommended)
+                        </div>
+                        <div class="warning-box">
+                            ⚠️ Only whitelisted IPs can access settings pages. Index page is always accessible.
+                        </div>
+                    </div>
+
+                    <!-- Database Settings Card -->
+                    <div class="settings-card">
+                        <h4>💾 Database Settings</h4>
+                        <!-- Transcription Lock Warning -->
+                        <div id="transcription_lock_warning" style="display: none; background: #3a2f1a; border: 1px solid #5a4a2d; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 4px solid #f6ad55;">
+                            <span style="color: #f6ad55; font-weight: 600;">⚠️ Live Transcription Running</span><br>
+                            <small style="color: var(--text-primary);">Database and audio backup settings are locked. Stop transcription to modify these settings.</small>
+                        </div>
+                        <div class="description">
+                            <strong>Python strftime Format Codes:</strong><br>
+                            • <code>%Y</code> - 4-digit year (2025)<br>
+                            • <code>%m</code> - 2-digit month (01-12)<br>
+                            • <code>%d</code> - 2-digit day (01-31)<br>
+                            • <code>%H</code> - 2-digit hour 24h (00-23)<br>
+                            • <code>%M</code> - 2-digit minute (00-59)<br>
+                            • <code>%S</code> - 2-digit second (00-59)<br>
+                            • <code>%A</code> - Weekday name (Monday)<br>
+                            • <code>%B</code> - Month name (January)<br>
+                            • <code>%W</code> - Week number (00-53)
+                        </div>
+                        <div class="description">
+                            <strong>Path Format Examples:</strong><br>
+                            • <code>%Y/%m</code> → 2025/01/<br>
+                            • <code>%Y/%m/%d</code> → 2025/01/08/<br>
+                            • <code>Daily/%Y-%m-%d</code> → Daily/2025-01-08/<br>
+                            • <code>Weekly/%Y-W%W</code> → Weekly/2025-W02/<br>
+                            • <code>%B_%Y</code> → January_2025/
+                        </div>
+                        <div class="description">
+                            <strong>Filename Format Examples:</strong><br>
+                            • <code>%Y-%m-%d_%H%M%S</code> → 2025-01-08_143022<br>
+                            • <code>%Y%m%d_%H%M</code> → 20250108_1430<br>
+                            • <code>%A_%Y-%m-%d</code> → Wednesday_2025-01-08
+                        </div>
+                    </div>
+
+                    <!-- Audio Backup Card -->
+                    <div class="settings-card">
+                        <h4>🎙️ Audio Backup</h4>
+                        <div class="description">
+                            <strong>Two backup formats available:</strong><br>
+                            • <strong>.wav</strong> - Final session file, created when transcription stops<br>
+                            • <strong>.ts</strong> - Continuous MPEG-TS backup, power-fail safe (survives crashes)
+                        </div>
+                        <div class="description">
+                            <strong>Backup Settings:</strong><br>
+                            • Both formats use the same path and filename settings<br>
+                            • Default base path: <code>_AUTOMATIC_BACKUP</code><br>
+                            • Uses Python strftime format codes for paths and filenames
+                        </div>
+                        <div class="description">
+                            <strong>Audio Path Examples:</strong><br>
+                            • <code>%Y/%m</code> → 2025/01/<br>
+                            • <code>ByMonth/%Y-%m</code> → ByMonth/2025-01/<br>
+                            • <code>Daily/%Y-%m-%d</code> → Daily/2025-01-08/
+                        </div>
+                        <div class="description">
+                            <strong>Audio Filename Examples:</strong><br>
+                            • <code>%Y-%m-%d-%H%M%S</code> → 2025-01-08-143022.wav/.ts<br>
+                            • <code>Voice_%Y-%m-%d</code> → Voice_2025-01-08.wav/.ts
+                        </div>
+                        <div class="warning-box">
+                            ⚠️ Audio backups can consume significant disk space over time. The .ts format is recommended for long recordings as it survives power failures.
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        </div>
+
+        <div id="unsaved-bar" class="unsaved-bar" style="display:none;">
+            <div class="unsaved-bar-inner">
+                <span>Unsaved changes</span>
+                <button type="button" onclick="document.getElementById('serverForm').requestSubmit()" class="btn-save" style="margin:0; width:auto; padding:8px 24px; background: var(--accent);">Save</button>
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        // Load disk space information
+        async function loadDiskSpace() {
+            try {
+                const response = await fetch('/api/disk-space');
+                const data = await response.json();
+
+                if (data.success) {
+                    const diskSpace = data.disk_space;
+
+                    // Update the display
+                    document.getElementById('disk_path').textContent = diskSpace.path;
+                    document.getElementById('disk_total').textContent = diskSpace.total_formatted;
+                    document.getElementById('disk_free').textContent = diskSpace.free_formatted;
+                    document.getElementById('disk_used').textContent = diskSpace.used_formatted;
+                    document.getElementById('disk_percentage').textContent = diskSpace.percent_used + '%';
+
+                    // Update the progress bar
+                    const progressBar = document.getElementById('disk_usage_bar');
+                    progressBar.style.width = diskSpace.percent_used + '%';
+                    progressBar.textContent = diskSpace.percent_used + '%';
+
+                    // Change color based on usage
+                    if (diskSpace.percent_used >= 90) {
+                        progressBar.style.background = 'linear-gradient(135deg, var(--danger) 0%, #e53e3e 100%)';
+                    } else if (diskSpace.percent_used >= 75) {
+                        progressBar.style.background = 'linear-gradient(135deg, #f6ad55 0%, var(--warning) 100%)';
+                    } else {
+                        progressBar.style.background = 'linear-gradient(135deg, var(--success) 0%, #38a169 100%)';
+                    }
+                } else {
+                    console.error('Error loading disk space:', data.error);
+                    document.getElementById('disk_path').textContent = 'Error loading disk space';
+                }
+            } catch (error) {
+                console.error('Error loading disk space:', error);
+                document.getElementById('disk_path').textContent = 'Error loading disk space';
+            }
+        }
+
+        // Load and display API endpoints
+        async function loadApiEndpoints() {
+            const container = document.getElementById('api-endpoints-list');
+            try {
+                const response = await fetch('/api/endpoints');
+                const data = await response.json();
+
+                if (data.success && data.endpoints) {
+                    const baseUrl = window.location.origin;
+
+                    // Group endpoints by category (first path segment after /api/)
+                    const grouped = {};
+                    data.endpoints.forEach(ep => {
+                        if (ep.path.startsWith('/api/')) {
+                            const parts = ep.path.split('/');
+                            const category = parts[2] || 'general';
+                            if (!grouped[category]) grouped[category] = [];
+                            grouped[category].push(ep);
+                        }
+                    });
+
+                    // Sort categories alphabetically
+                    const sortedCategories = Object.keys(grouped).sort();
+
+                    let html = '';
+                    sortedCategories.forEach(category => {
+                        const eps = grouped[category];
+                        html += `<div class="endpoint-group">`;
+                        html += `<div class="endpoint-category">${category}</div>`;
+                        eps.forEach(ep => {
+                            const methods = ep.methods.join(', ');
+                            const fullUrl = baseUrl + ep.path;
+                            const description = ep.description || '';
+                            const examples = ep.examples || [];
+                            const descriptionHtml = description ? `<div class="endpoint-description">${description}</div>` : '';
+                            const examplesHtml = examples.length > 0 ? examples.map(ex => `<div class="endpoint-example">${ex}</div>`).join('') : '';
+                            html += `
+                                <div class="endpoint-item">
+                                    <span class="endpoint-methods">${methods}</span>
+                                    <div class="endpoint-info">
+                                        <span class="endpoint-path">${ep.path}</span>
+                                        ${descriptionHtml}
+                                        ${examplesHtml}
+                                    </div>
+                                    <button class="endpoint-copy-btn" onclick="copyEndpoint('${fullUrl}')" title="Copy full URL">📋</button>
+                                </div>`;
+                        });
+                        html += `</div>`;
+                    });
+
+                    container.innerHTML = html || '<div style="color: var(--text-secondary);">No API endpoints found.</div>';
+                } else {
+                    container.innerHTML = '<div style="color: var(--danger);">Failed to load endpoints.</div>';
+                }
+            } catch (error) {
+                console.error('Error loading API endpoints:', error);
+                container.innerHTML = '<div style="color: var(--danger);">Failed to load endpoints.</div>';
+            }
+        }
+
+        // Copy endpoint URL to clipboard
+        function copyEndpoint(url) {
+            // Use clipboard API if available, otherwise fallback
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(() => {
+                    showAlert('success', '✅ Endpoint URL copied to clipboard!');
+                }).catch(() => {
+                    fallbackCopyEndpoint(url);
+                });
+            } else {
+                fallbackCopyEndpoint(url);
+            }
+        }
+
+        // Fallback copy for non-HTTPS or older browsers
+        function fallbackCopyEndpoint(url) {
+            const textarea = document.createElement('textarea');
+            textarea.value = url;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showAlert('success', '✅ Endpoint URL copied to clipboard!');
+            } catch (err) {
+                showAlert('error', '❌ Failed to copy URL');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        // Load settings on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            loadDiskSpace(); // Load disk space information
+            loadApiEndpoints(); // Load API endpoints
+            checkTranscriptionStatus(); // Check if transcription is running
+            // Poll transcription status every 2 seconds
+            setInterval(checkTranscriptionStatus, 2000);
+
+            // Initialize and update current date/time
+            updateCurrentDateTime();
+            setInterval(updateCurrentDateTime, 1000);
+        });
+
+        async function updateCurrentDateTime() {
+            try {
+                const response = await fetch('/api/server/time');
+                const data = await response.json();
+
+                if (data.success) {
+                    // Display server time
+                    document.getElementById('current_datetime').textContent = data.formatted;
+
+                    // Check for timezone/date mismatch using explicit server values
+                    const browserDate = new Date();
+
+                    // Compare date components directly from server response
+                    const serverDateStr = `${data.year}-${data.month}-${data.day}`;
+                    const browserDateStr = `${browserDate.getFullYear()}-${browserDate.getMonth() + 1}-${browserDate.getDate()}`;
+                    const dateDiff = serverDateStr !== browserDateStr;
+
+                    // Compare hour and minute from server response
+                    let hourDiff = Math.abs(data.hour - browserDate.getHours());
+                    if (hourDiff > 12) hourDiff = 24 - hourDiff;
+
+                    // Calculate minute difference (accounting for hour boundaries)
+                    const serverTotalMinutes = data.hour * 60 + data.minute;
+                    const browserTotalMinutes = browserDate.getHours() * 60 + browserDate.getMinutes();
+                    let minuteDiff = Math.abs(serverTotalMinutes - browserTotalMinutes);
+                    // Handle day boundary (e.g., 23:55 vs 00:05 = 10 minutes, not 1430)
+                    if (minuteDiff > 720) minuteDiff = 1440 - minuteDiff;
+
+                    const warningDiv = document.getElementById('timezone_warning');
+                    // Trigger warning if: date differs, OR hour differs, OR minute differs by > 2 minutes
+                    if (dateDiff || hourDiff >= 1 || minuteDiff > 2) {
+                        let diffText = '';
+                        if (dateDiff && hourDiff >= 1) {
+                            diffText = `different date and ${hourDiff} hour(s)`;
+                        } else if (dateDiff && minuteDiff > 2) {
+                            diffText = `different date and ${minuteDiff} minute(s)`;
+                        } else if (dateDiff) {
+                            diffText = 'different date';
+                        } else if (hourDiff >= 1) {
+                            diffText = `${hourDiff} hour(s)`;
+                        } else {
+                            diffText = `${minuteDiff} minute(s)`;
+                        }
+                        document.getElementById('time_diff').textContent = diffText;
+                        warningDiv.style.display = 'block';
+                    } else {
+                        warningDiv.style.display = 'none';
+                    }
+
+                    // Store server time for preview updates
+                    window.serverTime = new Date(data.timestamp * 1000);
+                    updatePreview();
+                }
+            } catch (error) {
+                // Fallback to browser time if API fails
+                const now = new Date();
+                const options = {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                };
+                document.getElementById('current_datetime').textContent = now.toLocaleString('en-US', options) + ' (browser time)';
+                window.serverTime = now;
+            }
+        }
+
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    const config = data.config;
+
+                    // Network settings
+                    document.getElementById('host').value = config.web_server?.host || '0.0.0.0';
+                    document.getElementById('port').value = config.web_server?.port || 80;
+                    document.getElementById('update_interval').value = config.web_server?.update_interval || 0.5;
+
+                    // IP Whitelist
+                    const whitelist = config.web_server?.settings_ip_whitelist || ['127.0.0.1', '::1', '192.168.2.0/24'];
+                    document.getElementById('ip_whitelist').value = Array.isArray(whitelist) ? whitelist.join('\n') : whitelist;
+
+                    // Database settings
+                    document.getElementById('database_path').value = config.database?.path || '';
+                    document.getElementById('database_path_format').value = config.database?.path_format || '%Y/%m';
+                    document.getElementById('database_filename_format').value = config.database?.filename_format || '%Y-%m-%d_%H%M%S';
+                    document.getElementById('database_filename_prefix').value = config.database?.filename_prefix || '';
+                    document.getElementById('srt_generation_enabled').checked = config.database?.srt_enabled !== false;
+                    document.getElementById('html_generation_enabled').checked = config.database?.html_enabled !== false;
+                    document.getElementById('translation_srt_enabled').checked = config.live_translation?.srt_enabled !== false;
+                    document.getElementById('translation_html_enabled').checked = config.live_translation?.html_enabled !== false;
+
+                    // Audio backup settings
+                    // Support both old "enabled" and new "wav_enabled" for backward compatibility
+                    document.getElementById('audio_backup_wav_enabled').checked = config.audio_backup?.wav_enabled ?? config.audio_backup?.enabled ?? true;
+                    document.getElementById('audio_backup_ts_enabled').checked = config.audio_backup?.ts_enabled !== false;
+                    document.getElementById('audio_backup_path').value = config.audio_backup?.base_directory || '';
+                    document.getElementById('audio_backup_path_format').value = config.audio_backup?.path_format || '%Y/%m';
+                    document.getElementById('audio_backup_filename_format').value = config.audio_backup?.filename_format || '%Y-%m-%d_%H%M%S';
+                    document.getElementById('audio_filename_prefix').value = config.audio_backup?.filename_prefix || '';
+
+                    // Update previews after loading settings
+                    updatePreview();
+                } else {
+                    showAlert('Error loading settings: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error loading settings: ' + error.message, 'error');
+            }
+        }
+
+        async function saveSettings(event) {
+            event.preventDefault();
+
+            // Parse IP whitelist from textarea (one per line)
+            const ipWhitelistText = document.getElementById('ip_whitelist').value;
+            const ipWhitelist = ipWhitelistText.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+
+            const settings = {
+                web_server: {
+                    host: document.getElementById('host').value,
+                    port: parseInt(document.getElementById('port').value),
+                    update_interval: parseFloat(document.getElementById('update_interval').value),
+                    settings_ip_whitelist: ipWhitelist
+                },
+                database: {
+                    path: document.getElementById('database_path').value.trim(),
+                    path_format: document.getElementById('database_path_format').value.trim(),
+                    filename_format: document.getElementById('database_filename_format').value.trim(),
+                    filename_prefix: document.getElementById('database_filename_prefix').value.trim(),
+                    srt_enabled: document.getElementById('srt_generation_enabled').checked,
+                    html_enabled: document.getElementById('html_generation_enabled').checked
+                },
+                live_translation: {
+                    srt_enabled: document.getElementById('translation_srt_enabled').checked,
+                    html_enabled: document.getElementById('translation_html_enabled').checked
+                },
+                audio_backup: {
+                    wav_enabled: document.getElementById('audio_backup_wav_enabled').checked,
+                    ts_enabled: document.getElementById('audio_backup_ts_enabled').checked,
+                    base_directory: document.getElementById('audio_backup_path').value.trim(),
+                    path_format: document.getElementById('audio_backup_path_format').value.trim(),
+                    filename_format: document.getElementById('audio_backup_filename_format').value.trim(),
+                    filename_prefix: document.getElementById('audio_filename_prefix').value.trim()
+                }
+            };
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('✅ Settings saved successfully!\n\n⚠️ Please restart the application for changes to take effect.', 'success');
+                    markClean();
+                } else {
+                    showAlert('❌ Error saving settings: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error saving settings: ' + error.message, 'error');
+            }
+        }
+
+        // Unsaved changes detection
+        let unsavedChanges = false;
+        let saveBtnVisible = true;
+
+        function markDirty() {
+            if (!unsavedChanges) {
+                unsavedChanges = true;
+                if (!saveBtnVisible) {
+                    document.getElementById('unsaved-bar').style.display = 'flex';
+                }
+            }
+        }
+
+        function markClean() {
+            unsavedChanges = false;
+            document.getElementById('unsaved-bar').style.display = 'none';
+        }
+
+        (function() {
+            const panel = document.querySelector('.settings-panel');
+            panel.addEventListener('input', markDirty);
+            panel.addEventListener('change', markDirty);
+
+            const saveBtn = document.getElementById('main-save-btn');
+            const observer = new IntersectionObserver(([entry]) => {
+                saveBtnVisible = entry.isIntersecting;
+                if (unsavedChanges) {
+                    document.getElementById('unsaved-bar').style.display = saveBtnVisible ? 'none' : 'flex';
+                }
+            });
+            observer.observe(saveBtn);
+        })();
+
+        // Nuclear reset - resets ALL settings to defaults with backup
+        async function resetAllToDefaults() {
+            const confirmation1 = confirm(
+                '⚠️ WARNING: NUCLEAR RESET ⚠️\n\n' +
+                'This will reset EVERYTHING to defaults:\n\n' +
+                '• Live transcription settings\n' +
+                '• Database paths and settings\n' +
+                '• Audio backup settings\n' +
+                '• Web server settings\n' +
+                '• Microphone selection\n' +
+                '• IP whitelist\n' +
+                '• Timezone settings\n' +
+                '• Word highlighting\n' +
+                '• File manager settings\n' +
+                '• ALL custom configurations\n\n' +
+                'A backup will be created automatically before resetting.\n\n' +
+                'Are you ABSOLUTELY SURE?'
+            );
+
+            if (!confirmation1) return;
+
+            const confirmation2 = confirm(
+                '⚠️ FINAL WARNING ⚠️\n\n' +
+                'You will lose ALL custom settings including:\n' +
+                '• Your sliding window parameters\n' +
+                '• Your microphone (plughw:1,0)\n' +
+                '• Your IP whitelist\n\n' +
+                'A backup will be saved as config.json.backup.[timestamp]\n\n' +
+                'Type "RESET" in the next prompt to confirm.'
+            );
+
+            if (!confirmation2) return;
+
+            const userInput = prompt('Type "RESET" to confirm complete reset:');
+            if (userInput !== 'RESET') {
+                showAlert('❌ Reset cancelled. Settings unchanged.', 'error');
+                return;
+            }
+
+            try {
+                showAlert('🔄 Creating backup and resetting to defaults...', 'success');
+
+                const response = await fetch('/api/config/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ create_backup: true })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    let message = '✅ ' + data.message;
+                    if (data.backup_path) {
+                        message += '\n\n💾 Backup saved: ' + data.backup_path;
+                    }
+                    message += '\n\n⚠️ The page will reload to apply changes.';
+                    showAlert(message, 'success');
+                    // Reload page after delay
+                    setTimeout(() => location.reload(), 3000);
+                } else {
+                    showAlert('❌ Failed to reset: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        // Update live preview for path and filename formats (using Python strftime format)
+        function updatePreview() {
+            // Use server time if available, otherwise fallback to browser time
+            const now = window.serverTime || new Date();
+
+            // Helper function to format using Python strftime codes
+            const strftimeFormat = (format) => {
+                if (!format) return '';
+
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                   'July', 'August', 'September', 'October', 'November', 'December'];
+
+                // Calculate week number
+                const startOfYear = new Date(now.getFullYear(), 0, 1);
+                const days = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000));
+                const weekNum = Math.ceil((days + startOfYear.getDay() + 1) / 7);
+
+                return format
+                    .replace(/%Y/g, now.getFullYear())
+                    .replace(/%m/g, String(now.getMonth() + 1).padStart(2, '0'))
+                    .replace(/%d/g, String(now.getDate()).padStart(2, '0'))
+                    .replace(/%H/g, String(now.getHours()).padStart(2, '0'))
+                    .replace(/%M/g, String(now.getMinutes()).padStart(2, '0'))
+                    .replace(/%S/g, String(now.getSeconds()).padStart(2, '0'))
+                    .replace(/%A/g, dayNames[now.getDay()])
+                    .replace(/%B/g, monthNames[now.getMonth()])
+                    .replace(/%W/g, String(weekNum).padStart(2, '0'));
+            };
+
+            // Database previews - show FULL path including filename
+            const dbPath = document.getElementById('database_path').value.trim() || '_AUTOMATIC_BACKUP';
+            const dbPathFormat = document.getElementById('database_path_format').value.trim() || '%Y/%m';
+            const dbFilenameFormat = document.getElementById('database_filename_format').value.trim() || '%Y-%m-%d_%H%M%S';
+            const dbPrefix = document.getElementById('database_filename_prefix').value.trim();
+
+            const formattedDbPath = strftimeFormat(dbPathFormat);
+            const formattedDbFilename = strftimeFormat(dbFilenameFormat);
+            const dbFilenameWithPrefix = dbPrefix ? `${formattedDbFilename}_${dbPrefix}` : formattedDbFilename;
+            const fullDbPath = `${dbPath}/${formattedDbPath}/${dbFilenameWithPrefix}.db`;
+
+            document.getElementById('database_path_preview').textContent = fullDbPath;
+
+            // Audio backup previews - show FULL path including filename
+            // Use same base path and path format as database for consistency
+            const audioPath = document.getElementById('audio_backup_path').value.trim() || dbPath;
+            const audioPathFormat = document.getElementById('audio_backup_path_format').value.trim() || dbPathFormat;
+            const audioFilenameFormat = document.getElementById('audio_backup_filename_format').value.trim() || '%Y-%m-%d_%H%M%S';
+            const audioPrefix = document.getElementById('audio_filename_prefix').value.trim();
+
+            const formattedAudioPath = strftimeFormat(audioPathFormat);
+            const formattedAudioFilename = strftimeFormat(audioFilenameFormat);
+            const audioFilenameWithPrefix = audioPrefix ? `${formattedAudioFilename}_${audioPrefix}` : formattedAudioFilename;
+            const basePath = `${audioPath}/${formattedAudioPath}/${audioFilenameWithPrefix}`;
+
+            document.getElementById('audio_path_preview_wav').textContent = `.wav: ${basePath}.wav`;
+            document.getElementById('audio_path_preview_ts').textContent = `.ts: ${basePath}.ts`;
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert_message');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // Check transcription status and lock/unlock fields
+        async function checkTranscriptionStatus() {
+            try {
+                const response = await fetch('/api/transcription/status');
+                const data = await response.json();
+
+                if (data.success) {
+                    const isRunning = data.state?.running || false;
+                    lockDatabaseFields(isRunning);
+                }
+            } catch (error) {
+                console.error('Error checking transcription status:', error);
+            }
+        }
+
+        // Lock or unlock database and audio backup fields
+        function lockDatabaseFields(lock) {
+            const fields = [
+                'database_path',
+                'database_path_format',
+                'database_filename_format',
+                'database_filename_prefix',
+                'srt_generation_enabled',
+                'html_generation_enabled',
+                'translation_srt_enabled',
+                'translation_html_enabled',
+                'audio_backup_wav_enabled',
+                'audio_backup_ts_enabled',
+                'audio_backup_path',
+                'audio_backup_path_format',
+                'audio_backup_filename_format',
+                'audio_backup_filename_prefix'
+            ];
+
+            fields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.disabled = lock;
+                    if (lock) {
+                        field.style.opacity = '0.6';
+                        field.style.cursor = 'not-allowed';
+                        field.title = 'Stop live transcription before changing this setting';
+                    } else {
+                        field.style.opacity = '1';
+                        field.style.cursor = '';
+                        field.title = '';
+                    }
+                }
+            });
+
+            // Show/hide warning banner
+            const warningBanner = document.getElementById('transcription_lock_warning');
+            if (warningBanner) {
+                warningBanner.style.display = lock ? 'block' : 'none';
+            }
+
+            // Also disable the save button if transcription is running
+            const saveBtn = document.querySelector('button[type="submit"]');
+            if (saveBtn) {
+                if (lock) {
+                    saveBtn.disabled = true;
+                    saveBtn.style.opacity = '0.6';
+                    saveBtn.style.cursor = 'not-allowed';
+                    saveBtn.title = 'Stop live transcription before saving settings';
+                } else {
+                    saveBtn.disabled = false;
+                    saveBtn.style.opacity = '1';
+                    saveBtn.style.cursor = 'pointer';
+                    saveBtn.title = '';
+                }
+            }
+        }
+
+        // Restart server
+        async function restartServer() {
+            if (!confirm('Are you sure you want to restart the server? This will temporarily disconnect all users.')) {
+                return;
+            }
+
+            try {
+                showAlert('Restarting server... Please wait 10-15 seconds and refresh the page.', 'info');
+
+                const response = await fetch('/api/server/restart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Server is restarting... Page will reload automatically.', 'success');
+
+                    // Auto-reload page after 12 seconds
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 12000);
+                } else {
+                    showAlert('Failed to restart server: ' + data.error, 'error');
+                }
+            } catch (error) {
+                // This is expected - server is restarting
+                showAlert('Server is restarting... Page will reload automatically.', 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 12000);
+            }
+        }
+
+        async function logout() {
+            if (!confirm('Are you sure you want to logout? You will need to authenticate again to access settings.')) {
+                return;
+            }
+
+            try {
+                showAlert('Logging out...', 'info');
+
+                const response = await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Logged out successfully. Redirecting...', 'success');
+
+                    // Clear localStorage backup
+                    localStorage.removeItem('auth_session');
+
+                    // Redirect to home page after short delay
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1000);
+                } else {
+                    showAlert('Logout failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                showAlert('Network error during logout. Please try again.', 'error');
+            }
+        }
+    </script>
+{% endblock %}

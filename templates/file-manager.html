@@ -1,0 +1,1284 @@
+{% extends "base.html" %}
+
+{% block title %}File Manager - Speech to Text{% endblock %}
+{% block page_title %}File Manager{% endblock %}
+
+{% block extra_css %}
+        .main-content {
+            padding: 20px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .breadcrumb {
+            flex: 1;
+            min-width: 300px;
+            background: var(--bg-card);
+            padding: 10px 15px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            font-family: monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            white-space: nowrap;
+            color: var(--text-primary);
+        }
+
+        .breadcrumb-part {
+            cursor: pointer;
+            color: var(--accent);
+            transition: color 0.2s;
+        }
+
+        .breadcrumb-part:hover {
+            color: #d0a9ff;
+            text-decoration: underline;
+        }
+
+        .toolbar-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #fileTableContainer {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            min-width: 500px;
+        }
+
+        .file-table th {
+            background: var(--bg-elevated);
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--border);
+        }
+
+        .file-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .file-table tr:hover {
+            background: #2f2f2f;
+        }
+
+        .file-icon {
+            font-size: 1.2em;
+            margin-right: 8px;
+        }
+
+        .folder-icon {
+            color: var(--warning);
+        }
+
+        .file-icon-default {
+            color: #a0aec0;
+        }
+
+        .file-name {
+            cursor: pointer;
+            color: var(--text-primary);
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .file-name:hover {
+            color: var(--accent);
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 4px 10px;
+            font-size: 0.85em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-rename {
+            background: var(--accent);
+            color: #ffffff;
+        }
+
+        .action-rename:hover {
+            background: #d0a9ff;
+        }
+
+        .action-delete {
+            background: var(--danger);
+            color: white;
+        }
+
+        .action-delete:hover {
+            background: #e53e3e;
+        }
+
+        .action-download {
+            background: #4299e1;
+            color: white;
+        }
+
+        .action-download:hover {
+            background: #3182ce;
+        }
+
+        .action-preview {
+            background: #9f7aea;
+            color: white;
+        }
+
+        .action-preview:hover {
+            background: #805ad5;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            padding: 25px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .checkbox-container input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-container label {
+            cursor: pointer;
+            user-select: none;
+            color: var(--text-primary);
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 2000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background: var(--success);
+            color: white;
+        }
+
+        .notification.error {
+            background: var(--danger);
+            color: white;
+        }
+
+        .up-button {
+            background: #a0aec0;
+            color: white;
+        }
+
+        .up-button:hover {
+            background: #718096;
+        }
+
+        .preview-modal-content {
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            padding: 25px;
+            border-radius: 10px;
+            max-width: 90%;
+            max-height: 90%;
+            width: auto;
+            height: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: auto;
+        }
+
+        .preview-content {
+            margin-top: 15px;
+            max-height: 70vh;
+            overflow: auto;
+        }
+
+        .preview-content img,
+        .preview-content video,
+        .preview-content audio {
+            max-width: 100%;
+            max-height: 70vh;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .preview-content pre {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .preview-content iframe {
+            width: 100%;
+            height: 70vh;
+            border: none;
+        }
+
+        /* Responsive file mover layout */
+        @media (max-width: 768px) {
+            #fileMoverForm {
+                grid-template-columns: 1fr !important;
+            }
+            .file-mover-right {
+                grid-column: 1 !important;
+            }
+
+            .file-table th,
+            .file-table td {
+                padding: 8px 10px;
+            }
+
+            .file-actions {
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .file-table th,
+            .file-table td {
+                padding: 6px 8px;
+                font-size: 0.85em;
+            }
+
+            /* Hide Modified column on very small screens */
+            .file-table th:nth-child(3),
+            .file-table td:nth-child(3) {
+                display: none;
+            }
+        }
+{% endblock %}
+
+{% block content %}
+            <!-- Disk Space Display (Slim) -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--text-primary);">
+                <div style="display: flex; gap: 20px; align-items: center;">
+                    <span><strong>💾 Disk:</strong> <span id="disk-space-path">-</span></span>
+                    <span><strong>Total:</strong> <span id="disk-space-total">-</span></span>
+                    <span><strong>Free:</strong> <span id="disk-space-free">-</span></span>
+                    <span><strong>Used:</strong> <span id="disk-space-used">-</span></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 150px; height: 6px; background: #3a3a3a; border-radius: 3px; overflow: hidden;">
+                        <div id="disk-space-bar" style="height: 100%; background: var(--success); width: 0%; transition: width 0.3s, background 0.3s;"></div>
+                    </div>
+                    <span id="disk-space-percent" style="min-width: 40px; font-weight: 600;">0%</span>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="breadcrumb" id="breadcrumb">
+                    <span class="breadcrumb-part" onclick="navigateToRoot()">Root</span>
+                </div>
+                <div class="toolbar-buttons">
+                    <button class="btn up-button" onclick="navigateUp()">⬆ Up</button>
+                    <button class="btn btn-secondary" onclick="showCreateFolderModal()">+ New Folder</button>
+                    <button class="btn btn-primary" onclick="refreshFiles()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <!-- Show Hidden Files Toggle -->
+            <div class="checkbox-container">
+                <input type="checkbox" id="showHiddenCheckbox" onchange="toggleHiddenFiles()">
+                <label for="showHiddenCheckbox">Show hidden items</label>
+            </div>
+
+            <!-- File Mover Configuration -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 12px 15px; margin-top: 10px; border-radius: 6px; border-left: 3px solid var(--accent);">
+                <details id="fileMoverDetails">
+                    <summary style="cursor: pointer; font-weight: 600; color: var(--accent); font-size: 0.9em; user-select: none; display: flex; justify-content: space-between; align-items: center;">
+                        <span>📤 Automatic File Mover <span id="fileMoverStatus" style="font-size: 0.8em; color: var(--text-secondary); font-weight: normal;">(Disabled)</span></span>
+                        <button type="button" class="btn btn-success" onclick="event.stopPropagation(); triggerFileMover();" style="padding: 4px 12px; font-size: 0.8em;">▶️ Run Now</button>
+                    </summary>
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                        <form id="fileMoverForm" style="display: grid; grid-template-columns: 1fr auto; gap: 15px;">
+                            <!-- Left Column -->
+                            <div class="file-mover-left">
+                                <div class="form-group">
+                                    <label for="destPath">Destination Path</label>
+                                    <input type="text" id="destPath" placeholder="//server/share/folder or C:\backup">
+                                    <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 3px; display: block;">SMB path (//server/share) or local path (C:\backup)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="sourcePatterns">Source File Patterns (one per line)</label>
+                                    <textarea id="sourcePatterns" rows="3" style="width: 100%; padding: 6px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 4px; font-size: 0.8em; font-family: monospace;" placeholder="_AUTOMATIC_BACKUP/**/*.wav&#10;_AUTOMATIC_BACKUP/**/*.db"></textarea>
+                                    <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 3px; display: block;">Glob patterns relative to working directory</small>
+                                </div>
+
+                                <div style="background: var(--bg-base); padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
+                                    <h4 style="margin: 0 0 8px 0; color: var(--accent); font-size: 0.85em;">Options</h4>
+                                    <div class="form-group" style="margin-bottom: 6px;">
+                                        <div class="checkbox-group">
+                                            <input type="checkbox" id="moveOnTranscriptionStop" checked onchange="updateFileMoverStatus()">
+                                            <label for="moveOnTranscriptionStop">Move files when transcription stops</label>
+                                        </div>
+                                        <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 3px; display: block;">Automatically trigger file move when live transcription is stopped</small>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 6px;">
+                                        <div class="checkbox-group">
+                                            <input type="checkbox" id="deleteSource" checked>
+                                            <label for="deleteSource">Delete source files after move (uncheck to copy instead)</label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <div class="checkbox-group">
+                                            <input type="checkbox" id="preserveStructure" checked>
+                                            <label for="preserveStructure">Preserve directory structure</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right Column -->
+                            <div class="file-mover-right" style="min-width: 280px;">
+                                <div style="background: var(--bg-base); padding: 10px; border-radius: 4px; border: 1px solid var(--border); height: 100%;">
+                                    <h4 style="margin: 0 0 8px 0; color: var(--accent); font-size: 0.85em;">SMB/Network Credentials</h4>
+                                    <div class="form-group" style="margin-bottom: 8px;">
+                                        <label for="smbUsername">Username</label>
+                                        <input type="text" id="smbUsername" placeholder="Leave empty for local paths">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 8px;">
+                                        <label for="smbPassword">Password</label>
+                                        <input type="password" id="smbPassword" placeholder="Leave empty for local paths">
+                                        <small style="color: var(--warning); font-size: 0.7em; margin-top: 3px; display: block;">⚠️ Stored in plain text - use with caution</small>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="smbDomain">Domain (Optional)</label>
+                                        <input type="text" id="smbDomain" placeholder="WORKGROUP">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Full Width Bottom Section -->
+                            <div class="file-mover-actions" style="grid-column: 1 / -1;">
+                                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                    <button type="button" class="btn btn-secondary" onclick="testConnection()" style="flex: 1;">🔌 Test Connection</button>
+                                    <button type="button" class="btn btn-primary" onclick="saveFileMoverConfig()" style="flex: 1;">💾 Save Configuration</button>
+                                    <button type="button" class="btn btn-success" onclick="triggerFileMover()" style="flex: 1;">▶️ Run Now</button>
+                                </div>
+
+                                <div id="fileMoverMessage" style="margin-top: 10px; display: none;"></div>
+                                <div id="pendingMoves" style="margin-top: 8px; padding: 8px; background: var(--bg-base); border-radius: 4px; border: 1px solid var(--border); display: none;">
+                                    <span style="color: var(--warning); font-size: 0.8em;">⚠️ Pending moves: <span id="pendingCount">0</span> files waiting to be moved</span>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </details>
+            </div>
+
+            <!-- File Table -->
+            <div id="fileTableContainer">
+                <div class="loading">Loading...</div>
+            </div>
+
+    <!-- Rename Modal -->
+    <div class="modal" id="renameModal">
+        <div class="modal-content">
+            <div class="modal-header">Rename File/Folder</div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newNameInput">New Name</label>
+                    <input type="text" id="newNameInput" placeholder="Enter new name">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmRename()">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Folder Modal -->
+    <div class="modal" id="createFolderModal">
+        <div class="modal-content">
+            <div class="modal-header">Create New Folder</div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="folderNameInput">Folder Name</label>
+                    <input type="text" id="folderNameInput" placeholder="Enter folder name">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCreateFolderModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmCreateFolder()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div class="modal" id="previewModal">
+        <div class="preview-modal-content">
+            <div class="modal-header">
+                <span id="previewFileName">File Preview</span>
+            </div>
+            <div class="preview-content" id="previewContent">
+                <!-- Content will be dynamically loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePreviewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        let currentPath = '';
+        let rootPath = '';  // Store the working directory as root
+        let showHidden = false;
+        let renameTargetPath = '';
+        let hiddenExtensions = [];
+        // Load files and disk space on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFiles();
+            loadDiskSpace();
+            loadHiddenItems();
+            // Refresh disk space every 10 seconds
+            setInterval(loadDiskSpace, 10000);
+        });
+
+        async function loadFiles(path = '') {
+            try {
+                const url = `/api/file-manager/browse?path=${encodeURIComponent(path || '')}&show_hidden=${showHidden}`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPath = data.current_path;
+
+                    // Store root path on first load
+                    if (!rootPath) {
+                        rootPath = data.current_path;
+                    }
+
+                    renderBreadcrumb(currentPath);
+                    renderFileTable(data.items, data.parent_path);
+                } else {
+                    showNotification(data.error || 'Failed to load files', 'error');
+                }
+            } catch (error) {
+                showNotification('Error loading files: ' + error.message, 'error');
+            }
+        }
+
+        async function getFileMoverConfig() {
+            const response = await fetch('/api/file-mover/status');
+            const data = await response.json();
+            return data.success ? data.config : {};
+        }
+
+        function renderBreadcrumb(path) {
+            const breadcrumb = document.getElementById('breadcrumb');
+            breadcrumb.innerHTML = '';
+
+            // Add home button
+            const homeBtn = document.createElement('button');
+            homeBtn.className = 'btn';
+            homeBtn.style.cssText = 'padding: 6px 12px; margin-right: 10px; background: var(--accent); color: white;';
+            homeBtn.textContent = '🏠 Home';
+            homeBtn.onclick = () => navigateToRoot();
+            breadcrumb.appendChild(homeBtn);
+
+            // Don't show anything if we don't have a root yet
+            if (!rootPath) return;
+
+            // Get path relative to root
+            let relativePath = '';
+            const separator = path.includes('\\') ? '\\' : '/';
+
+            if (path === rootPath) {
+                // We're at root, no additional breadcrumbs needed
+                return;
+            } else if (path.startsWith(rootPath)) {
+                // Extract the relative part
+                relativePath = path.substring(rootPath.length);
+                // Remove leading separator if present
+                if (relativePath.startsWith(separator)) {
+                    relativePath = relativePath.substring(1);
+                }
+            } else {
+                // Path is outside root - this shouldn't happen but handle it
+                console.warn('Path is outside root directory:', path, 'Root:', rootPath);
+                return;
+            }
+
+            // Split relative path into parts
+            if (!relativePath) return;
+
+            const parts = relativePath.split(separator).filter(p => p);
+
+            // Add path parts
+            for (let i = 0; i < parts.length; i++) {
+                breadcrumb.appendChild(document.createTextNode(' ' + separator + ' '));
+                const part = document.createElement('span');
+                part.className = 'breadcrumb-part';
+                part.textContent = parts[i];
+
+                // Reconstruct absolute path from root
+                const partPath = rootPath + separator + parts.slice(0, i + 1).join(separator);
+
+                part.onclick = () => loadFiles(partPath);
+                breadcrumb.appendChild(part);
+            }
+        }
+
+        function renderFileTable(items, parentPath, isRemote = false) {
+            const container = document.getElementById('fileTableContainer');
+
+            if (!items || items.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div style="font-size: 4em; margin-bottom: 20px;">📁</div>
+                        <h3>This folder is empty</h3>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <table class="file-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Modified</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            items.forEach(item => {
+                const icon = item.type === 'directory'
+                    ? '<span class="file-icon folder-icon">📁</span>'
+                    : '<span class="file-icon file-icon-default">📄</span>';
+
+                const clickHandler = item.type === 'directory'
+                    ? `loadFiles('${item.path.replace(/\\/g, '\\\\')}')`
+                    : '';
+
+                // Hide/Unhide button based on current state (only for local view)
+                const hideButton = !isRemote && item.is_hidden
+                    ? `<button class="action-btn" style="background: var(--success); color: white;" onclick="unhideItem('${item.path.replace(/\\/g, '\\\\')}')">Unhide</button>`
+                    : !isRemote ? `<button class="action-btn" style="background: #718096; color: white;" onclick="hideItem('${item.path.replace(/\\/g, '\\\\')}')">Hide</button>` : '';
+
+                // Download and Preview buttons (only for files, not folders)
+                const downloadButton = item.type === 'file'
+                    ? `<button class="action-btn action-download" onclick="downloadFile('${item.path.replace(/\\/g, '\\\\')}', '${item.name.replace(/'/g, "\\'")}')">Download</button>`
+                    : '';
+
+                const previewButton = item.type === 'file'
+                    ? `<button class="action-btn action-preview" onclick="previewFile('${item.path.replace(/\\/g, '\\\\')}', '${item.name.replace(/'/g, "\\'")}')">Preview</button>`
+                    : '';
+
+                html += `
+                    <tr>
+                        <td>
+                            <span class="file-name" onclick="${clickHandler}">
+                                ${icon}${item.name}
+                            </span>
+                        </td>
+                        <td>${item.type === 'directory' ? 'Folder' : 'File'}</td>
+                        <td>${item.size_formatted}</td>
+                        <td>${item.modified}</td>
+                        <td>
+                            <div class="file-actions">
+                                ${previewButton}
+                                ${downloadButton}
+                                ${hideButton}
+                                ${!isRemote ? `<button class="action-btn action-rename" onclick="showRenameModal('${item.path.replace(/\\/g, '\\\\')}', '${item.name.replace(/'/g, "\\'")}')">Rename</button>` : ''}
+                                ${!isRemote ? `<button class="action-btn action-delete" onclick="deleteFile('${item.path.replace(/\\/g, '\\\\')}', '${item.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function navigateUp() {
+            // Don't allow navigation above root
+            if (currentPath === rootPath || !rootPath) {
+                return;
+            }
+
+            const separator = currentPath.includes('\\') ? '\\' : '/';
+
+            // Get parent directory
+            const parentPath = currentPath.substring(0, currentPath.lastIndexOf(separator));
+
+            // Don't go above root
+            if (parentPath.length < rootPath.length) {
+                loadFiles(rootPath);
+            } else {
+                loadFiles(parentPath);
+            }
+        }
+
+        function navigateToRoot() {
+            // Navigate to the working directory (rootPath)
+            loadFiles(rootPath || '');
+        }
+
+        function refreshFiles() {
+            loadFiles(currentPath);
+        }
+
+        function toggleHiddenFiles() {
+            showHidden = document.getElementById('showHiddenCheckbox').checked;
+            loadFiles(currentPath);
+        }
+
+        // Rename functionality
+        function showRenameModal(path, currentName) {
+            renameTargetPath = path;
+            document.getElementById('newNameInput').value = currentName;
+            document.getElementById('renameModal').classList.add('active');
+        }
+
+        function closeRenameModal() {
+            document.getElementById('renameModal').classList.remove('active');
+            renameTargetPath = '';
+        }
+
+        async function confirmRename() {
+            const newName = document.getElementById('newNameInput').value.trim();
+            if (!newName) {
+                showNotification('Please enter a new name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/file-manager/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        old_path: renameTargetPath,
+                        new_name: newName
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Renamed successfully', 'success');
+                    closeRenameModal();
+                    refreshFiles();
+                } else {
+                    showNotification(data.error || 'Failed to rename', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Delete functionality
+        async function deleteFile(path, name) {
+            if (!confirm(`Are you sure you want to delete "${name}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/file-manager/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Deleted successfully', 'success');
+                    refreshFiles();
+                } else {
+                    showNotification(data.error || 'Failed to delete', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Create folder functionality
+        function showCreateFolderModal() {
+            document.getElementById('folderNameInput').value = '';
+            document.getElementById('createFolderModal').classList.add('active');
+        }
+
+        function closeCreateFolderModal() {
+            document.getElementById('createFolderModal').classList.remove('active');
+        }
+
+        async function confirmCreateFolder() {
+            const folderName = document.getElementById('folderNameInput').value.trim();
+            if (!folderName) {
+                showNotification('Please enter a folder name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/file-manager/create-folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parent_path: currentPath,
+                        folder_name: folderName
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Folder created successfully', 'success');
+                    closeCreateFolderModal();
+                    refreshFiles();
+                } else {
+                    showNotification(data.error || 'Failed to create folder', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Disk space loading
+        let diskSpaceErrorLogged = false;
+        async function loadDiskSpace() {
+            // Skip if not served from a web server
+            if (window.location.protocol === 'file:') return;
+
+            try {
+                const response = await fetch('/api/disk-space');
+                const data = await response.json();
+
+                if (data.success) {
+                    const ds = data.disk_space;
+                    document.getElementById('disk-space-path').textContent = ds.path;
+                    document.getElementById('disk-space-total').textContent = ds.total_formatted;
+                    document.getElementById('disk-space-free').textContent = ds.free_formatted;
+                    document.getElementById('disk-space-used').textContent = ds.used_formatted;
+                    document.getElementById('disk-space-percent').textContent = ds.percent_used + '%';
+
+                    // Update progress bar
+                    const bar = document.getElementById('disk-space-bar');
+                    bar.style.width = ds.percent_used + '%';
+
+                    // Color code based on usage
+                    if (ds.percent_used >= 90) {
+                        bar.style.background = 'var(--danger)'; // Red
+                    } else if (ds.percent_used >= 75) {
+                        bar.style.background = 'var(--warning)'; // Orange
+                    } else {
+                        bar.style.background = 'var(--success)'; // Green
+                    }
+                }
+                diskSpaceErrorLogged = false;
+            } catch (error) {
+                if (!diskSpaceErrorLogged) {
+                    console.warn('Disk space unavailable - server may not be running');
+                    diskSpaceErrorLogged = true;
+                }
+            }
+        }
+
+        // Hidden items management
+        async function loadHiddenItems() {
+            try {
+                const response = await fetch('/api/file-manager/hidden-items');
+                const data = await response.json();
+
+                if (data.success) {
+                    const hiddenItems = data.hidden_items || [];
+                    updateHiddenItemsList(hiddenItems);
+                }
+            } catch (error) {
+                console.error('Failed to load hidden items:', error);
+            }
+        }
+
+        // Hidden items list UI removed - function kept for compatibility
+        function updateHiddenItemsList(hiddenItems) {
+            // No-op: UI element removed
+        }
+
+        async function hideItem(path) {
+            try {
+                const response = await fetch('/api/file-manager/hide', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Item hidden successfully', 'success');
+                    updateHiddenItemsList(data.hidden_items);
+                    refreshFiles();
+                } else {
+                    showNotification(data.error || 'Failed to hide item', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function unhideItem(path) {
+            try {
+                const response = await fetch('/api/file-manager/unhide', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Item unhidden successfully', 'success');
+                    updateHiddenItemsList(data.hidden_items);
+                    refreshFiles();
+                } else {
+                    showNotification(data.error || 'Failed to unhide item', 'error');
+                }
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function unhideItemByPath(relPath) {
+            // Convert relative path to absolute
+            const workingDir = currentPath.split(/[\\\/]/)[0]; // Get drive/root
+            const absPath = relPath; // Already stored as relative, backend will handle
+            await unhideItem(absPath);
+        }
+
+        // Notification system
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Modal close on outside click
+        document.getElementById('renameModal').addEventListener('click', (e) => {
+            if (e.target.id === 'renameModal') {
+                closeRenameModal();
+            }
+        });
+
+        document.getElementById('createFolderModal').addEventListener('click', (e) => {
+            if (e.target.id === 'createFolderModal') {
+                closeCreateFolderModal();
+            }
+        });
+
+        document.getElementById('previewModal').addEventListener('click', (e) => {
+            if (e.target.id === 'previewModal') {
+                closePreviewModal();
+            }
+        });
+
+        // Enter key support for modals
+        document.getElementById('newNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                confirmRename();
+            }
+        });
+
+        document.getElementById('folderNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                confirmCreateFolder();
+            }
+        });
+
+        // Download file functionality
+        function downloadFile(path, name) {
+            // Create a download link
+            const encodedPath = encodeURIComponent(path);
+            const downloadUrl = `/api/file-manager/download?path=${encodedPath}`;
+
+            // Create a temporary anchor element and trigger download
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = name;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showNotification(`Downloading ${name}...`, 'success');
+        }
+
+        // Preview file functionality
+        async function previewFile(path, name) {
+            const previewModal = document.getElementById('previewModal');
+            const previewContent = document.getElementById('previewContent');
+            const previewFileName = document.getElementById('previewFileName');
+
+            previewFileName.textContent = name;
+            previewContent.innerHTML = '<div class="loading">Loading preview...</div>';
+            previewModal.classList.add('active');
+
+            // Get file extension
+            const ext = name.split('.').pop().toLowerCase();
+
+            // Determine file type and create appropriate preview
+            const encodedPath = encodeURIComponent(path);
+
+            // Image files
+            if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico'].includes(ext)) {
+                previewContent.innerHTML = `<img src="/api/file-manager/download?path=${encodedPath}" alt="${name}" style="max-width: 100%;">`;
+            }
+            // Video files
+            else if (['mp4', 'webm', 'ogg', 'avi', 'mov', 'mkv'].includes(ext)) {
+                previewContent.innerHTML = `
+                    <video controls style="max-width: 100%;">
+                        <source src="/api/file-manager/download?path=${encodedPath}" type="video/${ext === 'mkv' ? 'webm' : ext}">
+                        Your browser does not support the video tag.
+                    </video>
+                `;
+            }
+            // Audio files
+            else if (['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'].includes(ext)) {
+                previewContent.innerHTML = `
+                    <audio controls style="width: 100%;">
+                        <source src="/api/file-manager/download?path=${encodedPath}" type="audio/${ext}">
+                        Your browser does not support the audio tag.
+                    </audio>
+                `;
+            }
+            // PDF files
+            else if (ext === 'pdf') {
+                previewContent.innerHTML = `<iframe src="/api/file-manager/download?path=${encodedPath}" style="width: 100%; height: 70vh;"></iframe>`;
+            }
+            // Text files and code (including subtitle files)
+            else if (['txt', 'log', 'json', 'xml', 'html', 'css', 'js', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'md', 'yaml', 'yml', 'ini', 'cfg', 'conf', 'sh', 'bash', 'sql', 'csv', 'srt', 'vtt'].includes(ext)) {
+                try {
+                    const response = await fetch(`/api/file-manager/download?path=${encodedPath}`);
+                    const text = await response.text();
+                    previewContent.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+                } catch (error) {
+                    previewContent.innerHTML = `<div class="empty-state"><p>Failed to load text preview: ${error.message}</p></div>`;
+                }
+            }
+            // Database files
+            else if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
+                previewContent.innerHTML = `
+                    <div class="empty-state">
+                        <div style="font-size: 3em; margin-bottom: 20px;">🗄️</div>
+                        <h3>Database File</h3>
+                        <p>Database files cannot be previewed directly.</p>
+                        <p>Use the download button to save the file.</p>
+                    </div>
+                `;
+            }
+            // Unsupported file types
+            else {
+                previewContent.innerHTML = `
+                    <div class="empty-state">
+                        <div style="font-size: 3em; margin-bottom: 20px;">📄</div>
+                        <h3>Preview Not Available</h3>
+                        <p>This file type (${ext}) cannot be previewed in the browser.</p>
+                        <p>Use the download button to save the file.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function closePreviewModal() {
+            const previewContent = document.getElementById('previewContent');
+
+            // Stop all audio/video playback
+            const audioElements = previewContent.querySelectorAll('audio');
+            const videoElements = previewContent.querySelectorAll('video');
+
+            audioElements.forEach(audio => {
+                audio.pause();
+                audio.currentTime = 0;
+            });
+
+            videoElements.forEach(video => {
+                video.pause();
+                video.currentTime = 0;
+            });
+
+            // Clear the preview content completely
+            previewContent.innerHTML = '';
+
+            // Close the modal
+            document.getElementById('previewModal').classList.remove('active');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // File Mover Functions
+        async function loadFileMoverConfig() {
+            try {
+                const response = await fetch('/api/file-mover/status');
+                const data = await response.json();
+
+                if (data.success) {
+                    const config = data.config || {};
+
+                    // Populate form fields
+                    document.getElementById('destPath').value = config.destination_path || '';
+                    document.getElementById('smbUsername').value = config.smb_username || '';
+                    document.getElementById('smbPassword').value = config.smb_password || '';
+                    document.getElementById('smbDomain').value = config.smb_domain || '';
+
+                    // Source patterns - join array to string
+                    const patterns = config.source_patterns || [];
+                    document.getElementById('sourcePatterns').value = patterns.join('\n');
+
+                    document.getElementById('moveOnTranscriptionStop').checked = config.move_on_transcription_stop !== false;
+                    document.getElementById('deleteSource').checked = config.delete_source !== false;
+                    document.getElementById('preserveStructure').checked = config.preserve_structure !== false;
+
+                    // Update status display
+                    updateFileMoverStatus();
+                }
+            } catch (error) {
+                console.error('Failed to load file mover config:', error);
+            }
+        }
+
+        function updateFileMoverStatus() {
+            const enabled = document.getElementById('moveOnTranscriptionStop').checked;
+            const statusSpan = document.getElementById('fileMoverStatus');
+
+            if (enabled) {
+                statusSpan.textContent = '(Auto-move on stop)';
+                statusSpan.style.color = 'var(--success)';
+            } else {
+                statusSpan.textContent = '(Manual only)';
+                statusSpan.style.color = '#999';
+            }
+        }
+
+        async function saveFileMoverConfig() {
+            try {
+                // Get patterns from textarea and split by lines
+                const patternsText = document.getElementById('sourcePatterns').value;
+                const patterns = patternsText.split('\n')
+                    .map(p => p.trim())
+                    .filter(p => p.length > 0);
+
+                const configData = {
+                    move_on_transcription_stop: document.getElementById('moveOnTranscriptionStop').checked,
+                    destination_path: document.getElementById('destPath').value.trim(),
+                    smb_username: document.getElementById('smbUsername').value.trim(),
+                    smb_password: document.getElementById('smbPassword').value,
+                    smb_domain: document.getElementById('smbDomain').value.trim(),
+                    source_patterns: patterns,
+                    delete_source: document.getElementById('deleteSource').checked,
+                    preserve_structure: document.getElementById('preserveStructure').checked
+                };
+
+                const response = await fetch('/api/file-mover/configure', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(configData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showFileMoverMessage('Configuration saved successfully', 'success');
+                    loadFileMoverConfig(); // Reload to update pending moves display
+                } else {
+                    showFileMoverMessage(data.error || 'Failed to save configuration', 'error');
+                }
+            } catch (error) {
+                showFileMoverMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function testConnection() {
+            const destPath = document.getElementById('destPath').value.trim();
+            if (!destPath) {
+                showFileMoverMessage('Please enter a destination path', 'error');
+                return;
+            }
+
+            try {
+                showFileMoverMessage('Testing connection...', 'info');
+
+                const response = await fetch('/api/file-mover/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        destination_path: destPath,
+                        smb_username: document.getElementById('smbUsername').value.trim(),
+                        smb_password: document.getElementById('smbPassword').value,
+                        smb_domain: document.getElementById('smbDomain').value.trim()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showFileMoverMessage('✓ Connection successful! Destination is accessible and writable.', 'success');
+                } else {
+                    showFileMoverMessage('✗ Connection failed: ' + (data.error || 'Unable to access destination'), 'error');
+                }
+            } catch (error) {
+                showFileMoverMessage('Error testing connection: ' + error.message, 'error');
+            }
+        }
+
+        async function triggerFileMover() {
+            try {
+                showFileMoverMessage('Running file mover...', 'info');
+
+                const response = await fetch('/api/file-mover/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const action = data.delete_source ? 'Moved' : 'Copied';
+                    const msg = `✓ File mover completed! ${action}: ${data.moved}, Failed: ${data.failed}`;
+                    showFileMoverMessage(msg, data.failed > 0 ? 'warning' : 'success');
+                    loadFileMoverConfig(); // Reload to update pending moves
+                } else {
+                    showFileMoverMessage('✗ Failed to run file mover: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showFileMoverMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        function showFileMoverMessage(message, type = 'info') {
+            const messageDiv = document.getElementById('fileMoverMessage');
+            messageDiv.style.display = 'block';
+            messageDiv.className = `alert ${type}`;
+            messageDiv.textContent = message;
+
+            // Auto-hide after 5 seconds for success messages
+            if (type === 'success') {
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Load file mover config on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFileMoverConfig();
+        });
+    </script>
+{% endblock %}

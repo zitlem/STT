@@ -1,0 +1,1928 @@
+{% extends "base.html" %}
+
+{% block title %}File Transcription - Speech to Text{% endblock %}
+
+{% block page_title %}File Transcription{% endblock %}
+
+{% block extra_css %}
+        /* File Panel */
+        .upload-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #f0f0f0;
+            margin-bottom: 10px;
+        }
+
+        .dropzone {
+            position: relative;
+            border: 3px dashed var(--accent);
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: var(--bg-card);
+        }
+
+        .dropzone:hover {
+            border-color: var(--accent-hover);
+            background: var(--border);
+        }
+
+        .dropzone.dragover {
+            border-color: var(--accent-hover);
+            background: #2f2f2f;
+        }
+
+        .dropzone p {
+            font-size: 1em;
+            color: var(--accent-hover);
+            margin: 6px 0;
+        }
+
+        .dropzone input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-info {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            margin: 12px 0;
+            display: none;
+            border: 1px solid var(--border);
+        }
+
+        .file-info p {
+            margin: 4px 0;
+            font-size: 0.9em;
+            color: var(--text-primary);
+        }
+
+        .output-format {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .format-btn {
+            padding: 12px;
+            border: 2px solid var(--border);
+            background: var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--text-primary);
+        }
+
+        .format-btn:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .format-btn.active {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #ffffff;
+        }
+
+        button.primary {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button.primary:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(187, 134, 252, 0.4);
+        }
+
+        button.primary:disabled {
+            background: #4a4a4a;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-section, .results-section {
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 32px;
+            background: var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            margin: 15px 0;
+            border: 1px solid var(--border);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: var(--text-primary);
+            margin: 12px 0;
+            font-size: 0.9em;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .stat-card .label {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .transcription-output {
+            background: var(--bg-card);
+            padding: 16px;
+            border-radius: var(--radius-sm);
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            border: 2px solid var(--border);
+            margin: 15px 0;
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .actions button {
+            padding: 11px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+        }
+
+        .btn-copy { background: var(--accent); color: #ffffff; }
+        .btn-download { background: var(--success); color: #ffffff; }
+        .btn-new { background: #6c757d; color: #ffffff; }
+
+        .actions button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .error-message {
+            background: #dc3545;
+            color: white;
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            margin: 15px 0;
+            font-size: 0.9em;
+        }
+
+        /* Slider Styles */
+        .slider-container {
+            margin-bottom: 14px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .slider-label span {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 0.85em;
+        }
+
+        .slider-value {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        /* Responsive overrides for file page */
+        @media (max-width: 768px) {
+            .output-format {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .actions {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .output-format {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+{% endblock %}
+
+{% block content %}
+        <div class="main-content">
+            <!-- Settings Panel -->
+            <div class="settings-panel">
+                <h3>⚙️ Transcription Settings</h3>
+
+                <div id="ft_settings_container">
+                <!-- Model Configuration -->
+                <div class="form-group">
+                    <label>🤖 File Transcription Model</label>
+                    <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-sm);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 500; color: var(--text-primary);">Current Model:</span>
+                            <span id="ft_model_status" style="font-size: 0.8em; color: var(--text-secondary);">Loading...</span>
+                        </div>
+                    </div>
+                    <small style="margin-top: 8px; display: block;">
+                        💡 <strong>Tip:</strong> Use <a href="/model-manager" style="color: var(--accent); text-decoration: none; font-weight: 500;">🤖 Model Manager</a> to download more models.
+                    </small>
+
+                    <!-- Model Configuration -->
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>⚙️ Model Configuration</label>
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label for="file_model_type">Model Type</label>
+                                <select id="file_model_type" onchange="updateFileModelTypeUI()">
+                                    <option value="whisper">Whisper (OpenAI)</option>
+                                    <option value="downloaded">Downloaded Models</option>
+                                </select>
+                                <small>Choose between Whisper models or custom downloaded models</small>
+                            </div>
+
+                            <!-- Whisper-specific settings -->
+                            <div id="file_whisper_config" style="display: block;">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="file_whisper_model_select">Whisper Model</label>
+                                    <select id="file_whisper_model_select">
+                                        <option value="">Loading available models...</option>
+                                    </select>
+                                    <small>Only downloaded Whisper models are shown</small>
+                                </div>
+                            </div>
+
+                            <!-- Downloaded models settings -->
+                            <div id="file_downloaded_config" style="display: none;">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="file_downloaded_model_select">Select Downloaded Model</label>
+                                    <select id="file_downloaded_model_select">
+                                        <option value="">No models downloaded</option>
+                                    </select>
+                                    <small>Download models from <a href="/model-manager" style="color: var(--accent);">Model Manager</a></small>
+                                </div>
+                            </div>
+
+                    </div>
+                </div>
+
+                <!-- Language -->
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Language</label>
+                    <select id="ft_language">
+                        <option value="auto">Auto Detect</option>
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="it">Italian</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="nl">Dutch</option>
+                        <option value="pl">Polish</option>
+                        <option value="ru">Russian</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                        <option value="zh">Chinese</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 3px; display: block;">Auto detect uses Whisper's language detection</small>
+                </div>
+
+                <!-- Translation Option -->
+                <div class="checkbox-group" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                    <input type="checkbox" id="ft_translate" onchange="updateTranslationUI()">
+                    <label for="ft_translate" style="font-weight: 600;">Translate Output</label>
+                </div>
+
+                <div id="translation_settings" style="display: none; margin-top: 8px; padding: 12px; background: var(--border); border-radius: var(--radius-sm);">
+                    <!-- Model warning (shown if NLLB not downloaded) -->
+                    <div id="nllb_warning" style="display: none; background: #3a2a1a; border: 1px solid #f6ad55; padding: 10px; border-radius: var(--radius-sm); margin-bottom: 10px;">
+                        <span style="color: #f6ad55;">⚠️ Translation model not downloaded.</span>
+                        <a href="/models" style="color: var(--success); margin-left: 5px;">Download in Model Manager</a>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Translate to:</label>
+                        <select id="ft_translate_to">
+                            <option value="en">English</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="it">Italian</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="nl">Dutch</option>
+                            <option value="pl">Polish</option>
+                            <option value="ru">Russian</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="zh">Chinese (Simplified)</option>
+                            <option value="ar">Arabic</option>
+                            <option value="hi">Hindi</option>
+                            <option value="tr">Turkish</option>
+                            <option value="vi">Vietnamese</option>
+                            <option value="th">Thai</option>
+                            <option value="uk">Ukrainian</option>
+                            <option value="cs">Czech</option>
+                            <option value="sv">Swedish</option>
+                            <option value="da">Danish</option>
+                            <option value="fi">Finnish</option>
+                            <option value="no">Norwegian</option>
+                            <option value="el">Greek</option>
+                            <option value="he">Hebrew</option>
+                            <option value="hu">Hungarian</option>
+                            <option value="id">Indonesian</option>
+                            <option value="ms">Malay</option>
+                            <option value="ro">Romanian</option>
+                            <option value="sk">Slovak</option>
+                            <option value="bg">Bulgarian</option>
+                            <option value="hr">Croatian</option>
+                            <option value="sr">Serbian</option>
+                            <option value="sl">Slovenian</option>
+                            <option value="et">Estonian</option>
+                            <option value="lv">Latvian</option>
+                            <option value="lt">Lithuanian</option>
+                            <option value="fa">Persian</option>
+                            <option value="bn">Bengali</option>
+                            <option value="ta">Tamil</option>
+                            <option value="te">Telugu</option>
+                            <option value="mr">Marathi</option>
+                            <option value="gu">Gujarati</option>
+                            <option value="kn">Kannada</option>
+                            <option value="ml">Malayalam</option>
+                            <option value="pa">Punjabi</option>
+                            <option value="ur">Urdu</option>
+                        </select>
+                        <small style="color: var(--success); font-size: 0.75em; margin-top: 4px; display: block;">Uses NLLB-200 model for translation</small>
+                    </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label>Translation Model:</label>
+                        <select id="ft_translation_model">
+                            <option value="">Loading models...</option>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 4px; display: block;">Select downloaded NLLB model. <a href="/model-manager" style="color: var(--success);">Download more in Model Manager</a></small>
+                    </div>
+                </div>
+
+                <!-- GPU Checkbox -->
+                <div class="checkbox-group">
+                    <input type="checkbox" id="ft_use_gpu" checked>
+                    <label for="ft_use_gpu">Use GPU (if available)</label>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 8px; margin-top: 16px;">
+                    <button onclick="reloadSettings()" style="flex: 1; padding: 10px; background: var(--accent); color: #ffffff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: background 0.2s;">
+                        ↻ Reload Settings
+                    </button>
+                    <button onclick="saveSettings()" style="flex: 1; padding: 10px; background: var(--success); color: #ffffff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: background 0.2s;">
+                        💾 Save Settings
+                    </button>
+                </div>
+
+                </div>
+            </div>
+
+            <!-- File Panel -->
+            <div class="upload-panel">
+                <!-- File Section -->
+                <div id="uploadSection">
+                    <div class="section-title">File Audio/Video</div>
+
+                    <div class="dropzone" id="dropzone">
+                        <p>🎵 Drag & drop file here or click to browse</p>
+                        <input type="file" id="fileInput" accept="audio/*,video/*">
+                        <p style="font-size: 0.8em; color: #888; margin-top: 8px;">MP3, WAV, MP4, MKV, AVI, MOV, FLAC, OGG, WebM, and more</p>
+                    </div>
+
+                    <div class="file-info" id="fileInfo">
+                        <p><strong>File:</strong> <span id="fileName"></span></p>
+                        <p><strong>Size:</strong> <span id="fileSize"></span></p>
+                        <p><strong>Type:</strong> <span id="fileType"></span></p>
+                    </div>
+
+                </div>
+
+                <!-- Unified Format Selector (Always Visible) -->
+                <div style="margin-top: 20px; padding: 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                    <div class="section-title" style="margin-bottom: 12px;">Output Format</div>
+                    <div class="output-format">
+                        <button class="format-btn active" data-format="txt">📄 Text</button>
+                        <button class="format-btn" data-format="srt">📺 SRT</button>
+                        <button class="format-btn" data-format="vtt">🌐 VTT</button>
+                        <button class="format-btn" data-format="json">🔧 JSON</button>
+                        <button class="format-btn" data-format="html">📝 HTML</button>
+                    </div>
+                    <div class="checkbox-group" style="margin-top: 12px;">
+                        <input type="checkbox" id="applyWordHighlighting">
+                        <label for="applyWordHighlighting">Apply Word Highlighting</label>
+                        <a href="/word-highlighting" target="_blank" style="margin-left: 8px; color: var(--accent); font-size: 0.85em;">Configure</a>
+                    </div>
+                </div>
+
+                <!-- Progress Section -->
+                <div class="progress-section" id="progressSection">
+                    <div class="section-title">Processing File...</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%">
+                            <span id="progressPercent">0%</span>
+                        </div>
+                    </div>
+                    <p class="progress-text" id="progressText">Ready to transcribe file</p>
+                </div>
+
+                <!-- Always Visible Action Buttons -->
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button class="primary" id="transcribeBtn" disabled style="flex: 1;">
+                        🚀 Transcribe File
+                    </button>
+                    <button class="primary" id="cancelBtn" disabled style="flex: 1;">
+                        ✖️ Cancel
+                    </button>
+                    <button class="primary" onclick="forceResetTranscription()" style="flex: 1; background: var(--danger);">
+                        🔄 Force Reset
+                    </button>
+                </div>
+
+                <!-- Results Section -->
+                <div class="results-section" id="resultsSection">
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="label">Duration</div>
+                            <div class="value" id="duration">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Chunks</div>
+                            <div class="value" id="chunks">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Format</div>
+                            <div class="value" id="format">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Original Transcription Output (Always visible) -->
+                    <div id="transcriptionContainer" style="margin-top: 15px;">
+                        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Original Transcription</span>
+                            <span id="sourceLanguageLabel" style="font-size: 0.8em; color: var(--accent);"></span>
+                        </div>
+                        <div class="transcription-output" id="transcriptionOutput"></div>
+                        <iframe id="htmlPreview" style="display: none; width: 100%; height: 500px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-base);"></iframe>
+                        <div class="actions" style="margin-top: 10px;">
+                            <button class="btn-copy" id="copyBtn">📋 Copy</button>
+                            <button class="btn-download" id="downloadBtn">💾 Download</button>
+                            <button id="toggleViewBtn" style="display: none; padding: 10px 16px; background: var(--border); color: var(--text-primary); border: none; border-radius: var(--radius-sm); cursor: pointer;">👁️ View Source</button>
+                            <button class="btn-new" id="newFileBtn">🔄 New File</button>
+                        </div>
+                    </div>
+
+                    <!-- Translation Output (Only shown when translation is enabled) -->
+                    <div id="translationContainer" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 2px solid var(--success);">
+                        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; color: var(--success);">
+                            <span>Translation</span>
+                            <span id="targetLanguageLabel" style="font-size: 0.8em; color: var(--success);"></span>
+                        </div>
+                        <div class="transcription-output" id="translationOutput" style="border-color: var(--success);"></div>
+                        <iframe id="translationHtmlPreview" style="display: none; width: 100%; height: 500px; border: 1px solid var(--success); border-radius: 8px; background: var(--bg-base);"></iframe>
+                        <div class="actions" style="margin-top: 10px;">
+                            <button class="btn-copy" id="copyTranslationBtn" style="background: var(--success);">📋 Copy Translation</button>
+                            <button class="btn-download" id="downloadTranslationBtn" style="background: #16A34A;">💾 Download Translation</button>
+                            <button id="toggleTranslationViewBtn" style="display: none; padding: 10px 16px; background: var(--border); color: var(--text-primary); border: none; border-radius: var(--radius-sm); cursor: pointer;">👁️ View Source</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Display -->
+                <div id="errorSection" style="display: none;">
+                    <div class="error-message" id="errorMessage"></div>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        const socket = io.connect();
+        let currentSessionId = null;
+        let selectedFile = null;
+        let transcriptionText = '';
+        let selectedFormat = 'txt';
+        let currentSegments = null;  // Store segments for format switching
+        let currentFormat = 'txt';   // Track currently displayed format
+        let currentTranslatedSegments = null;  // Store translated segments
+        let translationText = '';  // Store formatted translation text
+        let wordHighlightingConfig = null;  // Store word highlighting configuration
+        let currentFilename = '';  // Store original filename for HTML title
+
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const uploadBtn = document.getElementById('transcribeBtn');
+
+        // Toggle translation settings visibility
+        function updateTranslationUI() {
+            const checked = document.getElementById('ft_translate').checked;
+            document.getElementById('translation_settings').style.display = checked ? 'block' : 'none';
+            updateTranscribeButtonText();
+        }
+
+        // Update transcribe button text based on translation setting
+        function updateTranscribeButtonText() {
+            const translateEnabled = document.getElementById('ft_translate').checked;
+            const btn = document.getElementById('transcribeBtn');
+            if (btn) {
+                btn.textContent = translateEnabled ? '▶️ Transcribe + Translate' : '▶️ Transcribe';
+            }
+        }
+
+        // Check if NLLB translation model is downloaded
+        async function checkNLLBModelStatus() {
+            try {
+                const response = await fetch('/api/models/nllb-status');
+                const data = await response.json();
+
+                const warningEl = document.getElementById('nllb_warning');
+                if (warningEl) {
+                    if (data.success && data.downloaded) {
+                        warningEl.style.display = 'none';
+                    } else {
+                        warningEl.style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking NLLB status:', error);
+            }
+        }
+
+        // Load available translation models (NLLB)
+        async function loadTranslationModels(selectedModel = null) {
+            const select = document.getElementById('ft_translation_model');
+            if (!select) return;
+
+            try {
+                const response = await fetch('/api/models/nllb-list');
+                const data = await response.json();
+
+                select.innerHTML = '';
+
+                if (data.success && data.models) {
+                    const downloadedModels = data.models.filter(m => m.downloaded);
+                    if (downloadedModels.length > 0) {
+                        downloadedModels.forEach(m => {
+                            const option = document.createElement('option');
+                            option.value = m.model_id;
+                            option.textContent = `${m.name} (${m.size})`;
+                            if (selectedModel && m.model_id === selectedModel) {
+                                option.selected = true;
+                            }
+                            select.appendChild(option);
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">No models downloaded - visit Model Manager</option>';
+                    }
+                } else {
+                    select.innerHTML = '<option value="">Error loading models</option>';
+                }
+            } catch (error) {
+                console.error('Error loading translation models:', error);
+                select.innerHTML = '<option value="">Error loading models</option>';
+            }
+        }
+
+
+
+        // Load settings from server
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/file-transcription/settings');
+                const data = await response.json();
+
+                if (data.success) {
+                    const s = data.settings;
+                    document.getElementById('ft_use_gpu').checked = s.use_gpu !== false;
+                    document.getElementById('ft_language').value = s.language || 'en';
+
+                    // Load translation settings
+                    document.getElementById('ft_translate').checked = s.translate_enabled === true;
+                    if (s.translate_to) {
+                        document.getElementById('ft_translate_to').value = s.translate_to;
+                    }
+                    updateTranslationUI();
+                    updateTranscribeButtonText();
+
+                    // Load translation models with saved selection
+                    await loadTranslationModels(s.translation_model);
+                }
+
+                // Check NLLB model status
+                checkNLLBModelStatus();
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+        }
+
+        // Load word highlighting configuration
+        async function loadWordHighlightingConfig() {
+            try {
+                const response = await fetch('/api/word-highlighting/words');
+                const data = await response.json();
+                if (data.success) {
+                    wordHighlightingConfig = data;
+                    // Update checkbox state based on whether highlighting is enabled and has words
+                    const checkbox = document.getElementById('applyWordHighlighting');
+                    if (checkbox && data.enabled && data.words && data.words.length > 0) {
+                        checkbox.checked = true;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load word highlighting config:', error);
+            }
+        }
+
+        // Escape HTML entities for safe display
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Escape special regex characters
+        function escapeRegex(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Apply word highlighting to text (client-side version)
+        function applyWordHighlightingClient(text) {
+            const config = wordHighlightingConfig;
+            const applyHighlighting = document.getElementById('applyWordHighlighting')?.checked;
+
+            if (!applyHighlighting || !config || !config.enabled || !config.words || config.words.length === 0) {
+                return escapeHtml(text);
+            }
+
+            let result = escapeHtml(text);
+
+            // Get list of disabled color groups
+            const disabledColors = config.disabled_colors || [];
+
+            for (const entry of config.words) {
+                try {
+                    const word = entry.word || '';
+                    const color = entry.color || '#ffff00';
+
+                    // Skip if this color group is disabled
+                    if (disabledColors.includes(color)) {
+                        continue;
+                    }
+
+                    const flags = entry.case_sensitive ? 'g' : 'gi';
+
+                    // Build pattern with word boundaries (supporting Unicode/Cyrillic)
+                    let pattern;
+                    if (entry.is_regex) {
+                        pattern = new RegExp(`(?<![A-Za-z\\u0400-\\u04FF0-9])(${word})(?![A-Za-z\\u0400-\\u04FF0-9])`, flags);
+                    } else {
+                        const escaped = escapeRegex(word);
+                        pattern = new RegExp(`(?<![A-Za-z\\u0400-\\u04FF0-9])(${escaped})(?![A-Za-z\\u0400-\\u04FF0-9])`, flags);
+                    }
+
+                    result = result.replace(pattern, `<span style="color: ${color};">$1</span>`);
+                } catch (e) {
+                    console.warn('Invalid highlighting pattern:', entry.word, e);
+                }
+            }
+
+            return result;
+        }
+
+        // Save settings to server (includes model config)
+        async function saveSettings() {
+            const settings = {
+                use_gpu: document.getElementById('ft_use_gpu').checked,
+                language: document.getElementById('ft_language').value,
+                translate_enabled: document.getElementById('ft_translate').checked,
+                translate_to: document.getElementById('ft_translate_to').value,
+                translation_model: document.getElementById('ft_translation_model').value
+            };
+
+            try {
+                // Save general settings
+                const response = await fetch('/api/file-transcription/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+                if (!data.success) {
+                    alert('❌ Error: ' + data.error);
+                    return;
+                }
+
+                // Also save model config
+                await saveFileModelConfigSilent();
+                alert('✅ Settings saved successfully!');
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        // Reload settings from config (includes model config)
+        function reloadSettings() {
+            loadSettings();
+            loadFileModelConfig();
+        }
+
+        // Force reset transcription (emergency use)
+        async function forceResetTranscription() {
+            if (!confirm('⚠️ WARNING: Force reset will forcefully kill the transcription process and reset the state.\n\nThis should only be used if the system is stuck.\n\nAre you sure you want to continue?')) {
+                return;
+            }
+
+            try {
+                alert('🔄 Force resetting transcription...');
+
+                const response = await fetch('/api/transcription/force-reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('✅ Transcription reset successfully! Go to Live Transcription to start.');
+                } else {
+                    alert('❌ Failed to reset: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Error resetting transcription: ' + error.message);
+            }
+        }
+
+        // Load model status from model manager
+        async function loadModelStatus() {
+            try {
+                const response = await fetch('/api/models/manager');
+                const data = await response.json();
+
+                if (data.success) {
+                    const fileModel = data.file_transcription_model;
+                    const statusElement = document.getElementById('ft_model_status');
+
+                    if (fileModel.type === 'whisper') {
+                        statusElement.textContent = `Whisper ${fileModel.whisper?.model || 'base'}`;
+                    } else if (fileModel.type === 'huggingface') {
+                        statusElement.textContent = `HF: ${fileModel.huggingface?.model_id?.split('/')[1] || 'model'}`;
+                    } else if (fileModel.type === 'custom') {
+                        statusElement.textContent = `Custom: ${fileModel.custom?.model_type || 'whisper'}`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading model status:', error);
+                document.getElementById('ft_model_status').textContent = 'Error';
+            }
+        }
+
+        // Track current view state for HTML toggle
+        let showingHtmlPreview = true;
+        let showingTranslationHtmlPreview = true;
+
+        // Update display for format (handles HTML preview vs text)
+        function updateFormatDisplay(format, segments, outputId, previewId, toggleBtnId) {
+            const textOutput = document.getElementById(outputId);
+            const preview = document.getElementById(previewId);
+            const toggleBtn = document.getElementById(toggleBtnId);
+
+            if (format === 'html' && segments) {
+                const formattedText = formatSegments(segments, format);
+
+                // Show preview by default for HTML
+                if (outputId === 'transcriptionOutput') {
+                    showingHtmlPreview = true;
+                } else {
+                    showingTranslationHtmlPreview = true;
+                }
+
+                // Load HTML into iframe
+                preview.srcdoc = formattedText;
+                preview.style.display = 'block';
+                textOutput.style.display = 'none';
+                toggleBtn.style.display = 'inline-block';
+                toggleBtn.textContent = '👁️ View Source';
+
+                return formattedText;
+            } else {
+                // Hide preview, show text output
+                preview.style.display = 'none';
+                textOutput.style.display = 'block';
+                toggleBtn.style.display = 'none';
+
+                if (segments) {
+                    const formattedText = formatSegments(segments, format);
+                    textOutput.textContent = formattedText;
+                    return formattedText;
+                }
+                return '';
+            }
+        }
+
+        // Toggle between HTML preview and source view
+        document.getElementById('toggleViewBtn').addEventListener('click', () => {
+            const textOutput = document.getElementById('transcriptionOutput');
+            const preview = document.getElementById('htmlPreview');
+            const btn = document.getElementById('toggleViewBtn');
+
+            showingHtmlPreview = !showingHtmlPreview;
+
+            if (showingHtmlPreview) {
+                preview.style.display = 'block';
+                textOutput.style.display = 'none';
+                btn.textContent = '👁️ View Source';
+            } else {
+                preview.style.display = 'none';
+                textOutput.style.display = 'block';
+                textOutput.textContent = transcriptionText;
+                btn.textContent = '🔍 Preview';
+            }
+        });
+
+        // Toggle for translation HTML
+        document.getElementById('toggleTranslationViewBtn').addEventListener('click', () => {
+            const textOutput = document.getElementById('translationOutput');
+            const preview = document.getElementById('translationHtmlPreview');
+            const btn = document.getElementById('toggleTranslationViewBtn');
+
+            showingTranslationHtmlPreview = !showingTranslationHtmlPreview;
+
+            if (showingTranslationHtmlPreview) {
+                preview.style.display = 'block';
+                textOutput.style.display = 'none';
+                btn.textContent = '👁️ View Source';
+            } else {
+                preview.style.display = 'none';
+                textOutput.style.display = 'block';
+                textOutput.textContent = translationText;
+                btn.textContent = '🔍 Preview';
+            }
+        });
+
+        // Unified format button handler (works before and after transcription)
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active button
+                document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Update selected format
+                const newFormat = btn.dataset.format;
+                selectedFormat = newFormat;
+                currentFormat = newFormat;
+
+                // If transcription is complete and we have segments, reformat instantly
+                if (currentSegments) {
+                    transcriptionText = updateFormatDisplay(
+                        newFormat,
+                        currentSegments,
+                        'transcriptionOutput',
+                        'htmlPreview',
+                        'toggleViewBtn'
+                    );
+                    document.getElementById('format').textContent = newFormat.toUpperCase();
+
+                    // Also reformat translation if available
+                    if (currentTranslatedSegments) {
+                        translationText = updateFormatDisplay(
+                            newFormat,
+                            currentTranslatedSegments,
+                            'translationOutput',
+                            'translationHtmlPreview',
+                            'toggleTranslationViewBtn'
+                        );
+                    }
+                }
+            });
+        });
+
+        // Re-generate HTML when word highlighting checkbox is toggled
+        document.getElementById('applyWordHighlighting').addEventListener('change', () => {
+            // Only regenerate if we're in HTML format and have segments
+            if (currentFormat === 'html' && currentSegments) {
+                transcriptionText = updateFormatDisplay(
+                    'html',
+                    currentSegments,
+                    'transcriptionOutput',
+                    'htmlPreview',
+                    'toggleViewBtn'
+                );
+
+                if (currentTranslatedSegments) {
+                    translationText = updateFormatDisplay(
+                        'html',
+                        currentTranslatedSegments,
+                        'translationOutput',
+                        'translationHtmlPreview',
+                        'toggleTranslationViewBtn'
+                    );
+                }
+            }
+        });
+
+        // Drag & Drop (file input is now a transparent overlay, no need for click handler)
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            selectedFile = file;
+            currentFilename = file.name;  // Store filename for HTML output
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            document.getElementById('fileType').textContent = file.type || 'Unknown';
+            fileInfo.style.display = 'block';
+            uploadBtn.disabled = false;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        // File
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('format', selectedFormat);
+            formData.append('language', document.getElementById('ft_language').value);  // Add selected language
+
+            // Add translation target if enabled
+            const translateEnabled = document.getElementById('ft_translate').checked;
+            if (translateEnabled) {
+                formData.append('translate_to', document.getElementById('ft_translate_to').value);
+            }
+
+            try {
+                const response = await fetch('/api/transcribe-file', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentSessionId = data.session_id;
+                    showProgressSection();
+                } else {
+                    showError(data.error);
+                }
+            } catch (error) {
+                showError('Failed to upload file: ' + error.message);
+            }
+        });
+
+        // Client-side formatting functions
+        /**
+         * Pad number with leading zeros
+         */
+        function pad(num, size) {
+            return String(num).padStart(size, '0');
+        }
+
+        /**
+         * Format time for SRT (HH:MM:SS,mmm)
+         */
+        function formatTimeSRT(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)},${pad(ms, 3)}`;
+        }
+
+        /**
+         * Format time for VTT (HH:MM:SS.mmm)
+         */
+        function formatTimeVTT(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(ms, 3)}`;
+        }
+
+        /**
+         * Format elapsed time as HH:MM:SS
+         */
+        function formatElapsedTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)}`;
+        }
+
+        /**
+         * Generate standalone HTML document with transcription
+         */
+        function generateHtmlOutput(segments) {
+            const now = new Date();
+            const titleDate = now.toISOString().slice(0, 16).replace('T', ' ');
+            const duration = segments.length > 0 ? segments[segments.length - 1].end : 0;
+            const filename = currentFilename || 'Transcription';
+
+            // Generate segments HTML
+            const segmentsHtml = segments.map(seg => {
+                const elapsed = formatElapsedTime(seg.start);
+                const text = applyWordHighlightingClient(seg.text);
+                return `<div class="segment"><span class="timestamp" data-elapsed="${elapsed}">[${elapsed}]</span><span class="text">${text}</span></div>`;
+            }).join('\n');
+
+            return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcription - ${escapeHtml(filename)}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            color: var(--accent);
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--accent);
+        }
+        .meta {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 25px;
+        }
+        .segment {
+            margin: 12px 0;
+            padding: 10px 15px;
+            background: var(--bg-elevated);
+            border-radius: 6px;
+            border-left: 3px solid #3a3a3a;
+        }
+        .segment:hover { border-left-color: var(--accent); }
+        .timestamp {
+            color: #888;
+            font-size: 0.8em;
+            margin-right: 12px;
+            font-family: monospace;
+        }
+        .controls {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--bg-elevated);
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+        .controls label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .controls input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .controls input[type="text"] {
+            background: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e0e0e0;
+            font-size: 0.9em;
+            width: 200px;
+        }
+        .controls input[type="text"]:focus { outline: none; border-color: var(--accent); }
+        .controls button {
+            background: var(--accent);
+            color: #1a1a1a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .controls button:hover { background: #9a67ea; }
+        .controls button.secondary { background: #3a3a3a; color: #e0e0e0; }
+        .controls button.secondary:hover { background: #4a4a4a; }
+        .font-controls { display: flex; gap: 8px; align-items: center; }
+        .hide-timestamps .timestamp { display: none; }
+        .no-rows .segment {
+            display: inline;
+            background: none;
+            padding: 0;
+            margin: 0;
+            border: none;
+        }
+        .no-rows .segment:hover { border: none; }
+        .highlight { background: #ffeb3b; color: #000; padding: 1px 3px; border-radius: 2px; }
+        .highlight-active { background: #ff6d00; color: #fff; padding: 1px 3px; border-radius: 2px; }
+        .printer-mode { background: #fff !important; color: #000 !important; }
+        .printer-mode .container { background: #fff !important; box-shadow: none; }
+        .printer-mode .segment { background: #f5f5f5 !important; border-left-color: #ccc !important; }
+        .printer-mode .segment:hover { border-left-color: var(--accent) !important; }
+        .printer-mode h1 { color: #6200ea; border-color: #6200ea; }
+        .printer-mode .controls { background: #f0f0f0 !important; }
+        .printer-mode .timestamp { color: #666; }
+        @media print {
+            .controls { display: none !important; }
+            body { background: #fff; color: #000; }
+            .container { box-shadow: none; }
+            .segment { background: #f5f5f5; border-left-color: #ccc; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Transcription</h1>
+        <div class="controls no-print">
+            <label><input type="checkbox" id="showTimestamps" checked onchange="toggleTimestamps()"> Timestamps</label>
+            <label><input type="checkbox" id="showRows" checked onchange="toggleRows()"> Row Separators</label>
+            <label><input type="checkbox" id="printerMode" onchange="togglePrinterMode()"> Printer Mode</label>
+            <div class="font-controls">
+                <button onclick="changeFontSize(-1)">A-</button>
+                <span id="fontSizeDisplay">100%</span>
+                <button onclick="changeFontSize(1)">A+</button>
+            </div>
+            <input type="text" id="searchInput" placeholder="Search text..." onkeyup="if(event.key==='Enter')doSearch(); else if(event.key==='ArrowDown'){event.preventDefault();nextMatch();} else if(event.key==='ArrowUp'){event.preventDefault();prevMatch();}">
+            <button onclick="doSearch()">Search</button>
+            <button class="secondary" onclick="prevMatch()">&#8593; Prev</button>
+            <button class="secondary" onclick="nextMatch()">&#8595; Next</button>
+            <span id="searchCount" style="font-size:0.85em;color:#aaa;"></span>
+            <button class="secondary" onclick="clearSearch()">Clear</button>
+            <button onclick="copyText()">Copy All</button>
+        </div>
+        <div class="meta">
+            <p>File: ${escapeHtml(filename)}</p>
+            <p>Date: ${titleDate}</p>
+            <p>Duration: ${formatElapsedTime(duration)}</p>
+            <p>Segments: ${segments.length}</p>
+        </div>
+        <div id="content">
+${segmentsHtml}
+        </div>
+    </div>
+    <scr` + `ipt>
+        let currentFontSize = 100;
+
+        function toggleTimestamps() {
+            const show = document.getElementById('showTimestamps').checked;
+            document.getElementById('content').classList.toggle('hide-timestamps', !show);
+        }
+
+        function toggleRows() {
+            const show = document.getElementById('showRows').checked;
+            document.getElementById('content').classList.toggle('no-rows', !show);
+        }
+
+        function togglePrinterMode() {
+            const enabled = document.getElementById('printerMode').checked;
+            document.body.classList.toggle('printer-mode', enabled);
+        }
+
+        function changeFontSize(delta) {
+            currentFontSize = Math.max(50, Math.min(200, currentFontSize + delta * 10));
+            document.getElementById('content').style.fontSize = currentFontSize + '%';
+            document.getElementById('fontSizeDisplay').textContent = currentFontSize + '%';
+        }
+
+        let searchMatches = [];
+        let currentMatchIndex = -1;
+
+        function doSearch() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            clearSearch();
+            if (!query) return;
+
+            const segments = document.querySelectorAll('.segment');
+            segments.forEach(seg => {
+                const text = seg.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    const html = seg.innerHTML;
+                    const regex = new RegExp('(' + query.replace(/[.*+?^` + '$' + `{}()|[\\]\\\\]/g, '\\\\` + '$' + `&') + ')', 'gi');
+                    seg.innerHTML = html.replace(regex, '<span class="highlight">` + '$' + `1</span>');
+                }
+            });
+            searchMatches = Array.from(document.querySelectorAll('.highlight'));
+            currentMatchIndex = searchMatches.length > 0 ? 0 : -1;
+            updateActiveMatch();
+        }
+
+        function updateActiveMatch() {
+            searchMatches.forEach((el, i) => {
+                el.className = i === currentMatchIndex ? 'highlight-active' : 'highlight';
+            });
+            const counter = document.getElementById('searchCount');
+            if (searchMatches.length === 0) {
+                counter.textContent = 'No matches';
+            } else {
+                counter.textContent = (currentMatchIndex + 1) + ' / ' + searchMatches.length;
+                searchMatches[currentMatchIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function nextMatch() {
+            if (searchMatches.length === 0) return;
+            currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
+            updateActiveMatch();
+        }
+
+        function prevMatch() {
+            if (searchMatches.length === 0) return;
+            currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+            updateActiveMatch();
+        }
+
+        function clearSearch() {
+            document.querySelectorAll('.highlight, .highlight-active').forEach(el => {
+                el.outerHTML = el.textContent;
+            });
+            searchMatches = [];
+            currentMatchIndex = -1;
+            const counter = document.getElementById('searchCount');
+            if (counter) counter.textContent = '';
+        }
+
+        function copyText() {
+            const showTimestamps = document.getElementById('showTimestamps').checked;
+            const segments = document.querySelectorAll('.segment');
+            let text = '';
+            segments.forEach(seg => {
+                if (showTimestamps) {
+                    const ts = seg.querySelector('.timestamp');
+                    if (ts) text += ts.textContent + ' ';
+                }
+                // Get text content without timestamp
+                const clone = seg.cloneNode(true);
+                const tsClone = clone.querySelector('.timestamp');
+                if (tsClone) tsClone.remove();
+                text += clone.textContent.trim() + '\\n';
+            });
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard!');
+            });
+        }
+    </scr` + `ipt>
+</body>
+</html>`;
+        }
+
+        /**
+         * Format segments into requested output format
+         * @param {Array} segments - Array of {text, start, end} objects
+         * @param {string} format - One of: 'txt', 'srt', 'vtt', 'json', 'html'
+         * @returns {string} Formatted transcription text
+         */
+        function formatSegments(segments, format) {
+            if (!segments || segments.length === 0) {
+                return '';
+            }
+
+            switch(format) {
+                case 'txt':
+                    // Remove timestamps, just concatenate text
+                    return segments.map(seg => seg.text).join('\n');
+
+                case 'srt':
+                    // SubRip format: index, timestamps (HH:MM:SS,mmm), text
+                    return segments.map((seg, idx) => {
+                        const start = formatTimeSRT(seg.start);
+                        const end = formatTimeSRT(seg.end);
+                        return `${idx + 1}\n${start} --> ${end}\n${seg.text}\n`;
+                    }).join('\n');
+
+                case 'vtt':
+                    // WebVTT format: WEBVTT header, timestamps (HH:MM:SS.mmm), text
+                    const vttSegments = segments.map(seg => {
+                        const start = formatTimeVTT(seg.start);
+                        const end = formatTimeVTT(seg.end);
+                        return `${start} --> ${end}\n${seg.text}\n`;
+                    }).join('\n');
+                    return `WEBVTT\n\n${vttSegments}`;
+
+                case 'json':
+                    // JSON format with full metadata
+                    return JSON.stringify({
+                        segments: segments,
+                        segment_count: segments.length
+                    }, null, 2);
+
+                case 'html':
+                    // HTML format with styling and word highlighting
+                    return generateHtmlOutput(segments);
+
+                default:
+                    return segments.map(seg => seg.text).join('\n');
+            }
+        }
+
+        // Socket.IO
+        socket.on('file_progress', (data) => {
+            if (data.session_id === currentSessionId) {
+                updateProgress(data.percent, data.status);
+            }
+        });
+
+        socket.on('file_complete', (data) => {
+            if (data.session_id === currentSessionId) {
+                showResults(data);
+            }
+        });
+
+        socket.on('file_error', (data) => {
+            if (data.session_id === currentSessionId) {
+                showError(data.error);
+            }
+        });
+
+        function showProgressSection() {
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            // Enable cancel button during processing, disable upload button
+            document.getElementById('cancelBtn').disabled = false;
+            document.getElementById('transcribeBtn').disabled = true;
+            document.getElementById('progressText').textContent = 'Starting transcription...';
+        }
+
+        function updateProgress(percent, status) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
+            document.getElementById('progressText').textContent = status;
+        }
+
+        function showResults(data) {
+            // Store segments for format switching
+            currentSegments = data.segments;
+            currentFormat = selectedFormat;
+
+            // Store filename from server response if available
+            if (data.filename) {
+                currentFilename = data.filename;
+            }
+
+            // Format and display the transcription (handles HTML preview automatically)
+            transcriptionText = updateFormatDisplay(
+                currentFormat,
+                currentSegments,
+                'transcriptionOutput',
+                'htmlPreview',
+                'toggleViewBtn'
+            );
+            document.getElementById('duration').textContent = formatDuration(data.duration);
+            document.getElementById('chunks').textContent = data.total_segments || data.chunks;
+            document.getElementById('format').textContent = currentFormat.toUpperCase();
+
+            // Show source language if available
+            if (data.source_language) {
+                const langNames = {
+                    'auto': 'Auto-detected', 'en': 'English', 'es': 'Spanish', 'fr': 'French',
+                    'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch',
+                    'pl': 'Polish', 'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'zh': 'Chinese'
+                };
+                document.getElementById('sourceLanguageLabel').textContent = langNames[data.source_language] || data.source_language;
+            } else {
+                document.getElementById('sourceLanguageLabel').textContent = '';
+            }
+
+            // Handle translation results
+            if (data.translated_segments && data.translated_segments.length > 0) {
+                currentTranslatedSegments = data.translated_segments;
+                translationText = updateFormatDisplay(
+                    currentFormat,
+                    currentTranslatedSegments,
+                    'translationOutput',
+                    'translationHtmlPreview',
+                    'toggleTranslationViewBtn'
+                );
+                document.getElementById('targetLanguageLabel').textContent = data.target_language_name || data.target_language;
+                document.getElementById('translationContainer').style.display = 'block';
+            } else {
+                currentTranslatedSegments = null;
+                translationText = '';
+                document.getElementById('translationContainer').style.display = 'none';
+                // Hide translation iframe if switching to non-HTML format
+                document.getElementById('translationHtmlPreview').style.display = 'none';
+                document.getElementById('toggleTranslationViewBtn').style.display = 'none';
+            }
+
+            // Sync unified format buttons with current format
+            document.querySelectorAll('.format-btn').forEach(btn => {
+                if (btn.dataset.format === currentFormat) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('errorSection').style.display = 'none';
+            // Disable cancel button when complete, enable upload for new file
+            document.getElementById('cancelBtn').disabled = true;
+            document.getElementById('transcribeBtn').disabled = true; // Will be enabled when new file is selected
+            document.getElementById('progressText').textContent = 'Transcription complete';
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorSection').style.display = 'block';
+            document.getElementById('progressSection').style.display = 'none';
+            // Disable cancel button on error, enable upload for retry
+            document.getElementById('cancelBtn').disabled = true;
+            document.getElementById('transcribeBtn').disabled = false; // Allow retry with same file
+            document.getElementById('progressText').textContent = 'Error occurred';
+        }
+
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Copy
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const text = transcriptionText;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('✅ Copied to clipboard!');
+                }).catch(() => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        });
+
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                alert('✅ Copied to clipboard!');
+            } catch (err) {
+                alert('❌ Failed to copy. Please select the text manually and use Ctrl+C.');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        // Download
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            if (!currentSegments) {
+                alert('No transcription data to download');
+                return;
+            }
+
+            // Generate fresh formatted output for download using current format
+            const formattedText = formatSegments(currentSegments, currentFormat);
+
+            // Determine file extension and MIME type based on current format
+            let extension, mimeType;
+            switch(currentFormat) {
+                case 'srt':
+                    extension = 'srt';
+                    mimeType = 'text/srt';
+                    break;
+                case 'vtt':
+                    extension = 'vtt';
+                    mimeType = 'text/vtt';
+                    break;
+                case 'json':
+                    extension = 'json';
+                    mimeType = 'application/json';
+                    break;
+                case 'html':
+                    extension = 'html';
+                    mimeType = 'text/html';
+                    break;
+                default:
+                    extension = 'txt';
+                    mimeType = 'text/plain';
+            }
+
+            // Create and trigger download
+            const blob = new Blob([formattedText], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const baseName = currentFilename ? currentFilename.replace(/\.[^/.]+$/, '') : 'transcription';
+            a.download = `${baseName}.${extension}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Copy Translation
+        document.getElementById('copyTranslationBtn').addEventListener('click', () => {
+            if (!translationText) {
+                alert('No translation to copy');
+                return;
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(translationText).then(() => {
+                    alert('✅ Translation copied to clipboard!');
+                }).catch(() => {
+                    fallbackCopy(translationText);
+                });
+            } else {
+                fallbackCopy(translationText);
+            }
+        });
+
+        // Download Translation
+        document.getElementById('downloadTranslationBtn').addEventListener('click', () => {
+            if (!currentTranslatedSegments) {
+                alert('No translation data to download');
+                return;
+            }
+
+            // Generate fresh formatted output for download using current format
+            const formattedText = formatSegments(currentTranslatedSegments, currentFormat);
+
+            // Determine file extension and MIME type based on current format
+            let extension, mimeType;
+            switch(currentFormat) {
+                case 'srt':
+                    extension = 'srt';
+                    mimeType = 'text/srt';
+                    break;
+                case 'vtt':
+                    extension = 'vtt';
+                    mimeType = 'text/vtt';
+                    break;
+                case 'json':
+                    extension = 'json';
+                    mimeType = 'application/json';
+                    break;
+                case 'html':
+                    extension = 'html';
+                    mimeType = 'text/html';
+                    break;
+                default:
+                    extension = 'txt';
+                    mimeType = 'text/plain';
+            }
+
+            // Create and trigger download
+            const blob = new Blob([formattedText], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const baseName = currentFilename ? currentFilename.replace(/\.[^/.]+$/, '') : 'translation';
+            a.download = `${baseName}_translated.${extension}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // New file
+        document.getElementById('newFileBtn').addEventListener('click', () => {
+            selectedFile = null;
+            transcriptionText = '';
+            translationText = '';  // Clear translation
+            currentSegments = null;  // Clear segments
+            currentTranslatedSegments = null;  // Clear translated segments
+            currentFormat = 'txt';   // Reset format
+            fileInput.value = '';
+            fileInfo.style.display = 'none';
+            document.getElementById('translationContainer').style.display = 'none';  // Hide translation container
+            document.getElementById('transcribeBtn').disabled = true;
+            document.getElementById('cancelBtn').disabled = true;
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+        });
+
+        // Cancel
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            // Reset all states to initial
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.style.display = 'none';
+            document.getElementById('transcribeBtn').disabled = true;
+            document.getElementById('cancelBtn').disabled = true;
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            document.getElementById('progressText').textContent = 'Ready to transcribe file';
+        });
+
+        // ========================================
+        // File Model Configuration Functions
+        // ========================================
+
+        /**
+         * Update UI based on selected model type (Whisper vs Downloaded)
+         */
+        function updateFileModelTypeUI() {
+            const modelType = document.getElementById('file_model_type').value;
+            const whisperConfig = document.getElementById('file_whisper_config');
+            const downloadedConfig = document.getElementById('file_downloaded_config');
+
+            if (modelType === 'whisper') {
+                whisperConfig.style.display = 'block';
+                downloadedConfig.style.display = 'none';
+                // Load available Whisper models
+                loadAvailableWhisperModels();
+            } else if (modelType === 'downloaded') {
+                whisperConfig.style.display = 'none';
+                downloadedConfig.style.display = 'block';
+                // Load available downloaded models
+                loadAvailableDownloadedModels();
+            }
+        }
+
+        /**
+         * Load available downloaded models for the dropdown
+         */
+        async function loadAvailableDownloadedModels() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                const select = document.getElementById('file_downloaded_model_select');
+                select.innerHTML = '<option value="">Select a downloaded model</option>';
+
+                if (data.success && data.downloaded_models && data.downloaded_models.length > 0) {
+                    data.downloaded_models.forEach(model => {
+                        const typeIcon = model.type === 'huggingface' ? '🤗' : '💾';
+                        const option = document.createElement('option');
+                        option.value = model.path;
+                        option.textContent = `${typeIcon} ${model.name}`;
+                        option.dataset.type = model.type;
+                        select.appendChild(option);
+                    });
+                } else {
+                    select.innerHTML = '<option value="">No models downloaded</option>';
+                }
+            } catch (error) {
+                console.error('Error loading downloaded models:', error);
+                document.getElementById('file_downloaded_model_select').innerHTML =
+                    '<option value="">Error loading models</option>';
+            }
+        }
+
+        /**
+         * Load available downloaded Whisper models for the dropdown
+         */
+        async function loadAvailableWhisperModels() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                const select = document.getElementById('file_whisper_model_select');
+                select.innerHTML = '';
+
+                if (data.success && data.whisper_models) {
+                    // Filter to only show downloaded models
+                    const downloadedModels = data.whisper_models.filter(m => m.downloaded);
+
+                    if (downloadedModels.length > 0) {
+                        downloadedModels.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.name;
+                            option.textContent = `${model.name.charAt(0).toUpperCase() + model.name.slice(1)} (${model.desc}) • ${model.size}`;
+                            select.appendChild(option);
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">No Whisper models downloaded</option>';
+                    }
+                } else {
+                    select.innerHTML = '<option value="">Error loading models</option>';
+                }
+            } catch (error) {
+                console.error('Error loading Whisper models:', error);
+                document.getElementById('file_whisper_model_select').innerHTML =
+                    '<option value="">Error loading models</option>';
+            }
+        }
+
+        /**
+         * Load current file model configuration from server
+         */
+        async function loadFileModelConfig() {
+            try {
+                const response = await fetch('/api/models/manager');
+                const data = await response.json();
+
+                if (data.success) {
+                    const fileModel = data.file_transcription_model;
+
+                    // Set model type
+                    document.getElementById('file_model_type').value = fileModel.type || 'whisper';
+
+                    // Set whisper-specific settings
+                    if (fileModel.type === 'whisper') {
+                        document.getElementById('file_whisper_model_select').value =
+                            fileModel.whisper?.model || 'base';
+                    }
+
+                    // Set downloaded model settings
+                    if (fileModel.type === 'huggingface' || fileModel.type === 'custom') {
+                        const downloadedPath = fileModel.huggingface?.model_id ||
+                                             fileModel.custom?.model_path || '';
+                        document.getElementById('file_downloaded_model_select').value = downloadedPath;
+                    }
+
+                    // Update UI visibility
+                    updateFileModelTypeUI();
+                }
+            } catch (error) {
+                console.error('Error loading file model config:', error);
+            }
+        }
+
+        /**
+         * Save the file model configuration (silent version for combined save)
+         */
+        async function saveFileModelConfigSilent() {
+            const modelType = document.getElementById('file_model_type').value;
+
+            // Build the configuration object for file transcription
+            const fileModel = {
+                type: modelType
+            };
+
+            if (modelType === 'whisper') {
+                fileModel.whisper = {
+                    model: document.getElementById('file_whisper_model_select').value
+                };
+            } else if (modelType === 'downloaded') {
+                const downloadedPath = document.getElementById('file_downloaded_model_select').value;
+
+                if (!downloadedPath) {
+                    throw new Error('Please select a downloaded model');
+                }
+
+                // Determine if HuggingFace or custom based on path format
+                if (downloadedPath.includes('--')) {
+                    fileModel.type = 'huggingface';
+                    fileModel.huggingface = {
+                        model_id: downloadedPath,
+                        use_flash_attention: false
+                    };
+                } else {
+                    fileModel.type = 'custom';
+                    fileModel.custom = {
+                        model_path: downloadedPath,
+                        model_type: 'custom'
+                    };
+                }
+            }
+
+            // Get current live model config (don't change it)
+            const currentResponse = await fetch('/api/models/manager');
+            const currentData = await currentResponse.json();
+
+            if (!currentData.success) {
+                throw new Error('Error loading current configuration');
+            }
+
+            // Save with both live (unchanged) and file (updated) configs
+            const response = await fetch('/api/models/manager', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    live_model: currentData.live_model,  // Keep live unchanged
+                    file_transcription_model: fileModel   // Update file only
+                })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error);
+            }
+
+            loadFileModelConfig();  // Reload to show updated config
+            loadModelStatus();      // Update the model status display at the top
+        }
+
+        // Load settings on page load
+        window.addEventListener('load', () => {
+            loadSettings();
+            loadModelStatus();
+            loadAvailableWhisperModels();
+            loadFileModelConfig();
+            loadWordHighlightingConfig();
+        });
+    </script>
+{% endblock %}

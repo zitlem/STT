@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}Corrections - Speech to Text{% endblock %}
+{% block page_title %}Corrections{% endblock %}
+
+{% block extra_css %}
+      /* Corrections page uses full-height flex layout */
+      .content {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 80px);
+        overflow: hidden;
+      }
+
+      /* Toolbar */
+      .toolbar {
+        display: flex; align-items: center; gap: 12px;
+        padding: 8px 16px; background: var(--bg-base); border-bottom: 1px solid #333; flex-shrink: 0;
+      }
+      .toolbar button {
+        padding: 5px 14px; border: 1px solid #444; border-radius: 16px;
+        background: var(--bg-card); color: var(--text-primary); cursor: pointer; font-size: 0.8em; transition: all 0.2s;
+      }
+      .toolbar button:hover { background: #333; }
+      .toolbar button.active { border-color: orange; color: orange; background: rgba(255,165,0,0.1); }
+      .corrections-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+      .corrections-status-dot.active { background: var(--success); }
+      .corrections-status-dot.inactive { background: #666; }
+
+      /* Main content */
+      .corrections-main-content {
+        flex: 1; overflow-y: auto; padding: 12px 20px;
+      }
+      .empty-state { text-align: center; padding: 60px 20px; opacity: 0.35; }
+
+      /* Segment card */
+      .seg-card {
+        margin-bottom: 8px; padding: 10px 14px;
+        border: 1px solid var(--border); border-radius: 8px;
+        background: var(--bg-base); transition: border-color 0.15s;
+      }
+      .seg-card:hover { border-color: #444; }
+      .seg-card.low-confidence { border-left: 3px solid orange; }
+      .seg-card.staged {
+        border: 1px dashed rgba(255,165,0,0.5);
+        background: rgba(255,165,0,0.03);
+        opacity: 0.8;
+      }
+
+      /* Original text row */
+      .seg-original {
+        line-height: 1.5; cursor: pointer; border-radius: 3px;
+        transition: background-color 0.15s; padding: 2px 4px; margin: -2px -4px;
+      }
+      .seg-original:hover { background: rgba(100,149,237,0.1); }
+      .seg-original.editing {
+        outline: 2px solid var(--accent); background: rgba(187,134,252,0.08);
+      }
+      .seg-original[contenteditable="true"]:focus { outline: 2px solid var(--accent); }
+
+      /* Translated text row */
+      .seg-translated {
+        margin-top: 4px; line-height: 1.4; cursor: pointer;
+        color: #8ab4f8; font-size: 0.92em; padding: 2px 4px; margin-left: -4px; margin-right: -4px;
+        border-radius: 3px; transition: background-color 0.15s;
+      }
+      .seg-translated:hover { background: rgba(138,180,248,0.08); }
+      .seg-translated.editing {
+        outline: 2px solid #8ab4f8; background: rgba(138,180,248,0.08);
+      }
+      .seg-translated[contenteditable="true"]:focus { outline: 2px solid #8ab4f8; }
+
+      /* Meta row */
+      .seg-meta {
+        display: flex; align-items: center; gap: 8px; margin-top: 4px;
+      }
+      .seg-confidence {
+        font-size: 0.7em; color: var(--text-muted); background: var(--bg-card);
+        padding: 1px 6px; border-radius: 8px;
+      }
+      .seg-confidence.low { color: orange; background: rgba(255,165,0,0.1); }
+
+      /* Alternatives */
+      .seg-alts { display: flex; flex-wrap: wrap; gap: 4px; }
+      .alt-pill {
+        font-size: 0.73em; padding: 2px 10px;
+        border: 1px solid #444; border-radius: 14px;
+        background: #222; color: #aaa; cursor: pointer; transition: all 0.15s;
+      }
+      .alt-pill:hover { background: #333; color: var(--text-primary); border-color: #8ab4f8; }
+
+      /* Staged extras */
+      .staged-info {
+        display: flex; align-items: center; gap: 8px; margin-top: 4px;
+      }
+      .staged-countdown { font-size: 0.75em; color: orange; font-weight: 600; }
+      .staged-btn {
+        font-size: 0.73em; padding: 2px 10px; border: 1px solid #444;
+        border-radius: 4px; cursor: pointer; background: var(--bg-base); color: var(--text-primary);
+      }
+      .staged-btn.approve { color: var(--success); border-color: var(--success); }
+      .staged-btn.discard { color: var(--danger); border-color: var(--danger); }
+
+      /* In-progress card */
+      .seg-card.in-progress {
+        border-color: transparent; background: transparent; opacity: 0.5;
+        font-style: italic;
+      }
+
+      /* Review queue bottom bar */
+      .review-bar {
+        background: var(--bg-base); border-top: 1px solid #333;
+        flex-shrink: 0; max-height: 200px; overflow: hidden; transition: max-height 0.3s ease;
+      }
+      .review-bar.collapsed { max-height: 36px; }
+      .review-bar-header {
+        padding: 6px 14px; display: flex; justify-content: space-between;
+        align-items: center; cursor: pointer; font-size: 0.85em;
+      }
+      .review-bar-header:hover { background: #222; }
+      .review-badge {
+        background: orange; color: #000; border-radius: 10px;
+        padding: 1px 8px; font-size: 0.8em; font-weight: 600; margin-left: 6px;
+      }
+      .review-bar-items {
+        padding: 4px 14px 8px; overflow-y: auto; max-height: 160px;
+        display: flex; flex-wrap: wrap; gap: 6px;
+      }
+      .review-item {
+        padding: 6px 10px; border: 1px solid #333; border-radius: 6px;
+        background: var(--bg-card); font-size: 0.8em; flex: 0 0 auto; max-width: 350px;
+      }
+      .review-item .rv-text { margin-bottom: 4px; line-height: 1.3; }
+      .review-item .rv-meta { font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px; }
+      .review-item .rv-actions { display: flex; gap: 4px; }
+      .review-item .rv-actions button {
+        padding: 2px 8px; border: 1px solid #444; border-radius: 3px;
+        background: var(--bg-base); color: var(--text-primary); cursor: pointer; font-size: 0.8em;
+      }
+      .review-item .rv-actions .btn-approve { color: var(--success); border-color: var(--success); }
+      .review-item .rv-actions .btn-edit { color: #8ab4f8; border-color: #8ab4f8; }
+
+      /* Shortcuts bar */
+      .shortcuts-hint {
+        padding: 4px 12px; font-size: 0.7em; color: #555;
+        background: var(--bg-base); border-top: 1px solid #282828; flex-shrink: 0;
+      }
+      .shortcuts-hint kbd { background: #333; padding: 1px 5px; border-radius: 3px; }
+{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <span id="status-indicator"><span class="corrections-status-dot inactive"></span> Stopped</span>
+        <button id="delay-toggle-btn" onclick="toggleDelay()">Delay: OFF</button>
+        <label style="font-size:0.8em; color:#aaa; display:flex; align-items:center; gap:4px;">
+            <input type="number" id="delay-seconds-input" min="2" max="30" value="7"
+                   style="width:42px; padding:2px 4px; background:var(--bg-elevated); border:1px solid #444; border-radius:4px; color:#eee; font-size:0.9em; text-align:center;"
+                   onchange="setDelaySeconds(this.value)">s
+        </label>
+    </div>
+
+    <div class="corrections-main-content" id="main-scroll">
+        <div id="empty-state" class="empty-state">
+            <p>Waiting for transcription...</p>
+            <p style="font-size:0.8em;margin-top:8px;">Segments will appear here. Click any text to edit.</p>
+        </div>
+        <div id="segments-container"></div>
+    </div>
+
+    <!-- Review queue bottom bar -->
+    <div class="review-bar collapsed" id="review-bar">
+        <div class="review-bar-header" onclick="toggleReviewBar()">
+            <span>Review Queue <span class="review-badge" id="review-badge" style="display:none;">0</span></span>
+            <span style="display:flex;gap:8px;align-items:center;">
+                <button onclick="event.stopPropagation();approveAllReview()" style="font-size:0.75em;padding:2px 10px;border:1px solid var(--success);border-radius:4px;background:transparent;color:var(--success);cursor:pointer;">Approve All</button>
+                <span id="review-toggle-icon" style="font-size:0.8em;">&#9650;</span>
+            </span>
+        </div>
+        <div class="review-bar-items" id="review-items"></div>
+    </div>
+
+    <div class="shortcuts-hint">
+        <kbd>Ctrl+E</kbd> Edit last segment &nbsp;
+        <kbd>Ctrl+D</kbd> Toggle delay &nbsp;
+        <kbd>Enter</kbd> Save edit &nbsp;
+        <kbd>Esc</kbd> Cancel edit &nbsp;
+        Click any text to edit
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='jquery-3.6.0.min.js') }}"></script>
+    <script>
+    $(function() {
+        const socket = io.connect();
+
+        // === State ===
+        // Unified segments: keyed by id, merged from transcription + translation events
+        let segments = {};  // {id: {id, text, confidence, translated_text, trans_confidence, alternatives}}
+        let segOrder = [];  // sorted segment IDs
+        let stagedSegs = [];
+        let inProgress = null;       // transcription in-progress
+        let transInProgress = null;  // translation in-progress
+        let transEnabled = false;
+        let delayEnabled = false;
+        let confidenceThreshold = 0.7;
+        let editingOrigId = null;
+        let editingTransId = null;
+        let reviewSegments = [];
+
+        // === Socket: Transcription ===
+        socket.on("transcription_update", function(data) {
+            updateStatusFromData(data);
+            const segs = data.segments || [];
+            if (data.delay_enabled !== undefined) { delayEnabled = data.delay_enabled; updateDelayBtn(); }
+            if (data.delay_seconds !== undefined) { document.getElementById('delay-seconds-input').value = data.delay_seconds; }
+            stagedSegs = data.staged_segments || [];
+            inProgress = data.in_progress_segment;
+
+            let changed = false;
+            segs.forEach(s => {
+                if (!segments[s.id]) {
+                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence };
+                    changed = true;
+                } else {
+                    if (segments[s.id].text !== s.text) { segments[s.id].text = s.text; changed = true; }
+                    if (s.confidence != null) segments[s.id].confidence = s.confidence;
+                }
+            });
+            segOrder = Object.keys(segments).map(Number).sort((a, b) => a - b);
+            render();
+        });
+
+        socket.on("correction_applied", function(data) {
+            if (data.segment_id && segments[data.segment_id]) {
+                segments[data.segment_id].text = data.new_text;
+                render();
+            }
+        });
+
+        // === Socket: Translation ===
+        socket.on("translation_update", function(data) {
+            transEnabled = data.enabled || false;
+            transInProgress = data.in_progress;
+            const tSegs = data.segments || [];
+
+            tSegs.forEach(s => {
+                if (!segments[s.id]) {
+                    segments[s.id] = { id: s.id, text: s.original_text };
+                }
+                segments[s.id].translated_text = s.translated_text;
+                segments[s.id].trans_confidence = s.confidence;
+                segments[s.id].alternatives = s.alternatives || [];
+            });
+            render();
+        });
+
+        socket.on("translation_correction_applied", function(data) {
+            if (data.segment_id && segments[data.segment_id]) {
+                segments[data.segment_id].translated_text = data.new_translated_text;
+                render();
+            }
+        });
+
+        // === Socket: Connection & Status ===
+        socket.on("connect", function() { updateStatusDot('connected'); });
+        socket.on("disconnect", function() { updateStatusDot('disconnected'); });
+        socket.on("delay_status", function(d) { delayEnabled = d.enabled; updateDelayBtn(); });
+
+        let _isLive = false;
+        function updateStatusFromData(data) {
+            // Derive "live" from whether transcription_update has content or in-progress text
+            const hasContent = (data.segments && data.segments.length > 0) || (data.in_progress_segment && data.in_progress_segment.text);
+            const hasInProgress = data.in_progress_segment && data.in_progress_segment.text && data.in_progress_segment.text.trim();
+            _isLive = hasContent || hasInProgress || (data.in_progress && data.in_progress.trim());
+            updateStatusDot(_isLive ? 'live' : 'stopped');
+        }
+
+        function updateStatusDot(state) {
+            const el = document.getElementById('status-indicator');
+            if (state === 'disconnected') {
+                el.innerHTML = '<span class="corrections-status-dot inactive"></span> Disconnected';
+            } else if (state === 'live') {
+                el.innerHTML = '<span class="corrections-status-dot active"></span> Live';
+            } else {
+                el.innerHTML = '<span class="corrections-status-dot inactive"></span> Stopped';
+            }
+        }
+
+        // === Render ===
+        function render() {
+            // Don't re-render while user is editing — would destroy contentEditable state
+            if (editingOrigId || editingTransId) return;
+
+            const container = document.getElementById('segments-container');
+            const empty = document.getElementById('empty-state');
+            const hasContent = segOrder.length > 0 || stagedSegs.length > 0 || (inProgress && inProgress.text);
+
+            empty.style.display = hasContent ? 'none' : 'block';
+            if (!hasContent) { container.innerHTML = ''; return; }
+
+            let html = '';
+
+            // Finalized segments
+            segOrder.forEach(id => {
+                const s = segments[id];
+                if (!s) return;
+
+                let cardCls = 'seg-card';
+                if (s.confidence != null && s.confidence < confidenceThreshold) cardCls += ' low-confidence';
+
+                let confHtml = '';
+                if (s.confidence != null) {
+                    const pct = (s.confidence * 100).toFixed(0);
+                    const cls = s.confidence < confidenceThreshold ? 'seg-confidence low' : 'seg-confidence';
+                    confHtml = `<span class="${cls}">STT ${pct}%</span>`;
+                }
+                if (s.trans_confidence != null) {
+                    const tPct = (s.trans_confidence * 100).toFixed(0);
+                    const tCls = s.trans_confidence < confidenceThreshold ? 'seg-confidence low' : 'seg-confidence';
+                    confHtml += ` <span class="${tCls}">TRA ${tPct}%</span>`;
+                }
+
+                let transHtml = '';
+                if (transEnabled && s.translated_text) {
+                    transHtml = `<div class="seg-translated" data-seg-id="${id}">${esc(s.translated_text)}</div>`;
+                }
+
+                let altsHtml = '';
+                if (s.alternatives && s.alternatives.length > 0) {
+                    altsHtml = '<div class="seg-alts">' +
+                        s.alternatives.map(a => `<button class="alt-pill" data-seg-id="${id}" data-text="${escAttr(a)}">${esc(a)}</button>`).join('') +
+                        '</div>';
+                }
+
+                let metaHtml = '';
+                if (confHtml || altsHtml) {
+                    metaHtml = `<div class="seg-meta">${confHtml}${altsHtml}</div>`;
+                }
+
+                html += `<div class="${cardCls}" data-seg-id="${id}">` +
+                    `<div class="seg-original" data-seg-id="${id}">${esc(s.text)}</div>` +
+                    transHtml + metaHtml +
+                    `</div>`;
+            });
+
+            // Staged segments
+            stagedSegs.forEach(s => {
+                const rem = Math.ceil(s.delay_remaining || 0);
+                const cached = segments[s.id];
+                let stagedTransHtml = '';
+                if (transEnabled && cached && cached.translated_text) {
+                    stagedTransHtml = `<div class="seg-translated" data-seg-id="${s.id}">${esc(cached.translated_text)}</div>`;
+                    if (cached.alternatives && cached.alternatives.length > 0) {
+                        stagedTransHtml += '<div class="seg-alts">' +
+                            cached.alternatives.map(a => `<button class="alt-pill" data-seg-id="${s.id}" data-text="${escAttr(a)}">${esc(a)}</button>`).join('') +
+                            '</div>';
+                    }
+                }
+                html += `<div class="seg-card staged" data-seg-id="${s.id}">` +
+                    `<div class="seg-original" data-seg-id="${s.id}">${esc(s.text)}</div>` +
+                    stagedTransHtml +
+                    `<div class="staged-info">` +
+                    `<span class="staged-countdown">${rem}s</span>` +
+                    `<button class="staged-btn approve" onclick="approveStaged(${s.id})">Approve</button>` +
+                    `<button class="staged-btn discard" onclick="discardStaged(${s.id})">Discard</button>` +
+                    `</div></div>`;
+            });
+
+            // In-progress
+            if (inProgress && inProgress.text && inProgress.text.trim()) {
+                let ipTransHtml = '';
+                if (transEnabled && transInProgress && transInProgress.translated_text) {
+                    ipTransHtml = `<div class="seg-translated" style="opacity:0.5;">${esc(transInProgress.translated_text)}</div>`;
+                }
+                html += `<div class="seg-card in-progress">` +
+                    `<div>${esc(inProgress.text)}</div>` +
+                    ipTransHtml +
+                    `</div>`;
+            }
+
+            container.innerHTML = html;
+
+            // Auto-scroll
+            const main = document.getElementById('main-scroll');
+            main.scrollTop = main.scrollHeight;
+        }
+
+        function esc(t) { const d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+        function escAttr(t) { return (t || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+        // === Editing: Original text ===
+        $(document).on('click', '.seg-original', function() {
+            if (editingOrigId || editingTransId) return;
+            startEdit(this, 'original');
+        });
+
+        // === Editing: Translated text ===
+        $(document).on('click', '.seg-translated', function() {
+            if (editingOrigId || editingTransId) return;
+            startEdit(this, 'translated');
+        });
+
+        function startEdit(el, type) {
+            const segId = parseInt(el.dataset.segId);
+            if (!segId) return;
+
+            if (type === 'original') editingOrigId = segId;
+            else editingTransId = segId;
+
+            el.classList.add('editing');
+            el.contentEditable = 'true';
+            el.focus();
+            // Select all text
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+
+            el._kh = function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEdit(el, type, true); }
+                if (e.key === 'Escape') { e.preventDefault(); finishEdit(el, type, false); }
+            };
+            el.addEventListener('keydown', el._kh);
+        }
+
+        function finishEdit(el, type, save) {
+            const segId = parseInt(el.dataset.segId);
+            if (save) {
+                const t = el.textContent.trim();
+                if (t && segId) {
+                    if (type === 'original') {
+                        socket.emit('submit_correction', { segment_id: segId, new_text: t, correction_type: 'manual' });
+                    } else {
+                        socket.emit('submit_translation_correction', { segment_id: segId, new_translated_text: t });
+                    }
+                }
+            } else {
+                // Restore
+                const s = segments[segId];
+                if (s) el.textContent = type === 'original' ? s.text : (s.translated_text || '');
+            }
+            el.contentEditable = 'false';
+            el.classList.remove('editing');
+            if (el._kh) el.removeEventListener('keydown', el._kh);
+            if (type === 'original') editingOrigId = null;
+            else editingTransId = null;
+        }
+
+        // === Alternative pills ===
+        $(document).on('click', '.alt-pill', function() {
+            const segId = parseInt(this.dataset.segId);
+            const altText = this.dataset.text;
+            if (segId && altText) {
+                socket.emit('select_translation_alternative', { segment_id: segId, alternative_text: altText });
+            }
+        });
+
+        // === Keyboard shortcuts ===
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'e') {
+                e.preventDefault();
+                if (editingOrigId || editingTransId) return;
+                const origEls = document.querySelectorAll('.seg-original');
+                if (origEls.length > 0) startEdit(origEls[origEls.length - 1], 'original');
+            }
+            if (e.ctrlKey && e.key === 'd') { e.preventDefault(); toggleDelay(); }
+        });
+
+        // === Delay ===
+        window.toggleDelay = function() {
+            delayEnabled = !delayEnabled;
+            socket.emit('toggle_delay', { enabled: delayEnabled });
+            updateDelayBtn();
+        };
+        function updateDelayBtn() {
+            const btn = document.getElementById('delay-toggle-btn');
+            btn.textContent = delayEnabled ? 'Delay: ON' : 'Delay: OFF';
+            btn.classList.toggle('active', delayEnabled);
+        }
+        window.setDelaySeconds = function(val) {
+            val = Math.max(2, Math.min(30, parseInt(val) || 7));
+            document.getElementById('delay-seconds-input').value = val;
+            socket.emit('set_delay_seconds', { delay_seconds: val });
+        };
+        window.approveStaged = function(id) { socket.emit('approve_staged', { staging_id: id }); };
+        window.discardStaged = function(id) { socket.emit('discard_staged', { staging_id: id }); };
+
+        // === Review queue ===
+        function loadReview() {
+            fetch('/api/transcription/review-queue')
+                .then(r => r.json())
+                .then(d => { if (d.success) { reviewSegments = d.segments || []; renderReview(); } })
+                .catch(() => {});
+        }
+
+        function renderReview() {
+            const c = document.getElementById('review-items');
+            const b = document.getElementById('review-badge');
+            b.textContent = reviewSegments.length;
+            b.style.display = reviewSegments.length > 0 ? 'inline' : 'none';
+            if (reviewSegments.length === 0) {
+                c.innerHTML = '<div style="padding:8px;opacity:0.4;font-size:0.85em;">No items to review</div>';
+                return;
+            }
+            c.innerHTML = reviewSegments.map(s => `
+                <div class="review-item" data-id="${s.id}">
+                    <div class="rv-text" id="rv-${s.id}">${esc(s.text)}</div>
+                    <div class="rv-meta">Confidence: ${s.confidence != null ? (s.confidence * 100).toFixed(0) + '%' : 'N/A'}</div>
+                    <div class="rv-actions">
+                        <button class="btn-edit" onclick="editRv(${s.id})">Edit</button>
+                        <button class="btn-approve" onclick="approveRv([${s.id}])">Approve</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.editRv = function(id) {
+            const el = document.getElementById('rv-' + id);
+            if (!el) return;
+            el.contentEditable = 'true'; el.focus();
+            el.style.outline = '2px solid var(--accent)';
+            const h = function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    const t = el.textContent.trim();
+                    el.contentEditable = 'false'; el.style.outline = '';
+                    el.removeEventListener('keydown', h);
+                    if (t) { socket.emit('submit_correction', { segment_id: id, new_text: t, correction_type: 'review' }); approveRv([id]); }
+                }
+                if (e.key === 'Escape') { el.contentEditable = 'false'; el.style.outline = ''; el.removeEventListener('keydown', h); }
+            };
+            el.addEventListener('keydown', h);
+        };
+        window.approveRv = function(ids) {
+            socket.emit('mark_reviewed', { segment_ids: ids });
+            reviewSegments = reviewSegments.filter(s => !ids.includes(s.id));
+            renderReview();
+        };
+        window.approveAllReview = function() {
+            const ids = reviewSegments.map(s => s.id);
+            if (ids.length > 0) approveRv(ids);
+        };
+        window.toggleReviewBar = function() {
+            const bar = document.getElementById('review-bar');
+            bar.classList.toggle('collapsed');
+            document.getElementById('review-toggle-icon').innerHTML = bar.classList.contains('collapsed') ? '&#9650;' : '&#9660;';
+        };
+
+        // === Init ===
+        fetch('/api/corrections/settings')
+            .then(r => r.json())
+            .then(d => {
+                if (d.success && d.corrections) {
+                    confidenceThreshold = d.corrections.confidence_threshold || 0.7;
+                    delayEnabled = d.corrections.output_delay?.enabled || false;
+                    updateDelayBtn();
+                }
+            }).catch(() => {});
+
+        loadReview();
+        setInterval(loadReview, 10000);
+
+        // Status is now derived from transcription_update events (instant, no polling)
+    });
+    </script>
+{% endblock %}

@@ -1,0 +1,2874 @@
+{% extends "base.html" %}
+
+{% block title %}Model Manager - Speech to Text{% endblock %}
+{% block page_title %}Model Manager{% endblock %}
+
+{% block extra_css %}
+        /* Model Manager Panel */
+        .model-manager-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .model-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .model-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+            color: var(--text-primary);
+        }
+
+        .model-card.compact {
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .model-card.compact h4 {
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .config-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .config-form {
+            min-width: 0;
+        }
+
+        .config-display {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .model-card.live {
+            border-left-color: var(--success);
+        }
+
+        .model-card.file {
+            border-left-color: var(--accent);
+        }
+
+        .model-card h4 {
+            color: var(--accent);
+            font-size: 1em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-card.live h4 {
+            color: var(--success);
+        }
+
+        .sync-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .sync-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .sync-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .sync-btn.primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .sync-btn.primary:hover {
+            background: #d0a9ff;
+        }
+
+        .sync-btn.secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        /* Model Library Styles */
+        .model-library {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .model-library h4 {
+            color: var(--accent);
+            font-size: 1em;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .model-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .model-tab {
+            padding: 8px 16px;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: all 0.3s;
+        }
+
+        .model-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: rgba(187, 134, 252, 0.1);
+        }
+
+        .model-tab:hover {
+            color: var(--accent);
+            background: rgba(187, 134, 252, 0.05);
+        }
+
+        .model-list {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-elevated);
+        }
+
+        .model-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+
+        .model-item:last-child {
+            border-bottom: none;
+        }
+
+        .model-item:hover {
+            background: var(--bg-card);
+        }
+
+        .model-info {
+            flex: 1;
+        }
+
+        .model-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .model-details {
+            font-size: 0.8em;
+            color: var(--text-secondary);
+        }
+
+        .model-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .model-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .model-btn.download {
+            background: var(--success);
+            color: white;
+        }
+
+        .model-btn.download:hover {
+            background: #38a169;
+        }
+
+        .model-btn.remove {
+            background: var(--danger);
+            color: white;
+        }
+
+        .model-btn.remove:hover {
+            background: #e53e3e;
+        }
+
+        .model-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .download-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .download-modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            padding: 24px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .config-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .model-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sync-buttons {
+                flex-direction: column;
+            }
+        }
+{% endblock %}
+
+{% block content %}
+            <!-- Model Manager Panel -->
+            <div class="model-manager-panel">
+
+            <!-- Alert Display (moved up) -->
+            <div id="alert_message" class="alert"></div>
+
+            <!-- Model Manager Panel -->
+            <div class="model-manager-panel">
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Processing...</p>
+                </div>
+
+                <!-- Model Configuration Card -->
+                <div class="settings-card">
+                    <h4>⚙️ Model Configuration</h4>
+
+                    <div class="config-layout">
+                        <!-- Left Column: Configuration Form -->
+                        <div class="config-form">
+                            <div class="form-group">
+                                <label for="config_context">Configure Model For</label>
+                                <select id="config_context" onchange="updateConfigUI()">
+                                    <option value="live">🎙️ Live Transcription</option>
+                                    <option value="file">📁 File Transcription</option>
+                                </select>
+                                <small>Choose which context to configure</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="config_model_type">Model Type</label>
+                                <select id="config_model_type" onchange="updateConfigModelUI()">
+                                    <option value="whisper">Whisper (OpenAI)</option>
+                                    <option value="faster_whisper">Faster Whisper (4-10x faster)</option>
+                                    <option value="downloaded">Downloaded Models</option>
+                                </select>
+                            </div>
+
+                            <!-- Live Model Settings (moved here) -->
+                            <div id="config_live_whisper_settings">
+                                <div class="form-group">
+                                    <label for="config_live_whisper_model">Whisper Model</label>
+                                    <select id="config_live_whisper_model">
+                                        <option value="">Loading downloaded models...</option>
+                                    </select>
+                                </div>
+
+                            </div>
+
+                            <!-- File Model Settings (moved here) -->
+                            <div id="config_file_whisper_settings" style="display: none;">
+                                <div class="form-group">
+                                    <label for="config_file_whisper_model">Whisper Model</label>
+                                    <select id="config_file_whisper_model">
+                                        <option value="">Loading downloaded models...</option>
+                                    </select>
+                                </div>
+
+                            </div>
+
+                            <!-- Faster Whisper Settings for Live -->
+                            <div id="config_live_faster_whisper_settings" style="display: none;">
+                                <div class="form-group">
+                                    <label for="config_live_faster_whisper_model">Faster Whisper Model</label>
+                                    <select id="config_live_faster_whisper_model">
+                                        <option value="">No faster-whisper models downloaded</option>
+                                    </select>
+                                    <small>Download models from the "Faster Whisper" tab in Model Library</small>
+                                </div>
+                            </div>
+
+                            <!-- Faster Whisper Settings for File -->
+                            <div id="config_file_faster_whisper_settings" style="display: none;">
+                                <div class="form-group">
+                                    <label for="config_file_faster_whisper_model">Faster Whisper Model</label>
+                                    <select id="config_file_faster_whisper_model">
+                                        <option value="">No faster-whisper models downloaded</option>
+                                    </select>
+                                    <small>Download models from the "Faster Whisper" tab in Model Library</small>
+                                </div>
+                            </div>
+
+                    <!-- HuggingFace Settings (moved here) -->
+                    <div id="config_live_huggingface_settings" style="display: none;">
+                        <div class="form-group">
+                            <label for="config_live_hf_model">Select HuggingFace Model</label>
+                            <select id="config_live_hf_model">
+                                <option value="">No HuggingFace models downloaded</option>
+                            </select>
+                            <small>Downloaded HuggingFace models will appear here</small>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="config_live_hf_flash_attention">
+                            <label for="config_live_hf_flash_attention">Flash Attention 2 (GPU)</label>
+                        </div>
+                    </div>
+
+                    <div id="config_file_huggingface_settings" style="display: none;">
+                        <div class="form-group">
+                            <label for="config_file_hf_model">Select HuggingFace Model</label>
+                            <select id="config_file_hf_model">
+                                <option value="">No HuggingFace models downloaded</option>
+                            </select>
+                            <small>Downloaded HuggingFace models will appear here</small>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="config_file_hf_flash_attention">
+                            <label for="config_file_hf_flash_attention">Flash Attention 2 (GPU)</label>
+                        </div>
+                    </div>
+
+                    <!-- Downloaded Models Settings (combines HuggingFace + Local) -->
+                    <div id="config_live_downloaded_settings" style="display: none;">
+                        <div class="form-group">
+                            <label for="config_live_downloaded_model">Select Downloaded Model</label>
+                            <select id="config_live_downloaded_model">
+                                <option value="">No models downloaded</option>
+                            </select>
+                            <small>Downloaded HuggingFace and uploaded local models will appear here</small>
+                        </div>
+                    </div>
+
+                    <div id="config_file_downloaded_settings" style="display: none;">
+                        <div class="form-group">
+                            <label for="config_file_downloaded_model">Select Downloaded Model</label>
+                            <select id="config_file_downloaded_model">
+                                <option value="">No models downloaded</option>
+                            </select>
+                            <small>Downloaded HuggingFace and uploaded local models will appear here</small>
+                        </div>
+                    </div>
+
+                    <!-- Save and Reload Buttons (moved here) -->
+                    <div class="sync-buttons">
+                        <button class="sync-btn primary" onclick="saveModelManager()">
+                            💾 Save Changes
+                        </button>
+                        <button class="sync-btn secondary" onclick="loadModelManager()">
+                            ↻ Reload
+                        </button>
+                        <button class="sync-btn" style="background: #f59e0b;" onclick="restartApplication()">
+                            🔄 Restart Application
+                        </button>
+                    </div>
+                        </div>
+
+                        <!-- Right Column: Current Configuration Display -->
+                        <div class="config-display">
+                            <div class="model-card live compact">
+                                <h4>🎙️ Live Transcription</h4>
+                                <div id="live_model_summary">
+                                    Loading...
+                                </div>
+                            </div>
+
+                            <div class="model-card file compact">
+                                <h4>📁 File Transcription</h4>
+                                <div id="file_model_summary">
+                                    Loading...
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disk Space Display (Compact) -->
+                <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--text-primary);">
+                    <div style="display: flex; gap: 20px; align-items: center;">
+                        <span><strong>💾 Disk:</strong> <span id="disk-space-path">-</span></span>
+                        <span><strong>Total:</strong> <span id="disk-space-total">-</span></span>
+                        <span><strong>Free:</strong> <span id="disk-space-free">-</span></span>
+                        <span><strong>Used:</strong> <span id="disk-space-used">-</span></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 150px; height: 6px; background: #3a3a3a; border-radius: 3px; overflow: hidden;">
+                            <div id="disk-space-bar" style="height: 100%; background: var(--success); width: 0%; transition: width 0.3s, background 0.3s;"></div>
+                        </div>
+                        <span id="disk-space-percent" style="min-width: 40px; font-weight: 600;">0%</span>
+                    </div>
+                </div>
+
+                <!-- Download Progress Display -->
+                <div id="download_progress_container" style="display: none; background: var(--bg-card); border: 1px solid var(--border); padding: 16px; border-radius: 8px; margin-top: 20px; border-left: 4px solid var(--accent);">
+                    <h4 style="margin: 0 0 12px 0; color: var(--accent); font-size: 0.9em;">📥 Downloading Models</h4>
+                    <div id="download_progress_list"></div>
+                </div>
+
+                <!-- Model Library Section -->
+                <div class="model-library">
+                    <h4>📚 Model Library</h4>
+
+                    <div id="transcription-warning" class="warning-box" style="display: none;">
+                        ⚠️ <strong>Transcription is running.</strong> Stop transcription to download models. Downloading models while transcription is active will cause GPU memory errors.
+                    </div>
+
+                    <div class="model-tabs" style="display: flex; align-items: center; gap: 10px;">
+                        <button class="model-tab active" onclick="switchModelTab('whisper')">🤖 Whisper</button>
+                        <button class="model-tab" onclick="switchModelTab('faster_whisper')">⚡ Faster Whisper</button>
+                        <button class="model-tab" onclick="switchModelTab('downloaded')">📦 Downloaded Models</button>
+                        <button id="refresh_whisper_btn" class="model-btn" onclick="refreshWhisperModels()" style="margin-left: auto; background: var(--accent); color: white; padding: 8px 16px; font-size: 0.85em; border-radius: 6px;">🔄 Check for New Models</button>
+                        <button id="refresh_faster_whisper_btn" class="model-btn" onclick="refreshFasterWhisperModels()" style="margin-left: auto; background: var(--warning); color: #1a1a2e; padding: 8px 16px; font-size: 0.85em; border-radius: 6px; display: none;">🔄 Check for New Models</button>
+                    </div>
+
+                    <!-- Whisper Models -->
+                    <div id="whisper_models" class="model-list">
+                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                            <div class="model-info" style="flex: 1;">
+                                <div class="model-name" style="color: var(--accent);">🤖 Whisper Models</div>
+                                <div class="model-details">OpenAI Whisper models for file transcription.</div>
+                            </div>
+                        </div>
+                        <div id="whisper_models_list">
+                            <div class="model-item">
+                                <div class="model-info">
+                                    <div class="model-name">Loading models...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Faster Whisper Models -->
+                    <div id="faster_whisper_models" class="model-list" style="display: none;">
+                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--warning);">
+                            <div class="model-info" style="flex: 1;">
+                                <div class="model-name" style="color: var(--warning);">⚡ Faster Whisper Models</div>
+                                <div class="model-details">Models for live transcription.</div>
+                            </div>
+                        </div>
+                        <div id="faster_whisper_models_list">
+                            <div class="model-item">
+                                <div class="model-info">
+                                    <div class="model-name">Loading faster-whisper models...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Downloaded Models (combines HuggingFace + Local) -->
+                    <div id="downloaded_models" class="model-list" style="display: none;">
+                        <!-- Upload Section -->
+                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                            <div class="model-info" style="flex: 1;">
+                                <div class="model-name" style="color: var(--accent);">📤 Upload Local Model</div>
+                                <div class="model-details">Upload model files from your computer</div>
+                            </div>
+                            <div class="model-actions">
+                                <button class="model-btn" style="background: var(--accent);" onclick="openUploadModal()">Upload</button>
+                            </div>
+                        </div>
+
+                        <!-- HuggingFace Download Section -->
+                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                            <div class="model-info" style="flex: 1;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="custom_hf_model_id" style="font-weight: 600; color: var(--accent); margin-bottom: 5px;">🤗 Download from HuggingFace</label>
+                                    <input type="text" id="custom_hf_model_id" placeholder="e.g., openai/whisper-large-v3" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
+                                </div>
+                            </div>
+                            <div class="model-actions" style="align-self: flex-end;">
+                                <button class="model-btn download" onclick="downloadCustomHuggingFaceModel()">Download</button>
+                            </div>
+                        </div>
+
+                        <!-- Translation Models Section -->
+                        <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <h5 style="margin: 0; color: var(--success);">🌐 Translation Models (NLLB)</h5>
+                                <button class="model-btn" onclick="refreshNLLBModels()" style="background: var(--success); padding: 5px 10px; font-size: 0.8em;">🔄 Check for Updates</button>
+                            </div>
+                            <div id="nllb_models_list">
+                                <div class="model-item" style="border-left: 3px solid var(--success);">
+                                    <div class="model-info">
+                                        <div class="model-name" style="color: var(--text-secondary);">Loading translation models...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TTS Models Section (Piper - local/offline) -->
+                        <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <h5 style="margin: 0; color: var(--accent);">🔊 Text-to-Speech Models (Piper - Local)</h5>
+                                <button class="model-btn" onclick="loadTTSModels(true)" style="background: var(--accent); padding: 5px 10px; font-size: 0.8em;">🔄 Refresh</button>
+                            </div>
+                            <small style="color: var(--text-secondary); display: block; margin-bottom: 10px;">
+                                Piper models run locally/offline. Edge TTS (cloud) requires no downloads.
+                                Configure TTS backend in <a href="/translation" style="color: var(--accent);">Translation Settings</a>.
+                            </small>
+                            <div id="tts_models_list">
+                                <div class="model-item" style="border-left: 3px solid var(--accent);">
+                                    <div class="model-info">
+                                        <div class="model-name" style="color: var(--text-secondary);">Loading Piper models...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Voice Activity Detection (VAD) Section -->
+                        <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <h5 style="margin: 0; color: var(--success);">🎤 Voice Activity Detection (VAD)</h5>
+                            </div>
+                            <div id="silero_vad_status">
+                                <div class="model-item" style="border-left: 3px solid var(--success);">
+                                    <div class="model-info">
+                                        <div class="model-name" style="color: var(--text-secondary);">Checking VAD status...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Downloaded Models List (dynamically loaded) -->
+                        <div id="downloaded_models_list">
+                            <div class="model-item">
+                                <div class="model-info">
+                                    <div class="model-name">No other models found</div>
+                                    <div class="model-details">Custom HuggingFace or uploaded models will appear here</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="warning-box">
+                    ⚠️ <strong>Important:</strong> After changing model configurations, you may need to restart the application for changes to take effect, especially when switching between model types.
+                </div>
+
+            </div>
+        </div>
+
+    <!-- Upload Local Model Modal -->
+    <div id="uploadModal" class="download-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📤 Upload Local Model</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="upload_model_name">Model Name</label>
+                    <input type="text" id="upload_model_name" placeholder="e.g., my-custom-whisper">
+                    <small>Enter a name for this model (will create a folder with this name)</small>
+                </div>
+                <div class="form-group">
+                    <label>Upload Method</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="upload_method" value="files" checked onchange="updateUploadMethod()">
+                            <span>Select Files</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="upload_method" value="folder" onchange="updateUploadMethod()">
+                            <span>Select Folder</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="upload_model_files">Model Files</label>
+                    <input type="file" id="upload_model_files" multiple style="padding: 8px; border: 2px dashed var(--accent); cursor: pointer;">
+                    <small id="upload_files_hint">Select all model files (config.json, model weights, tokenizer files, etc.)</small>
+                </div>
+                <div class="info-box">
+                    💡 <strong>Tip:</strong> Include all required files: config.json, model weights (pytorch_model.bin, model.safetensors), tokenizer files (tokenizer.json, vocab files), and any other configuration files. The files will be uploaded to the models directory.
+                </div>
+                <div id="upload_progress" style="display: none; margin-top: 15px;">
+                    <div style="background: #e9ecef; border-radius: 10px; height: 20px; overflow: hidden;">
+                        <div id="upload_progress_bar" style="background: var(--success); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="upload_status" style="margin-top: 8px; font-size: 0.85em; color: var(--text-muted);"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="model-btn" onclick="closeUploadModal()" style="background: #6c757d;">Cancel</button>
+                <button class="model-btn" id="upload_btn" style="background: #3b82f6; color: white;" onclick="confirmUpload()">Upload</button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        let modelData = {
+            live_model: {},
+            file_transcription_model: {}
+        };
+
+        // Transcription status tracking
+        let isTranscriptionRunning = false;
+
+        async function checkTranscriptionStatus() {
+            try {
+                const response = await fetch('/api/transcription/status');
+                const data = await response.json();
+                isTranscriptionRunning = data.state?.running || false;
+                updateDownloadButtons();
+            } catch (error) {
+                console.error('Error checking transcription status:', error);
+            }
+        }
+
+        function updateDownloadButtons() {
+            const warningBanner = document.getElementById('transcription-warning');
+            if (!warningBanner) return;
+
+            // Get all download buttons (class "download") but NOT remove/delete buttons
+            const downloadButtons = document.querySelectorAll('.model-btn.download');
+
+            // Also get specific buttons by onclick attribute
+            const uploadBtn = document.querySelector('button[onclick="openUploadModal()"]');
+            const hfDownloadBtn = document.querySelector('button[onclick="downloadCustomHuggingFaceModel()"]');
+            const refreshWhisperBtn = document.getElementById('refresh_whisper_btn');
+            const refreshFasterWhisperBtn = document.getElementById('refresh_faster_whisper_btn');
+            const refreshNllbBtn = document.querySelector('button[onclick="refreshNLLBModels()"]');
+
+            // Get NLLB download buttons (they use downloadTranslationModel onclick)
+            const nllbDownloadBtns = document.querySelectorAll('button[onclick^="downloadTranslationModel"]');
+
+            const allDownloadBtns = [uploadBtn, hfDownloadBtn, refreshWhisperBtn, refreshFasterWhisperBtn, refreshNllbBtn, ...downloadButtons, ...nllbDownloadBtns];
+
+            if (isTranscriptionRunning) {
+                warningBanner.style.display = 'block';
+                allDownloadBtns.forEach(btn => {
+                    if (btn && !btn.classList.contains('remove')) {
+                        btn.disabled = true;
+                        btn.dataset.disabledByTranscription = 'true';
+                        btn.style.opacity = '0.5';
+                        btn.style.cursor = 'not-allowed';
+                    }
+                });
+            } else {
+                warningBanner.style.display = 'none';
+                allDownloadBtns.forEach(btn => {
+                    if (btn && btn.dataset.disabledByTranscription === 'true') {
+                        btn.disabled = false;
+                        btn.dataset.disabledByTranscription = '';
+                        btn.style.opacity = '1';
+                        btn.style.cursor = 'pointer';
+                    }
+                });
+            }
+        }
+
+        // Load available Whisper models. Optional liveValue/fileValue are selected after loading.
+        async function loadAvailableWhisperModels(liveValue, fileValue) {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                if (data.success && data.whisper_models) {
+                    const whisperModels = data.whisper_models;
+
+                    // Filter to only show downloaded models
+                    const downloadedModels = whisperModels.filter(m => m.downloaded);
+
+                    // Update both Live and File Whisper dropdowns
+                    const liveSelect = document.getElementById('config_live_whisper_model');
+                    const fileSelect = document.getElementById('config_file_whisper_model');
+
+                    // Clear existing options
+                    liveSelect.innerHTML = '';
+                    fileSelect.innerHTML = '';
+
+                    if (downloadedModels.length > 0) {
+                        // Populate with downloaded models
+                        downloadedModels.forEach(model => {
+                            const sizes = {
+                                'tiny': '~75MB',
+                                'tiny.en': '~75MB',
+                                'base': '~142MB',
+                                'base.en': '~142MB',
+                                'small': '~466MB',
+                                'small.en': '~466MB',
+                                'medium': '~1.5GB',
+                                'medium.en': '~1.5GB',
+                                'large': '~3GB',
+                                'large-v2': '~3GB',
+                                'large-v3': '~3GB'
+                            };
+
+                            const descriptions = {
+                                'tiny': 'fastest',
+                                'tiny.en': 'fastest, English',
+                                'base': 'balanced',
+                                'base.en': 'balanced, English',
+                                'small': 'good',
+                                'small.en': 'good, English',
+                                'medium': 'better',
+                                'medium.en': 'better, English',
+                                'large': 'best',
+                                'large-v2': 'best v2',
+                                'large-v3': 'best v3'
+                            };
+
+                            const sizeStr = sizes[model.name] || '';
+                            const descStr = descriptions[model.name] || '';
+                            const label = `${model.name.charAt(0).toUpperCase() + model.name.slice(1)} (${descStr}) • ${sizeStr}`;
+
+                            const option1 = document.createElement('option');
+                            option1.value = model.name;
+                            option1.textContent = label;
+                            liveSelect.appendChild(option1);
+
+                            const option2 = document.createElement('option');
+                            option2.value = model.name;
+                            option2.textContent = label;
+                            fileSelect.appendChild(option2);
+                        });
+                    } else {
+                        // No downloaded models
+                        const noModelOption = document.createElement('option');
+                        noModelOption.value = '';
+                        noModelOption.textContent = 'No Whisper models downloaded';
+                        noModelOption.disabled = true;
+                        liveSelect.appendChild(noModelOption.cloneNode(true));
+                        fileSelect.appendChild(noModelOption);
+                    }
+
+                    // Restore selections after populating options
+                    if (liveValue) liveSelect.value = liveValue;
+                    if (fileValue) fileSelect.value = fileValue;
+                }
+            } catch (error) {
+                console.error('Error loading Whisper models:', error);
+            }
+        }
+
+        // Load Whisper models library
+        async function loadWhisperModelsLibrary() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                if (data.success && data.whisper_models) {
+                    const whisperList = document.getElementById('whisper_models_list');
+                    whisperList.innerHTML = '';
+
+                    // Model details now come from the API!
+                    data.whisper_models.forEach(model => {
+                        const isDownloaded = model.downloaded;
+                        const modelNameCap = model.name.charAt(0).toUpperCase() + model.name.slice(1);
+
+                        const statusBadge = isDownloaded
+                            ? '<span style="background: var(--success); color: #ffffff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">✓ Downloaded</span>'
+                            : '<span style="background: #3a3a3a; color: var(--text-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Available</span>';
+
+                        whisperList.innerHTML += `
+                            <div class="model-item">
+                                <div class="model-info">
+                                    <div class="model-name">${modelNameCap}${statusBadge}</div>
+                                    <div class="model-details">${model.params} parameters • ${model.size} • ${model.desc} • ${model.lang}</div>
+                                </div>
+                                <div class="model-actions">
+                                    <button class="model-btn download"
+                                            data-model-name="${model.name}"
+                                            onclick="downloadWhisperModel('${model.name}')"
+                                            ${isDownloaded ? 'disabled' : ''}
+                                            style="${isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                        ${isDownloaded ? 'Downloaded' : 'Download'}
+                                    </button>
+                                    <button class="model-btn remove"
+                                            onclick="removeWhisperModel('${model.name}')"
+                                            ${!isDownloaded ? 'disabled' : ''}
+                                            style="${!isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    // Update button states based on transcription status
+                    updateDownloadButtons();
+                }
+            } catch (error) {
+                console.error('Error loading Whisper models library:', error);
+            }
+        }
+
+        // Remove a Whisper model
+        async function removeWhisperModel(modelName) {
+            if (!confirm(`Are you sure you want to remove the Whisper "${modelName}" model?\n\nThis will delete the model files from ./models/whisper-${modelName}/ (and ~/.cache/whisper if present).`)) {
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const response = await fetch('/api/models/remove-whisper', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: modelName })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ ${data.message}`, 'success');
+
+                    // Refresh the library and dropdowns
+                    await loadWhisperModelsLibrary();
+                    await loadAvailableWhisperModels();
+                } else {
+                    showAlert('❌ Remove failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Remove error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load Faster Whisper models library
+        async function loadFasterWhisperModels() {
+            try {
+                const response = await fetch('/api/models/faster-whisper/list');
+                const data = await response.json();
+
+                if (data.success && data.models) {
+                    const listEl = document.getElementById('faster_whisper_models_list');
+                    listEl.innerHTML = '';
+
+                    data.models.forEach(model => {
+                        const isDownloaded = model.downloaded;
+                        const modelNameCap = model.name.charAt(0).toUpperCase() + model.name.slice(1);
+
+                        const statusBadge = isDownloaded
+                            ? '<span style="background: var(--success); color: #ffffff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">✓ Downloaded</span>'
+                            : '<span style="background: #3a3a3a; color: var(--text-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Available</span>';
+
+                        listEl.innerHTML += `
+                            <div class="model-item">
+                                <div class="model-info">
+                                    <div class="model-name">${modelNameCap}${statusBadge}</div>
+                                    <div class="model-details">${model.params} parameters • ${model.size} • ${model.lang}</div>
+                                    <div class="model-details" style="color: var(--text-secondary); font-size: 0.75em;">${model.repo}</div>
+                                </div>
+                                <div class="model-actions">
+                                    <button class="model-btn download"
+                                            onclick="downloadFasterWhisperModel('${model.name}')"
+                                            ${isDownloaded ? 'disabled' : ''}
+                                            style="${isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                        ${isDownloaded ? 'Downloaded' : 'Download'}
+                                    </button>
+                                    <button class="model-btn remove"
+                                            onclick="removeFasterWhisperModel('${model.name}')"
+                                            ${!isDownloaded ? 'disabled' : ''}
+                                            style="${!isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    // Update button states based on transcription status
+                    updateDownloadButtons();
+                }
+            } catch (error) {
+                console.error('Error loading Faster Whisper models:', error);
+                document.getElementById('faster_whisper_models_list').innerHTML = `
+                    <div class="model-item">
+                        <div class="model-info">
+                            <div class="model-name" style="color: #e53e3e;">Error loading models</div>
+                            <div class="model-details">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Download a Faster Whisper model
+        async function downloadFasterWhisperModel(modelName) {
+            if (isTranscriptionRunning) {
+                showAlert('Stop transcription before downloading models.', 'error');
+                return;
+            }
+
+            try {
+                // Start download progress tracking
+                startDownloadProgress(`faster-whisper-${modelName}`);
+
+                showAlert(`⚡ Downloading faster-whisper-${modelName}...`, 'success');
+
+                const response = await fetch('/api/models/faster-whisper/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: modelName })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ Downloaded faster-whisper-${modelName}`, 'success');
+                    await loadFasterWhisperModels();
+                } else {
+                    showAlert('❌ Download failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Download error: ' + error.message, 'error');
+            } finally {
+                // Stop download progress tracking
+                stopDownloadProgress(`faster-whisper-${modelName}`);
+            }
+        }
+
+        // Remove a Faster Whisper model
+        async function removeFasterWhisperModel(modelName) {
+            if (!confirm(`Are you sure you want to remove the faster-whisper-${modelName} model?\n\nThis will delete the model files from ./models/faster-whisper-${modelName}/`)) {
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const response = await fetch('/api/models/faster-whisper/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: modelName })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ Removed faster-whisper-${modelName}`, 'success');
+                    await loadFasterWhisperModels();
+                } else {
+                    showAlert('❌ Remove failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Remove error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Refresh Whisper models from the package
+        async function refreshWhisperModels() {
+            try {
+                showLoading(true);
+                showAlert('🔄 Checking for new Whisper models...', 'success');
+
+                const response = await fetch('/api/models/refresh-whisper', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Build status message
+                    let messages = [];
+
+                    if (data.new_models && data.new_models.length > 0) {
+                        messages.push(`🎉 Found ${data.new_models.length} new model(s): ${data.new_models.join(', ')}`);
+                    }
+
+                    if (data.removed_models && data.removed_models.length > 0) {
+                        messages.push(`⚠️ Removed ${data.removed_models.length} deprecated model(s): ${data.removed_models.join(', ')}`);
+                    }
+
+                    if (messages.length > 0) {
+                        showAlert(messages.join(' | '), messages[0].startsWith('⚠️') ? 'error' : 'success');
+                    } else {
+                        showAlert(`✅ ${data.message}. No changes detected.`, 'success');
+                    }
+
+                    // Reload the library and dropdowns
+                    await loadWhisperModelsLibrary();
+                    await loadAvailableWhisperModels();
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error checking for models: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Refresh Faster Whisper models list from HuggingFace
+        async function refreshFasterWhisperModels() {
+            try {
+                showLoading(true);
+                showAlert('🔄 Checking for new Faster Whisper models...', 'success');
+
+                const response = await fetch('/api/models/refresh-faster-whisper', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Build status message
+                    let messages = [];
+
+                    if (data.new_models && data.new_models.length > 0) {
+                        messages.push(`🎉 Found ${data.new_models.length} new model(s): ${data.new_models.join(', ')}`);
+                    }
+
+                    if (data.removed_models && data.removed_models.length > 0) {
+                        messages.push(`⚠️ Removed ${data.removed_models.length} deprecated model(s): ${data.removed_models.join(', ')}`);
+                    }
+
+                    if (messages.length > 0) {
+                        showAlert(messages.join(' | '), messages[0].startsWith('⚠️') ? 'error' : 'success');
+                    } else {
+                        showAlert(`✅ ${data.message}. No changes detected.`, 'success');
+                    }
+
+                    // Reload the faster whisper models list
+                    await loadFasterWhisperModels();
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error checking for models: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load disk space information
+        async function loadDiskSpace() {
+            try {
+                const response = await fetch('/api/disk-space');
+                const data = await response.json();
+
+                if (data.success) {
+                    const diskSpace = data.disk_space;
+
+                    // Update the display
+                    document.getElementById('disk-space-path').textContent = diskSpace.path;
+                    document.getElementById('disk-space-total').textContent = diskSpace.total_formatted;
+                    document.getElementById('disk-space-free').textContent = diskSpace.free_formatted;
+                    document.getElementById('disk-space-used').textContent = diskSpace.used_formatted;
+                    document.getElementById('disk-space-percent').textContent = diskSpace.percent_used + '%';
+
+                    // Update the progress bar
+                    const progressBar = document.getElementById('disk-space-bar');
+                    progressBar.style.width = diskSpace.percent_used + '%';
+
+                    // Change color based on usage
+                    if (diskSpace.percent_used >= 90) {
+                        progressBar.style.background = 'var(--danger)';
+                    } else if (diskSpace.percent_used >= 75) {
+                        progressBar.style.background = 'var(--warning)';
+                    } else {
+                        progressBar.style.background = 'var(--success)';
+                    }
+                } else {
+                    console.error('Error loading disk space:', data.error);
+                    document.getElementById('disk-space-path').textContent = 'Error loading disk space';
+                }
+            } catch (error) {
+                console.error('Error loading disk space:', error);
+                document.getElementById('disk-space-path').textContent = 'Error loading disk space';
+            }
+        }
+
+        // Load model manager data on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadWhisperModelsLibrary(); // Load Whisper models for library display
+            await loadFasterWhisperModels(); // Load Faster Whisper models for library display
+            loadModelManager();
+            updateConfigUI();
+            loadDiskSpace(); // Load disk space information
+            loadSileroVADStatus(); // Load Silero VAD status
+            loadTTSModels(); // Load TTS models
+
+            // Check transcription status and poll periodically
+            checkTranscriptionStatus();
+            setInterval(checkTranscriptionStatus, 5000);
+
+            // Check for active downloads and verify they're still in progress
+            await verifyActiveDownloads();
+
+            // Restore progress UI
+            updateDownloadUI();
+
+            // Wait for any immediate auto-dismissals to complete
+            setTimeout(() => {
+                startProgressPolling();
+            }, 100);
+
+            // Sync custom HF model ID with configuration panel
+            const customHfInput = document.getElementById('custom_hf_model_id');
+            const configContext = document.getElementById('config_context');
+            const configModelType = document.getElementById('config_model_type');
+
+            // Pre-fill custom input from current configuration context
+            function updateCustomInputFromConfig() {
+                const context = configContext.value;
+                if (context === 'live') {
+                    customHfInput.value = document.getElementById('config_live_hf_model').value || '';
+                } else {
+                    customHfInput.value = document.getElementById('config_file_hf_model').value || '';
+                }
+            }
+
+            // Update when context changes — sync model type to match the new context first
+            configContext.addEventListener('change', function() {
+                syncModelTypeToContext();
+                updateCustomInputFromConfig();
+                updateConfigUI();
+            });
+
+            // Update when model type changes
+            configModelType.addEventListener('change', function() {
+                updateConfigUI();
+                if (this.value === 'huggingface') {
+                    updateCustomInputFromConfig();
+                }
+            });
+
+            // Update custom input when config inputs change
+            document.getElementById('config_live_hf_model').addEventListener('change', function() {
+                if (configContext.value === 'live') {
+                    customHfInput.value = this.value;
+                }
+            });
+
+            document.getElementById('config_file_hf_model').addEventListener('change', function() {
+                if (configContext.value === 'file') {
+                    customHfInput.value = this.value;
+                }
+            });
+        });
+
+        async function loadModelManager() {
+            try {
+                const response = await fetch('/api/models/manager');
+                const data = await response.json();
+
+                if (data.success) {
+                    modelData = data;
+                    populateModelForms();
+                    updateModelSummary();
+                } else {
+                    showAlert('Error loading model manager: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error loading model manager: ' + error.message, 'error');
+            }
+        }
+
+        function populateModelForms() {
+            const liveModel = modelData.live_model;
+            const fileModel = modelData.file_transcription_model;
+
+            // Determine model types
+            let liveModelType;
+            if (liveModel.type === 'whisper' && liveModel.backend === 'faster-whisper') {
+                liveModelType = 'faster_whisper';
+            } else if (liveModel.type === 'huggingface' || liveModel.type === 'custom') {
+                liveModelType = 'downloaded';
+            } else {
+                liveModelType = 'whisper';
+            }
+            document.getElementById('config_model_type').value = liveModelType;
+
+            // Set faster-whisper model selections
+            if (liveModelType === 'faster_whisper') {
+                document.getElementById('config_live_faster_whisper_model').value = liveModel.whisper?.model || 'base';
+            }
+            if (fileModel.type === 'whisper' && fileModel.backend === 'faster-whisper') {
+                document.getElementById('config_file_faster_whisper_model').value = fileModel.whisper?.model || 'base';
+            }
+
+            // Set downloaded model paths
+            const liveDownloadedPath = liveModel.huggingface?.model_id || liveModel.custom?.model_path || '';
+            document.getElementById('config_live_downloaded_model').value = liveDownloadedPath;
+            const fileDownloadedPath = fileModel.huggingface?.model_id || fileModel.custom?.model_path || '';
+            document.getElementById('config_file_downloaded_model').value = fileDownloadedPath;
+
+            // Load whisper dropdowns with correct selection (async, after options are populated)
+            loadAvailableWhisperModels(
+                liveModel.whisper?.model || 'tiny',
+                fileModel.whisper?.model || 'base'
+            );
+
+            // Populate custom model dropdowns and faster-whisper dropdowns
+            populateCustomModelDropdowns();
+            loadFasterWhisperModelDropdowns();
+
+            // Update UI based on current context
+            updateConfigUI();
+        }
+
+        function syncModelTypeToContext() {
+            if (!modelData) return;
+            const context = document.getElementById('config_context').value;
+            const m = context === 'live' ? modelData.live_model : modelData.file_transcription_model;
+            let modelType;
+            if (m.type === 'whisper' && m.backend === 'faster-whisper') {
+                modelType = 'faster_whisper';
+            } else if (m.type === 'huggingface' || m.type === 'custom') {
+                modelType = 'downloaded';
+            } else {
+                modelType = 'whisper';
+            }
+            document.getElementById('config_model_type').value = modelType;
+        }
+
+        function updateConfigUI() {
+            const context = document.getElementById('config_context').value;
+            const modelTypeSelect = document.getElementById('config_model_type');
+            const currentModelType = modelTypeSelect.value;
+
+            // Update model type options - both Whisper and Faster Whisper available for all contexts
+            modelTypeSelect.innerHTML = `
+                <option value="whisper">Whisper (OpenAI)</option>
+                <option value="faster_whisper">Faster Whisper (4-10x faster)</option>
+                <option value="downloaded">Downloaded Models</option>
+            `;
+
+            // Restore previously selected model type if still valid
+            if (currentModelType && modelTypeSelect.querySelector(`option[value="${currentModelType}"]`)) {
+                modelTypeSelect.value = currentModelType;
+            }
+
+            const modelType = modelTypeSelect.value;
+
+            // Hide all settings first
+            document.getElementById('config_live_whisper_settings').style.display = 'none';
+            document.getElementById('config_file_whisper_settings').style.display = 'none';
+            document.getElementById('config_live_faster_whisper_settings').style.display = 'none';
+            document.getElementById('config_file_faster_whisper_settings').style.display = 'none';
+            document.getElementById('config_live_huggingface_settings').style.display = 'none';
+            document.getElementById('config_file_huggingface_settings').style.display = 'none';
+            document.getElementById('config_live_downloaded_settings').style.display = 'none';
+            document.getElementById('config_file_downloaded_settings').style.display = 'none';
+
+            // Show appropriate settings based on context and model type
+            if (context === 'live') {
+                if (modelType === 'whisper') {
+                    document.getElementById('config_live_whisper_settings').style.display = 'block';
+                } else if (modelType === 'faster_whisper') {
+                    document.getElementById('config_live_faster_whisper_settings').style.display = 'block';
+                    loadFasterWhisperModelDropdowns();
+                } else if (modelType === 'downloaded') {
+                    document.getElementById('config_live_downloaded_settings').style.display = 'block';
+                }
+            } else if (context === 'file') {
+                if (modelType === 'whisper') {
+                    document.getElementById('config_file_whisper_settings').style.display = 'block';
+                } else if (modelType === 'faster_whisper') {
+                    document.getElementById('config_file_faster_whisper_settings').style.display = 'block';
+                    loadFasterWhisperModelDropdowns();
+                } else if (modelType === 'downloaded') {
+                    document.getElementById('config_file_downloaded_settings').style.display = 'block';
+                }
+            }
+        }
+
+        function updateConfigModelUI() {
+            updateConfigUI();
+        }
+
+        async function populateCustomModelDropdowns() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                if (data.success && data.downloaded_models) {
+                    // Combine all downloaded models (HuggingFace + Local)
+                    const allModels = data.downloaded_models;
+
+                    // Populate live downloaded models dropdown
+                    const liveDownloadedSelect = document.getElementById('config_live_downloaded_model');
+                    liveDownloadedSelect.innerHTML = '<option value="">Select a downloaded model</option>';
+
+                    // Populate file downloaded models dropdown
+                    const fileDownloadedSelect = document.getElementById('config_file_downloaded_model');
+                    fileDownloadedSelect.innerHTML = '<option value="">Select a downloaded model</option>';
+
+                    if (allModels.length > 0) {
+                        allModels.forEach(model => {
+                            const typeIcon = model.type === 'huggingface' ? '🤗' : '💾';
+                            const displayName = `${typeIcon} ${model.name}`;
+                            const option = `<option value="${model.path}" data-type="${model.type}">${displayName}</option>`;
+                            liveDownloadedSelect.innerHTML += option;
+                            fileDownloadedSelect.innerHTML += option;
+                        });
+                    } else {
+                        liveDownloadedSelect.innerHTML = '<option value="">No models downloaded</option>';
+                        fileDownloadedSelect.innerHTML = '<option value="">No models downloaded</option>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading models:', error);
+                // Fallback to show no models available
+                document.getElementById('config_live_downloaded_model').innerHTML = '<option value="">No models downloaded</option>';
+                document.getElementById('config_file_downloaded_model').innerHTML = '<option value="">No models downloaded</option>';
+            }
+        }
+
+        async function loadFasterWhisperModelDropdowns() {
+            try {
+                const response = await fetch('/api/models/faster-whisper/list');
+                const data = await response.json();
+
+                const liveSelect = document.getElementById('config_live_faster_whisper_model');
+                const fileSelect = document.getElementById('config_file_faster_whisper_model');
+
+                if (data.success && data.models) {
+                    // Filter to only downloaded models
+                    const downloadedModels = data.models.filter(m => m.downloaded);
+
+                    if (downloadedModels.length > 0) {
+                        liveSelect.innerHTML = '';
+                        fileSelect.innerHTML = '';
+
+                        downloadedModels.forEach(model => {
+                            const option = `<option value="${model.name}">${model.name} (${model.params} • ${model.size})</option>`;
+                            liveSelect.innerHTML += option;
+                            fileSelect.innerHTML += option;
+                        });
+                    } else {
+                        liveSelect.innerHTML = '<option value="">No faster-whisper models downloaded</option>';
+                        fileSelect.innerHTML = '<option value="">No faster-whisper models downloaded</option>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading faster-whisper models:', error);
+                document.getElementById('config_live_faster_whisper_model').innerHTML = '<option value="">Error loading models</option>';
+                document.getElementById('config_file_faster_whisper_model').innerHTML = '<option value="">Error loading models</option>';
+            }
+        }
+
+        function updateModelSummary() {
+            const liveSummary = document.getElementById('live_model_summary');
+            const fileSummary = document.getElementById('file_model_summary');
+
+            liveSummary.innerHTML = generateModelSummary(modelData.live_model);
+            fileSummary.innerHTML = generateModelSummary(modelData.file_transcription_model);
+        }
+
+        function generateModelSummary(model) {
+            const type = model.type || 'whisper';
+            const isFasterWhisper = type === 'whisper' && model.backend === 'faster-whisper';
+            const displayType = isFasterWhisper ? 'faster-whisper' : type;
+            let summary = `<strong>Type:</strong> ${displayType}<br>`;
+
+            if (type === 'whisper') {
+                summary += `<strong>Model:</strong> ${model.whisper?.model || 'tiny'}`;
+            } else if (type === 'huggingface') {
+                summary += `<strong>Model ID:</strong> ${model.huggingface?.model_id || 'openai/whisper-base'}<br>`;
+                summary += `<strong>Flash Attention:</strong> ${model.huggingface?.use_flash_attention ? 'Yes' : 'No'}`;
+            } else if (type === 'custom') {
+                summary += `<strong>Path:</strong> ${model.custom?.model_path || 'Not set'}<br>`;
+                summary += `<strong>Type:</strong> ${model.custom?.model_type || 'whisper'}`;
+            }
+
+            return summary;
+        }
+
+        async function saveModelManager() {
+            showLoading(true);
+
+            try {
+                // Get model type from dropdown
+                const modelType = document.getElementById('config_model_type').value;
+                const context = document.getElementById('config_context').value;
+
+                // Collect live model data
+                const liveModel = {
+                    type: modelType
+                };
+
+                if (modelType === 'whisper') {
+                    liveModel.backend = 'whisper';
+                    liveModel.whisper = {
+                        model: document.getElementById('config_live_whisper_model').value
+                    };
+                } else if (modelType === 'faster_whisper') {
+                    // Faster Whisper model - uses whisper type with faster-whisper backend
+                    liveModel.type = 'whisper';
+                    liveModel.backend = 'faster-whisper';
+                    liveModel.whisper = {
+                        model: document.getElementById('config_live_faster_whisper_model').value
+                    };
+                } else if (modelType === 'downloaded') {
+                    // Check if it's a HuggingFace model (path contains '--') or custom model
+                    const downloadedPath = document.getElementById('config_live_downloaded_model').value;
+                    if (downloadedPath.includes('--')) {
+                        // HuggingFace model (e.g., ./models/openai--whisper-base)
+                        liveModel.type = 'huggingface';
+                        liveModel.huggingface = {
+                            model_id: downloadedPath,
+                            use_flash_attention: false
+                        };
+                    } else {
+                        // Custom/local model
+                        liveModel.type = 'custom';
+                        liveModel.custom = {
+                            model_path: downloadedPath,
+                            model_type: 'custom'
+                        };
+                    }
+                }
+
+                // Collect file model data
+                const fileModel = {
+                    type: modelType
+                };
+
+                if (modelType === 'whisper') {
+                    fileModel.backend = 'whisper';
+                    fileModel.whisper = {
+                        model: document.getElementById('config_file_whisper_model').value
+                    };
+                } else if (modelType === 'faster_whisper') {
+                    // Faster Whisper model - uses whisper type with faster-whisper backend
+                    fileModel.type = 'whisper';
+                    fileModel.backend = 'faster-whisper';
+                    fileModel.whisper = {
+                        model: document.getElementById('config_file_faster_whisper_model').value
+                    };
+                } else if (modelType === 'downloaded') {
+                    // Check if it's a HuggingFace model (path contains '--') or custom model
+                    const downloadedPath = document.getElementById('config_file_downloaded_model').value;
+                    if (downloadedPath.includes('--')) {
+                        // HuggingFace model (e.g., ./models/openai--whisper-base)
+                        fileModel.type = 'huggingface';
+                        fileModel.huggingface = {
+                            model_id: downloadedPath,
+                            use_flash_attention: false
+                        };
+                    } else {
+                        // Custom/local model
+                        fileModel.type = 'custom';
+                        fileModel.custom = {
+                            model_path: downloadedPath,
+                            model_type: 'custom'
+                        };
+                    }
+                }
+
+                const response = await fetch('/api/models/manager', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        live_model: liveModel,
+                        file_transcription_model: fileModel
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('✅ Model configurations saved successfully!', 'success');
+                    loadModelManager(); // Reload to show updated data
+                } else {
+                    showAlert('❌ Error saving models: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error saving models: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            const cards = document.querySelectorAll('.settings-card, .model-card');
+
+            if (show) {
+                loading.style.display = 'block';
+                cards.forEach(card => {
+                    card.style.opacity = '0.5';
+                    card.style.pointerEvents = 'none';
+                });
+            } else {
+                loading.style.display = 'none';
+                cards.forEach(card => {
+                    card.style.opacity = '1';
+                    card.style.pointerEvents = 'auto';
+                });
+            }
+        }
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert_message');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // Model Library Functions
+        function switchModelTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.model-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Show/hide model lists
+            document.querySelectorAll('.model-list').forEach(list => {
+                list.style.display = 'none';
+            });
+            document.getElementById(tabName + '_models').style.display = 'block';
+
+            // Show/hide refresh buttons based on active tab
+            const refreshWhisperBtn = document.getElementById('refresh_whisper_btn');
+            const refreshFasterWhisperBtn = document.getElementById('refresh_faster_whisper_btn');
+            if (refreshWhisperBtn) {
+                refreshWhisperBtn.style.display = tabName === 'whisper' ? 'block' : 'none';
+            }
+            if (refreshFasterWhisperBtn) {
+                refreshFasterWhisperBtn.style.display = tabName === 'faster_whisper' ? 'block' : 'none';
+            }
+
+            // Load downloaded models and check NLLB status if switching to downloaded tab
+            if (tabName === 'downloaded') {
+                loadDownloadedModels();
+                checkNLLBStatus();
+            }
+
+            // Load faster whisper models when switching to that tab
+            if (tabName === 'faster_whisper') {
+                loadFasterWhisperModels();
+            }
+
+            // Refresh custom model dropdowns when switching tabs
+            populateCustomModelDropdowns();
+        }
+
+        // Load NLLB translation models list
+        async function loadNLLBModels(refresh = false) {
+            const listEl = document.getElementById('nllb_models_list');
+
+            try {
+                const url = refresh ? '/api/models/nllb-list?refresh=true' : '/api/models/nllb-list';
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success && data.models && data.models.length > 0) {
+                    let html = '';
+                    data.models.forEach(model => {
+                        const isDownloaded = model.downloaded;
+                        const statusText = isDownloaded ? '✅ Downloaded' : 'Not downloaded';
+                        const statusColor = isDownloaded ? 'var(--success)' : '#999';
+                        const btnText = isDownloaded ? 'Remove' : 'Download';
+                        const btnBg = isDownloaded ? 'var(--danger)' : 'var(--success)';
+                        const btnAction = isDownloaded
+                            ? `removeTranslationModel('${model.model_id}')`
+                            : `downloadTranslationModel('${model.model_id}')`;
+
+                        // Check if this is the recommended model
+                        const isRecommended = model.model_id === 'facebook/nllb-200-distilled-600M';
+                        const recommendedBadge = isRecommended ? '<span style="background: var(--success); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.7em; margin-left: 8px;">Recommended</span>' : '';
+
+                        html += `
+                            <div class="model-item" style="border-left: 3px solid var(--success);">
+                                <div class="model-info">
+                                    <div class="model-name" style="color: var(--success);">
+                                        🌐 ${model.name}${recommendedBadge}
+                                    </div>
+                                    <div class="model-details">${model.description}</div>
+                                    <div class="model-details" style="margin-top: 4px;">
+                                        <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${model.size}</span>
+                                        <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 5px;">GPU Recommended</span>
+                                        ${model.downloads > 0 ? `<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 5px;">📥 ${formatNumber(model.downloads)}</span>` : ''}
+                                    </div>
+                                </div>
+                                <div class="model-actions">
+                                    <span id="nllb_status_${model.name}" style="margin-right: 10px; font-size: 0.85em; color: ${statusColor};">${statusText}</span>
+                                    <button class="model-btn" id="nllb_btn_${model.name}" onclick="${btnAction}" style="background: ${btnBg};">${btnText}</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    listEl.innerHTML = html;
+
+                    // Update button states based on transcription status
+                    updateDownloadButtons();
+                } else {
+                    listEl.innerHTML = `
+                        <div class="model-item" style="border-left: 3px solid var(--success);">
+                            <div class="model-info">
+                                <div class="model-name" style="color: var(--text-secondary);">No translation models found</div>
+                                <div class="model-details">Click "Check for Updates" to refresh the list</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading NLLB models:', error);
+                listEl.innerHTML = `
+                    <div class="model-item" style="border-left: 3px solid #fc8181;">
+                        <div class="model-info">
+                            <div class="model-name" style="color: #fc8181;">Error loading models</div>
+                            <div class="model-details">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Format large numbers
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        // Refresh NLLB models list from HuggingFace
+        async function refreshNLLBModels() {
+            const listEl = document.getElementById('nllb_models_list');
+            listEl.innerHTML = `
+                <div class="model-item" style="border-left: 3px solid var(--success);">
+                    <div class="model-info">
+                        <div class="model-name" style="color: var(--warning);">🔄 Checking for new models...</div>
+                    </div>
+                </div>
+            `;
+            await loadNLLBModels(true);
+            showAlert('✅ Translation models list updated!', 'success');
+        }
+
+        // Download a translation model
+        async function downloadTranslationModel(modelId) {
+            if (isTranscriptionRunning) {
+                showAlert('Stop transcription before downloading models.', 'error');
+                return;
+            }
+
+            const modelName = modelId.split('/').pop();
+            const statusEl = document.getElementById(`nllb_status_${modelName}`);
+            const btnEl = document.getElementById(`nllb_btn_${modelName}`);
+
+            try {
+                statusEl.innerHTML = '<span style="color: var(--warning);">⏳ Starting...</span>';
+                btnEl.textContent = 'Downloading...';
+                btnEl.disabled = true;
+                btnEl.style.background = 'var(--warning)';
+
+                // Start download progress tracking
+                startDownloadProgress(modelId);
+
+                const response = await fetch('/api/models/translation/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_id: modelId })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Poll for completion
+                    pollTranslationDownload(modelId);
+                } else {
+                    showAlert('❌ Download failed: ' + data.error, 'error');
+                    statusEl.innerHTML = '<span style="color: #fc8181;">Failed</span>';
+                    btnEl.textContent = 'Retry';
+                    btnEl.disabled = false;
+                    btnEl.style.background = 'var(--success)';
+                    stopDownloadProgress(modelId);
+                }
+            } catch (error) {
+                showAlert('❌ Download error: ' + error.message, 'error');
+                statusEl.innerHTML = '<span style="color: #fc8181;">Error</span>';
+                btnEl.textContent = 'Retry';
+                btnEl.disabled = false;
+                btnEl.style.background = 'var(--success)';
+                stopDownloadProgress(modelId);
+            }
+        }
+
+        // Poll for translation model download progress
+        async function pollTranslationDownload(modelId) {
+            const modelName = modelId.split('/').pop();
+            const statusEl = document.getElementById(`nllb_status_${modelName}`);
+            const btnEl = document.getElementById(`nllb_btn_${modelName}`);
+
+            const poll = async () => {
+                try {
+                    const response = await fetch('/api/models/nllb-download-progress');
+                    const data = await response.json();
+
+                    if (data.status === 'complete') {
+                        stopDownloadProgress(modelId);
+                        showAlert(`✅ ${modelName} downloaded successfully!`, 'success');
+                        statusEl.innerHTML = '<span style="color: var(--success);">✅ Downloaded</span>';
+                        btnEl.textContent = 'Remove';
+                        btnEl.disabled = false;
+                        btnEl.style.background = 'var(--danger)';
+                        btnEl.onclick = () => removeTranslationModel(modelId);
+                    } else if (data.status === 'error') {
+                        stopDownloadProgress(modelId);
+                        showAlert('❌ Download failed: ' + data.message, 'error');
+                        statusEl.innerHTML = '<span style="color: #fc8181;">Failed</span>';
+                        btnEl.textContent = 'Retry';
+                        btnEl.disabled = false;
+                        btnEl.style.background = 'var(--success)';
+                    } else {
+                        statusEl.innerHTML = `<span style="color: var(--warning);">⏳ ${data.message || 'Downloading...'}</span>`;
+
+                        // Update localStorage so main download progress box shows actual progress
+                        const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+                        if (downloads[modelId]) {
+                            downloads[modelId].progress = {
+                                percentage: data.progress,
+                                message: data.message
+                            };
+                            downloads[modelId].status = 'downloading';
+                            localStorage.setItem('activeDownloads', JSON.stringify(downloads));
+                            updateDownloadUI();
+                        }
+
+                        setTimeout(poll, 2000);
+                    }
+                } catch (error) {
+                    setTimeout(poll, 3000);
+                }
+            };
+
+            poll();
+        }
+
+        // Remove a translation model
+        async function removeTranslationModel(modelId) {
+            const modelName = modelId.split('/').pop();
+
+            if (!confirm(`Are you sure you want to remove ${modelName}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/models/translation/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_id: modelId })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ ${modelName} removed successfully!`, 'success');
+                    loadNLLBModels();
+                } else {
+                    showAlert('❌ Remove failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Remove error: ' + error.message, 'error');
+            }
+        }
+
+        // Legacy function for backward compatibility
+        function checkNLLBStatus() {
+            loadNLLBModels();
+        }
+
+        // ============== TTS Models (Piper - Local) ==============
+
+        let _ttsDownloadPoll = null;
+
+        async function loadTTSModels(refresh = false) {
+            const listEl = document.getElementById('tts_models_list');
+            try {
+                const url = '/api/models/tts-list' + (refresh ? '?refresh=1' : '');
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (!data.success) {
+                    listEl.innerHTML = `<div class="model-item" style="border-left: 3px solid var(--accent);"><div class="model-info"><div class="model-name" style="color: var(--text-secondary);">${data.error || 'Error loading Piper models'}</div></div></div>`;
+                    return;
+                }
+                listEl.innerHTML = '';
+                for (const model of data.models) {
+                    const isDownloaded = model.downloaded;
+                    const badge = isDownloaded
+                        ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-left: 8px;">Downloaded</span>'
+                        : '<span style="background: var(--border); color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-left: 8px;">Available</span>';
+                    const langBadge = `<span style="background: #1a3a5c; color: #7ab8f5; padding: 1px 6px; border-radius: 8px; font-size: 0.7em;">${model.language}</span>`;
+                    const btnId = 'tts_btn_' + model.id.replace(/[^a-zA-Z0-9]/g, '_');
+                    const btn = isDownloaded
+                        ? `<button id="${btnId}" class="model-btn remove" onclick="removeTTSModel('${model.id}')">Remove</button>`
+                        : `<button id="${btnId}" class="model-btn download" onclick="downloadTTSModel('${model.id}')">Download</button>`;
+                    listEl.innerHTML += `
+                        <div class="model-item" style="border-left: 3px solid ${isDownloaded ? 'var(--success)' : 'var(--accent)'};">
+                            <div class="model-info">
+                                <div class="model-name">🔊 ${model.name} ${badge}</div>
+                                <div class="model-details">${model.quality} quality ${langBadge} <span style="color: var(--text-secondary); font-size: 0.8em; margin-left: 4px;">~${model.size}</span></div>
+                            </div>
+                            <div class="model-actions">${btn}</div>
+                        </div>`;
+                }
+            } catch (e) {
+                listEl.innerHTML = `<div class="model-item" style="border-left: 3px solid var(--accent);"><div class="model-info"><div class="model-name" style="color: var(--text-secondary);">Error loading Piper models</div><div class="model-details">${e.message}</div></div></div>`;
+            }
+        }
+
+        async function downloadTTSModel(modelId) {
+            const btnId = 'tts_btn_' + modelId.replace(/[^a-zA-Z0-9]/g, '_');
+            const btn = document.getElementById(btnId);
+            if (btn) { btn.disabled = true; btn.textContent = 'Downloading...'; btn.style.opacity = '0.6'; }
+            try {
+                const resp = await fetch('/api/models/tts/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model_name: modelId})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (_ttsDownloadPoll) clearInterval(_ttsDownloadPoll);
+                    _ttsDownloadPoll = setInterval(async () => {
+                        try {
+                            const st = await fetch('/api/models/tts/download-progress');
+                            const sd = await st.json();
+                            if (sd.status === 'completed') {
+                                clearInterval(_ttsDownloadPoll);
+                                _ttsDownloadPoll = null;
+                                loadTTSModels();
+                            } else if (sd.status === 'failed') {
+                                clearInterval(_ttsDownloadPoll);
+                                _ttsDownloadPoll = null;
+                                if (btn) { btn.disabled = false; btn.textContent = 'Download'; btn.style.opacity = ''; }
+                                alert('Download failed: ' + (sd.error || 'Unknown error'));
+                                loadTTSModels();
+                            }
+                        } catch (_) {}
+                    }, 3000);
+                } else {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Download'; btn.style.opacity = ''; }
+                    alert('Error: ' + (data.error || 'Failed to start download'));
+                }
+            } catch (e) {
+                if (btn) { btn.disabled = false; btn.textContent = 'Download'; btn.style.opacity = ''; }
+                alert('Error: ' + e.message);
+            }
+        }
+
+        async function removeTTSModel(modelId) {
+            if (!confirm('Remove Piper model: ' + modelId + '?')) return;
+            try {
+                const resp = await fetch('/api/models/tts/remove', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model_name: modelId})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    loadTTSModels();
+                } else {
+                    alert('Error removing: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        // ============== Silero VAD Status (pip package) ==============
+
+        // Load Silero VAD status - now managed via pip package, no download needed
+        async function loadSileroVADStatus() {
+            const statusEl = document.getElementById('silero_vad_status');
+
+            try {
+                const response = await fetch('/api/models/silero-vad-status');
+                const data = await response.json();
+
+                if (data.success) {
+                    const isAvailable = data.downloaded;
+                    const statusText = isAvailable ? '✅ Available' : '❌ Not installed';
+                    const statusColor = isAvailable ? 'var(--success)' : '#fc8181';
+                    const sourceText = data.source || 'pip package';
+
+                    statusEl.innerHTML = `
+                        <div class="model-item" style="border-left: 3px solid ${isAvailable ? 'var(--success)' : '#fc8181'};">
+                            <div class="model-info">
+                                <div class="model-name" style="color: ${isAvailable ? 'var(--success)' : '#fc8181'};">
+                                    🔊 Silero VAD
+                                    <span style="background: var(--success); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.7em; margin-left: 8px;">Voice Activity Detection</span>
+                                </div>
+                                <div class="model-details">Detects speech segments in audio for improved transcription accuracy</div>
+                                <div class="model-details" style="margin-top: 4px;">
+                                    <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${sourceText}</span>
+                                    ${!isAvailable ? '<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 5px;">pip install silero-vad</span>' : ''}
+                                </div>
+                            </div>
+                            <div class="model-actions">
+                                <span style="font-size: 0.85em; color: ${statusColor};">${statusText}</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    statusEl.innerHTML = `
+                        <div class="model-item" style="border-left: 3px solid #fc8181;">
+                            <div class="model-info">
+                                <div class="model-name" style="color: #fc8181;">Error checking VAD status</div>
+                                <div class="model-details">${data.error || 'Unknown error'}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading Silero VAD status:', error);
+                statusEl.innerHTML = `
+                    <div class="model-item" style="border-left: 3px solid #fc8181;">
+                        <div class="model-info">
+                            <div class="model-name" style="color: #fc8181;">Error checking VAD status</div>
+                            <div class="model-details">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadDownloadedModels() {
+            try {
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                if (data.success) {
+                    const downloadedModelsList = document.getElementById('downloaded_models_list');
+                    let html = '';
+
+                    if (data.downloaded_models && data.downloaded_models.length > 0) {
+                        html += '<div style="margin: 10px 0; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px;"><div style="font-weight: 600; color: var(--accent); margin-bottom: 8px;">Downloaded Models:</div>';
+                        data.downloaded_models.forEach(model => {
+                            const displayType = model.type === 'huggingface' ? 'HuggingFace model' : 'Local model';
+                            const typeIcon = model.type === 'huggingface' ? '🤗' : '💾';
+                            html += `
+                                <div class="model-item">
+                                    <div class="model-info">
+                                        <div class="model-name">${typeIcon} ${model.name}</div>
+                                        <div class="model-details">${displayType} • ${model.path}</div>
+                                    </div>
+                                    <div class="model-actions">
+                                        <button class="model-btn remove" onclick="removeModel('${model.name}', '${model.type}')">Remove</button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                    } else {
+                        html = `
+                            <div class="model-item">
+                                <div class="model-info">
+                                    <div class="model-name">No models found</div>
+                                    <div class="model-details">Downloaded models will appear here</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    downloadedModelsList.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Error loading downloaded models:', error);
+            }
+        }
+
+        async function downloadWhisperModel(modelName) {
+            if (isTranscriptionRunning) {
+                showAlert('Stop transcription before downloading models.', 'error');
+                return;
+            }
+
+            try {
+                // Start download progress tracking
+                startDownloadProgress(`whisper-${modelName}`);
+
+                showAlert(`📥 Downloading Whisper ${modelName} model...`, 'success');
+
+                // Trigger the download by calling a dedicated endpoint
+                const response = await fetch('/api/models/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_type: 'whisper',
+                        model_name: modelName
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ Whisper ${modelName} downloaded successfully!`, 'success');
+
+                    // Refresh the Whisper models library and dropdown
+                    await loadWhisperModelsLibrary();
+                    await loadAvailableWhisperModels();
+                } else {
+                    showAlert('❌ Download failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Download error: ' + error.message, 'error');
+            } finally {
+                // Stop download progress tracking
+                stopDownloadProgress(`whisper-${modelName}`);
+            }
+        }
+
+        async function downloadHuggingFaceModel(modelId) {
+            if (isTranscriptionRunning) {
+                showAlert('Stop transcription before downloading models.', 'error');
+                return;
+            }
+
+            try {
+                // Start download progress tracking
+                startDownloadProgress(modelId);
+
+                const response = await fetch('/api/models/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_id: modelId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ ${data.message}`, 'success');
+
+                    // Refresh downloaded models list
+                    loadDownloadedModels();
+                    populateCustomModelDropdowns();
+                } else {
+                    showAlert('❌ Download failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Download error: ' + error.message, 'error');
+            } finally {
+                // Stop download progress tracking
+                stopDownloadProgress(modelId);
+            }
+        }
+
+        async function downloadCustomHuggingFaceModel() {
+            if (isTranscriptionRunning) {
+                showAlert('Stop transcription before downloading models.', 'error');
+                return;
+            }
+
+            const modelId = document.getElementById('custom_hf_model_id').value.trim();
+
+            if (!modelId) {
+                showAlert('❌ Please enter a model ID', 'error');
+                return;
+            }
+
+            // Validate model ID format (should be organization/model-name)
+            if (!modelId.includes('/')) {
+                showAlert('❌ Invalid model ID format. Use: organization/model-name', 'error');
+                return;
+            }
+
+            // Clear the input field
+            document.getElementById('custom_hf_model_id').value = '';
+
+            // Download the model
+            await downloadHuggingFaceModel(modelId);
+        }
+
+        function configureWhisperModel(modelName, context) {
+            try {
+                const modelConfig = {
+                    type: 'whisper',
+                    whisper: {
+                        model: modelName
+                    }
+                };
+
+                if (context === 'live' || context === 'both') {
+                    modelData.live_model = modelConfig;
+                    // Update the UI
+                    document.getElementById('config_live_whisper_model').value = modelName;
+                    document.getElementById('config_live_whisper_english').checked = modelName === 'tiny';
+                }
+                if (context === 'file' || context === 'both') {
+                    modelData.file_transcription_model = modelConfig;
+                    // Update the UI
+                    document.getElementById('config_file_whisper_model').value = modelName;
+                    document.getElementById('config_file_whisper_english').checked = modelName === 'tiny';
+                }
+
+                saveModelManager();
+                showAlert(`✅ Whisper ${modelName} configured for ${context === 'both' ? 'both contexts' : context + ' transcription'}`, 'success');
+            } catch (error) {
+                showAlert('❌ Error configuring model: ' + error.message, 'error');
+            }
+        }
+
+        let isVerifyingDownloads = false;
+
+        // Verify active downloads after page reload
+        async function verifyActiveDownloads() {
+            isVerifyingDownloads = true;
+            const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+
+            try {
+                // Fetch backend download status
+                const statusResponse = await fetch('/api/models/download-status');
+                const statusData = await statusResponse.json();
+
+                // Get list of models backend is tracking (all statuses)
+                const backendDownloads = statusData.active_downloads || [];
+
+                // Fetch list of already downloaded models
+                const response = await fetch('/api/models/list');
+                const data = await response.json();
+
+                if (data.success) {
+                    const downloadedModelNames = (data.downloaded_models || []).map(m => m.name);
+                    const downloadedWhisperNames = (data.whisper_models || [])
+                        .filter(m => m.downloaded)
+                        .map(m => m.name);
+
+                    // 1. RESTORE/UPDATE downloads from backend
+                    backendDownloads.forEach(backendDl => {
+                        if (!downloads[backendDl.model]) {
+                            // Download is in backend but not localStorage - restore it
+                            const now = Date.now();
+                            downloads[backendDl.model] = {
+                                startTime: now - 10000, // Estimate (10 seconds ago)
+                                status: backendDl.status || 'downloading',
+                                progress: {
+                                    downloaded: backendDl.downloaded,
+                                    total: backendDl.total,
+                                    percentage: backendDl.percentage
+                                }
+                            };
+                            // Use backend's completion_time if available
+                            if ((backendDl.status === 'completed' || backendDl.status === 'failed') && backendDl.completion_time) {
+                                downloads[backendDl.model].completionTime = backendDl.completion_time * 1000; // Convert to ms
+                            } else if (backendDl.status === 'completed' || backendDl.status === 'failed') {
+                                // Fallback if completion_time not available (old data)
+                                downloads[backendDl.model].completionTime = now;
+                            }
+                        } else {
+                            // Update existing entry with latest status from backend
+                            const previousStatus = downloads[backendDl.model].status;
+                            downloads[backendDl.model].status = backendDl.status || 'downloading';
+                            downloads[backendDl.model].progress = {
+                                downloaded: backendDl.downloaded,
+                                total: backendDl.total,
+                                percentage: backendDl.percentage
+                            };
+                            if (backendDl.error) {
+                                downloads[backendDl.model].error = backendDl.error;
+                            }
+                            // Capture completion time when status changes
+                            if ((backendDl.status === 'completed' || backendDl.status === 'failed') &&
+                                previousStatus === 'downloading' &&
+                                !downloads[backendDl.model].completionTime) {
+                                // Prefer backend's completion_time if available
+                                if (backendDl.completion_time) {
+                                    downloads[backendDl.model].completionTime = backendDl.completion_time * 1000;
+                                } else {
+                                    downloads[backendDl.model].completionTime = Date.now();
+                                }
+                            }
+                        }
+                    });
+
+                    // 1.5. AUTO-DISMISS STALE COMPLETED DOWNLOADS
+                    // After restoring downloads, check if any completed downloads are past their 5-second window
+                    const AUTO_DISMISS_DELAY = 5000; // 5 seconds in milliseconds
+                    const now2 = Date.now();
+
+                    Object.keys(downloads).forEach(modelId => {
+                        const download = downloads[modelId];
+
+                        // Check if this is a completed download with a completion time
+                        if (download.status === 'completed' && download.completionTime) {
+                            const timeSinceCompletion = now2 - download.completionTime;
+
+                            // If more than 5 seconds have passed since completion, remove immediately
+                            if (timeSinceCompletion >= AUTO_DISMISS_DELAY) {
+                                // Already past auto-dismiss window - remove immediately
+                                delete downloads[modelId];
+                            } else {
+                                // Still within the 5-second window - schedule dismissal for remaining time
+                                const remainingTime = AUTO_DISMISS_DELAY - timeSinceCompletion;
+                                setTimeout(() => {
+                                    const currentDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+                                    if (currentDownloads[modelId] && currentDownloads[modelId].status === 'completed') {
+                                        delete currentDownloads[modelId];
+                                        localStorage.setItem('activeDownloads', JSON.stringify(currentDownloads));
+                                        updateDownloadUI();
+                                    }
+                                }, remainingTime);
+                            }
+                        }
+                    });
+
+                    // 2. REMOVE only downloads that are:
+                    //    - Completed AND verified as downloaded
+                    //    - No longer tracked by backend (grace period expired)
+                    Object.keys(downloads).forEach(modelId => {
+                        const localDownload = downloads[modelId];
+                        const backendDownload = backendDownloads.find(d => d.model === modelId);
+
+                        let shouldRemove = false;
+
+                        if (!backendDownload) {
+                            // Backend no longer tracking this download (grace period expired)
+                            // Only remove if we can verify it actually completed
+
+                            // Check if it's a Whisper model
+                            if (modelId.startsWith('whisper-')) {
+                                const whisperName = modelId.replace('whisper-', '');
+                                if (downloadedWhisperNames.includes(whisperName)) {
+                                    shouldRemove = true;  // Verified completed and grace period expired
+                                }
+                            } else {
+                                // HuggingFace model
+                                const isDownloaded = downloadedModelNames.some(name =>
+                                    name.includes(modelId.replace('/', '--'))
+                                );
+                                if (isDownloaded) {
+                                    shouldRemove = true;  // Verified completed and grace period expired
+                                }
+                            }
+
+                            // If backend isn't tracking it, remove it
+                            // This handles stale entries from previous server runs
+                            if (!shouldRemove) {
+                                // Check if it's been "downloading" for too long (> 2 minutes = likely stale)
+                                const downloadAge = Date.now() - (localDownload.startTime || 0);
+                                const MAX_STALE_AGE = 2 * 60 * 1000; // 2 minutes
+
+                                if (localDownload.status !== 'downloading' || downloadAge > MAX_STALE_AGE) {
+                                    shouldRemove = true;
+                                }
+                            }
+                        }
+
+                        if (shouldRemove) {
+                            delete downloads[modelId];
+                        }
+                    });
+
+                    // Update localStorage with verified/restored downloads
+                    localStorage.setItem('activeDownloads', JSON.stringify(downloads));
+                }
+            } catch (error) {
+                console.error('Error verifying active downloads:', error);
+            } finally {
+                isVerifyingDownloads = false;
+            }
+        }
+
+        // Download progress tracking functions
+        function startDownloadProgress(modelId) {
+            // Store download state in localStorage for persistence
+            const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+            downloads[modelId] = {
+                startTime: Date.now(),
+                status: 'downloading'
+            };
+            localStorage.setItem('activeDownloads', JSON.stringify(downloads));
+
+            updateDownloadUI();
+            startProgressPolling();
+        }
+
+        async function stopDownloadProgress(modelId, cancelOnServer = false) {
+            // Only cancel on server if explicitly requested (user clicked cancel button)
+            // For successful downloads completing, we just clean up UI state
+            if (cancelOnServer) {
+                try {
+                    await fetch('/api/models/cancel-download', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model_id: modelId })
+                    });
+                } catch (e) {
+                    console.log('Cancel API call failed (may be stale entry):', e);
+                }
+            }
+
+            // Always clear from localStorage
+            const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+            delete downloads[modelId];
+            localStorage.setItem('activeDownloads', JSON.stringify(downloads));
+
+            // Stop polling if no more downloads
+            if (Object.keys(downloads).length === 0) {
+                stopProgressPolling();
+            }
+
+            updateDownloadUI();
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function updateDownloadUI() {
+            const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+            const downloadButtons = document.querySelectorAll('.model-btn.download');
+            const progressContainer = document.getElementById('download_progress_container');
+            const progressList = document.getElementById('download_progress_list');
+
+            // Update button states
+            downloadButtons.forEach(button => {
+                const modelItem = button.closest('.model-item');
+                if (!modelItem) return; // Skip if no parent item found
+
+                const modelDetails = modelItem.querySelector('.model-details');
+                if (!modelDetails) return; // Skip if no details element found
+
+                const modelName = modelDetails.textContent.split('•')[0]?.trim();
+                if (!modelName) return; // Skip if no model name found
+
+                // Check if already downloaded (before any dynamic updates)
+                const isAlreadyDownloaded = button.textContent.trim() === 'Downloaded';
+                const downloadInfo = downloads[modelName];
+
+                if (downloadInfo) {
+                    const status = downloadInfo.status || 'downloading';
+
+                    if (status === 'downloading') {
+                        // Currently downloading
+                        button.disabled = true;
+                        button.textContent = 'Downloading...';
+                        button.style.background = '#fbbf24';
+                        button.style.cursor = 'not-allowed';
+                    } else if (status === 'completed') {
+                        // Just completed (within grace period)
+                        button.disabled = true;
+                        button.textContent = 'Download Complete';
+                        button.style.background = 'var(--success)';
+                        button.style.cursor = 'not-allowed';
+                    } else if (status === 'failed') {
+                        // Download failed
+                        button.disabled = false;
+                        button.textContent = 'Retry Download';
+                        button.style.background = 'var(--danger)';
+                        button.style.cursor = 'pointer';
+                    }
+                } else if (!isAlreadyDownloaded) {
+                    // Available for download (not downloaded, not downloading)
+                    button.disabled = false;
+                    button.textContent = 'Download';
+                    button.style.background = 'var(--success)';
+                    button.style.cursor = 'pointer';
+                } else {
+                    // Already downloaded - preserve disabled state
+                    button.disabled = true;
+                    button.style.background = '#cbd5e0';
+                    button.style.cursor = 'not-allowed';
+                }
+            });
+
+            // Update progress display
+            if (Object.keys(downloads).length > 0) {
+                progressContainer.style.display = 'block';
+                progressList.innerHTML = '';
+
+                Object.entries(downloads).forEach(([modelName, downloadInfo]) => {
+                    const status = downloadInfo.status || 'downloading';
+
+                    // Calculate elapsed time
+                    // For completed/failed, use completion time if available, otherwise use current time
+                    let elapsed;
+                    if ((status === 'completed' || status === 'failed') && downloadInfo.completionTime) {
+                        elapsed = downloadInfo.completionTime - downloadInfo.startTime;
+                    } else {
+                        elapsed = Date.now() - downloadInfo.startTime;
+                    }
+                    const minutes = Math.floor(elapsed / 60000);
+                    const seconds = Math.floor((elapsed % 60000) / 1000);
+
+                    // Get progress data from downloadInfo (populated by API polling)
+                    const progress = downloadInfo.progress || {};
+                    const downloaded = progress.downloaded || 0;
+                    const total = progress.total;
+                    const percentage = progress.percentage;
+
+                    let progressDisplay = '';
+                    let progressBarWidth = '0%';
+                    let progressBarAnimation = '';
+                    let progressBarColor = 'var(--success)';
+                    let statusIcon = '';
+
+                    if (status === 'completed') {
+                        progressDisplay = `✓ Download completed successfully`;
+                        progressBarWidth = '100%';
+                        progressBarColor = 'var(--success)';
+                        statusIcon = '✓';
+                    } else if (status === 'failed') {
+                        progressDisplay = `✗ Download failed: ${downloadInfo.error || 'Unknown error'}`;
+                        progressBarWidth = '100%';
+                        progressBarColor = 'var(--danger)';
+                        statusIcon = '✗';
+                    } else {
+                        // status === 'downloading'
+                        statusIcon = '⬇';
+
+                        // Determine if this is a Whisper model (starts with "whisper-")
+                        const isWhisperModel = modelName.startsWith('whisper-');
+
+                        if (total && percentage !== undefined) {
+                            // We have total size and percentage - show detailed progress
+                            progressDisplay = `${formatBytes(downloaded)} / ${formatBytes(total)} (${percentage}%)`;
+                            progressBarWidth = `${percentage}%`;
+                        } else if (percentage !== undefined && percentage > 0) {
+                            // We have percentage but no byte totals (e.g., NLLB downloads)
+                            const message = progress.message || 'Downloading...';
+                            progressDisplay = `${message} (${percentage}%)`;
+                            progressBarWidth = `${percentage}%`;
+                        } else if (downloaded > 0 && total) {
+                            // We have bytes but no percentage calculated - calculate it
+                            const calcPercentage = Math.min(Math.floor((downloaded / total) * 100), 99);
+                            progressDisplay = `${formatBytes(downloaded)} / ${formatBytes(total)} (${calcPercentage}%)`;
+                            progressBarWidth = `${calcPercentage}%`;
+                        } else if (downloaded > 0) {
+                            // We have bytes but no total - show downloaded amount with pulse
+                            progressDisplay = `${formatBytes(downloaded)} downloaded`;
+                            progressBarWidth = '100%';
+                            progressBarAnimation = ' animation: pulse 2s infinite;';
+                        } else {
+                            // No progress data yet - differentiate between Whisper and HF
+                            if (isWhisperModel) {
+                                progressDisplay = 'Preparing download...';
+                            } else {
+                                progressDisplay = 'Starting download...';
+                            }
+                            progressBarWidth = '100%';
+                            progressBarAnimation = ' animation: pulse 2s infinite;';
+                        }
+                        progressBarColor = '#fbbf24';
+                    }
+
+                    // Always show dismiss button so stuck downloads can be cleared
+                    const dismissBtn = `<button onclick="stopDownloadProgress('${modelName}', true)" style="position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: #888; cursor: pointer; font-size: 1.2em; padding: 2px 6px; line-height: 1;" title="Dismiss/Cancel">&times;</button>`;
+
+                    progressList.innerHTML += `
+                        <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; position: relative;">
+                            ${dismissBtn}
+                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px; padding-right: 20px;">
+                                ${statusIcon} ${modelName}
+                            </div>
+                            <div style="font-size: 0.8em; color: #b0b0b0; margin-bottom: 4px;">${progressDisplay}</div>
+                            <div style="font-size: 0.75em; color: #888;">Time: ${minutes}:${seconds.toString().padStart(2, '0')}</div>
+                            <div style="background: #3a3a3a; border-radius: 10px; height: 6px; overflow: hidden; margin-top: 4px;">
+                                <div style="background: ${progressBarColor}; height: 100%; width: ${progressBarWidth}; transition: width 0.3s;${progressBarAnimation}"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                progressContainer.style.display = 'none';
+            }
+        }
+
+        let progressPollingInterval = null;
+
+        function startProgressPolling() {
+            if (progressPollingInterval) return;
+            if (isVerifyingDownloads) {
+                // Retry after verification completes
+                setTimeout(startProgressPolling, 100);
+                return;
+            }
+
+            progressPollingInterval = setInterval(async () => {
+                const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+
+                // Fetch real progress from API
+                try {
+                    const response = await fetch('/api/models/download-status');
+                    const data = await response.json();
+
+                    if (data.active_downloads && data.active_downloads.length > 0) {
+                        // Re-read localStorage to avoid race condition with stopDownloadProgress
+                        const currentDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+
+                        // Update localStorage with progress data AND status
+                        data.active_downloads.forEach(download => {
+                            if (currentDownloads[download.model]) {
+                                const previousStatus = currentDownloads[download.model].status;
+                                const newStatus = download.status || 'downloading';
+
+                                currentDownloads[download.model].status = newStatus;
+                                currentDownloads[download.model].progress = {
+                                    downloaded: download.downloaded,
+                                    total: download.total,
+                                    percentage: download.percentage
+                                };
+                                if (download.error) {
+                                    currentDownloads[download.model].error = download.error;
+                                }
+
+                                // Capture completion time when status changes to completed or failed
+                                if ((newStatus === 'completed' || newStatus === 'failed') &&
+                                    previousStatus === 'downloading' &&
+                                    !currentDownloads[download.model].completionTime) {
+
+                                    // Prefer backend's completion_time if available, otherwise use current time
+                                    if (download.completion_time) {
+                                        currentDownloads[download.model].completionTime = download.completion_time * 1000; // Convert to ms
+                                    } else {
+                                        currentDownloads[download.model].completionTime = Date.now();
+                                    }
+
+                                    // Auto-dismiss completed downloads after 5 seconds
+                                    if (newStatus === 'completed') {
+                                        setTimeout(() => {
+                                            const latestDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+                                            if (latestDownloads[download.model] && latestDownloads[download.model].status === 'completed') {
+                                                delete latestDownloads[download.model];
+                                                localStorage.setItem('activeDownloads', JSON.stringify(latestDownloads));
+                                                updateDownloadUI();
+                                            }
+                                        }, 5000); // 5 seconds
+                                    }
+                                }
+                            }
+                        });
+                        localStorage.setItem('activeDownloads', JSON.stringify(currentDownloads));
+                    }
+                } catch (error) {
+                    console.error('Error fetching download status:', error);
+
+                    // If fetch failed, retry after a delay instead of continuing blindly
+                    if (error instanceof TypeError && error.message.includes('fetch')) {
+                        // Network error - back off and retry
+                        setTimeout(() => {
+                            // Restart polling if we still have downloads
+                            const currentDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+                            if (Object.keys(currentDownloads).length > 0 && !progressPollingInterval) {
+                                startProgressPolling();
+                            }
+                        }, 2000);
+                    }
+                }
+
+                // Update UI to refresh the timer and progress
+                updateDownloadUI();
+
+                // Only stop polling if NO downloads at all (including completed/failed in grace period)
+                const remainingDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+                if (Object.keys(remainingDownloads).length === 0) {
+                    stopProgressPolling();
+                }
+            }, 1000); // Poll every second
+        }
+
+        function stopProgressPolling() {
+            if (progressPollingInterval) {
+                clearInterval(progressPollingInterval);
+                progressPollingInterval = null;
+            }
+        }
+
+        async function restartApplication() {
+            if (!confirm('Are you sure you want to restart the application? This will stop all ongoing processes and reload the page.')) {
+                return;
+            }
+
+            try {
+                showLoading(true);
+                showAlert('🔄 Restarting application...', 'success');
+
+                // Call the restart endpoint
+                const response = await fetch('/api/restart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    // Wait a moment for the server to start restarting
+                    setTimeout(() => {
+                        // Hard reload to bypass cache and get fresh HTML
+                        window.location.reload(true);
+                    }, 2000);
+                } else {
+                    showAlert('❌ Failed to restart application', 'error');
+                    showLoading(false);
+                }
+            } catch (error) {
+                showAlert('❌ Error restarting application: ' + error.message, 'error');
+                showLoading(false);
+            }
+        }
+
+        async function removeModel(modelName, modelType) {
+            if (!confirm(`Are you sure you want to remove the model "${modelName}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const response = await fetch('/api/models/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_name: modelName,
+                        model_type: modelType
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`✅ ${data.message}`, 'success');
+
+                    // Refresh downloaded models list and dropdowns
+                    loadDownloadedModels();
+                    populateCustomModelDropdowns();
+                } else {
+                    showAlert('❌ Remove failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Remove error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+
+        // Upload Modal Functions
+        function openUploadModal() {
+            document.getElementById('uploadModal').classList.add('show');
+            // Reset form
+            document.getElementById('upload_model_name').value = '';
+            document.getElementById('upload_model_files').value = '';
+            document.getElementById('upload_progress').style.display = 'none';
+            document.getElementById('upload_progress_bar').style.width = '0%';
+            // Reset to files mode
+            document.querySelector('input[name="upload_method"][value="files"]').checked = true;
+            updateUploadMethod();
+        }
+
+        function updateUploadMethod() {
+            const method = document.querySelector('input[name="upload_method"]:checked').value;
+            const fileInput = document.getElementById('upload_model_files');
+            const hint = document.getElementById('upload_files_hint');
+
+            if (method === 'folder') {
+                fileInput.setAttribute('webkitdirectory', '');
+                fileInput.setAttribute('directory', '');
+                fileInput.removeAttribute('multiple');
+                hint.textContent = 'Select the folder containing your model files';
+            } else {
+                fileInput.removeAttribute('webkitdirectory');
+                fileInput.removeAttribute('directory');
+                fileInput.setAttribute('multiple', '');
+                hint.textContent = 'Select all model files (config.json, model weights, tokenizer files, etc.)';
+            }
+
+            // Reset file selection when changing method
+            fileInput.value = '';
+        }
+
+        function closeUploadModal() {
+            document.getElementById('uploadModal').classList.remove('show');
+        }
+
+        async function confirmUpload() {
+            if (isTranscriptionRunning) {
+                showAlert('Stop transcription before uploading models.', 'error');
+                return;
+            }
+
+            const modelName = document.getElementById('upload_model_name').value.trim();
+            const filesInput = document.getElementById('upload_model_files');
+            const files = filesInput.files;
+
+            // Validation
+            if (!modelName) {
+                showAlert('❌ Please enter a model name', 'error');
+                return;
+            }
+
+            if (!files || files.length === 0) {
+                showAlert('❌ Please select at least one file', 'error');
+                return;
+            }
+
+            // Sanitize model name (remove special characters)
+            const sanitizedName = modelName.replace(/[^a-zA-Z0-9-_]/g, '-');
+            if (sanitizedName !== modelName) {
+                showAlert(`⚠️ Model name sanitized to: ${sanitizedName}`, 'error');
+                return;
+            }
+
+            try {
+                // Disable upload button
+                const uploadBtn = document.getElementById('upload_btn');
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = 'Uploading...';
+
+                // Show progress
+                document.getElementById('upload_progress').style.display = 'block';
+                document.getElementById('upload_status').textContent = `Preparing to upload ${files.length} file(s)...`;
+
+                // Create FormData
+                const formData = new FormData();
+                formData.append('model_name', sanitizedName);
+
+                // Add all files
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('files[]', files[i]);
+                }
+
+                // Upload with progress tracking
+                const xhr = new XMLHttpRequest();
+
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        document.getElementById('upload_progress_bar').style.width = percentComplete + '%';
+                        document.getElementById('upload_status').textContent =
+                            `Uploading: ${Math.round(percentComplete)}% (${Math.round(e.loaded / 1024 / 1024)}MB / ${Math.round(e.total / 1024 / 1024)}MB)`;
+                    }
+                });
+
+                xhr.addEventListener('load', function() {
+                    if (xhr.status === 200) {
+                        const response = JSON.parse(xhr.responseText);
+                        if (response.success) {
+                            showAlert(`✅ ${response.message}`, 'success');
+                            closeUploadModal();
+                            loadLocalModels(); // Refresh local models list
+                            populateCustomModelDropdowns(); // Refresh custom model dropdowns
+                        } else {
+                            showAlert(`❌ Upload failed: ${response.error}`, 'error');
+                        }
+                    } else {
+                        showAlert(`❌ Upload failed with status: ${xhr.status}`, 'error');
+                    }
+
+                    // Re-enable upload button
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = 'Upload';
+                });
+
+                xhr.addEventListener('error', function() {
+                    showAlert('❌ Upload error: Network error', 'error');
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = 'Upload';
+                });
+
+                xhr.open('POST', '/api/models/upload-local');
+                xhr.send(formData);
+
+            } catch (error) {
+                showAlert('❌ Upload error: ' + error.message, 'error');
+                const uploadBtn = document.getElementById('upload_btn');
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload';
+            }
+        }
+
+        // Close upload modal when clicking outside
+        document.getElementById('uploadModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeUploadModal();
+            }
+        });
+    </script>
+{% endblock %}

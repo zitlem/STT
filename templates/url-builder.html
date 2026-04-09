@@ -1,0 +1,1036 @@
+{% extends "base.html" %}
+
+{% block title %}URL Builder - Speech to Text{% endblock %}
+{% block page_title %}URL Builder{% endblock %}
+
+{% block extra_css %}
+        .main-content {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            min-height: calc(100vh - 100px);
+        }
+
+        .settings-panel {
+            flex: 0 0 320px;
+        }
+
+        .url-builder-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            min-height: 100%;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+
+        .preset-buttons {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .preset-btn {
+            padding: 8px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.8em;
+            text-align: center;
+        }
+
+        .preset-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .color-input-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .color-input-group input[type="color"] {
+            width: 40px;
+            height: 30px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+
+        .color-input-group input[type="text"] {
+            flex: 1;
+        }
+
+        .url-output {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .url-output input {
+            flex: 1;
+            background: var(--bg-base);
+            border: 2px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+        }
+
+        .url-output input:focus {
+            outline: none;
+            background: var(--bg-card);
+            border-color: var(--accent);
+        }
+
+        .url-output button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: all 0.3s;
+        }
+
+        .url-output button:first-of-type {
+            background: var(--accent);
+            color: white;
+        }
+
+        .url-output button:first-of-type:hover {
+            background: var(--accent-hover);
+        }
+
+        .url-output button:last-of-type {
+            background: var(--success);
+            color: white;
+        }
+
+        .preview-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+            position: sticky;
+            top: 20px;
+            z-index: 10;
+            margin-bottom: 20px;
+            max-width: 100%;
+        }
+
+        .preview-section h3 {
+            color: var(--accent);
+            font-size: 1em;
+            margin-bottom: 12px;
+        }
+
+        .preview-text {
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            padding: 15px;
+            border: 2px solid var(--border);
+            background: var(--bg-base);
+            color: var(--text-primary);
+        }
+
+        .description {
+            font-size: 0.75em;
+            color: var(--text-secondary);
+            margin-top: 3px;
+            line-height: 1.3;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                flex-direction: column;
+                padding: 20px;
+            }
+
+            .settings-panel {
+                flex: none;
+                width: 100%;
+                height: auto;
+            }
+
+            .url-builder-panel {
+                width: 100%;
+            }
+
+            .preview-section {
+                position: static;
+                width: 100%;
+                margin-top: 20px;
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .preset-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .url-output {
+                flex-direction: column;
+            }
+
+            .preview-section {
+                position: static;
+                width: 100%;
+                margin-top: 20px;
+                max-width: 100%;
+            }
+        }
+{% endblock %}
+
+{% block content %}
+        <div class="main-content">
+            <!-- Settings Panel -->
+            <div class="settings-panel">
+                <h3>🎨 Color Presets</h3>
+
+                <div class="preset-buttons">
+                    <button class="preset-btn" onclick="applyPreset('dark')" style="background: #1a202c; color: white;">
+                        🌑 Dark
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('light')" style="background: #f7fafc; color: #1a202c; border: 1px solid #e2e8f0;">
+                        ☀️ Light
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('highContrast')" style="background: #000000; color: #ffff00; border: 2px solid #ffff00;">
+                        ⚡ High
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('blue')" style="background: #1e3a8a; color: #dbeafe;">
+                        🔵 Blue
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('green')" style="background: #064e3b; color: #d1fae5;">
+                        🟢 Green
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('gradient')" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        🎨 Grad
+                    </button>
+                    <button class="preset-btn" onclick="applyPreset('transparent')" style="background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSI0IiB5PSI0IiB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZGRkIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+'); border: 1px solid #ccc; color: #333;">
+                        🔍 Trans
+                    </button>
+                </div>
+
+                <button class="btn" onclick="resetToDefaults()" style="width: 100%; margin-top: 10px; background: #444; border: 1px solid #666;">
+                    🔄 Reset to Default
+                </button>
+
+                <h3 style="margin-top: 16px;">✨ Display Settings</h3>
+
+                <div class="form-group">
+                    <label for="url_fontSize">Font Size (px)</label>
+                    <input type="number" id="url_fontSize" min="12" max="200" value="32" step="1" oninput="updateCustomURL()">
+                </div>
+
+                <div class="form-group">
+                    <label for="url_bgColor">Background Color</label>
+                    <div class="color-input-group">
+                        <input type="color" id="url_bgColor" value="#000000" oninput="updateCustomURL()">
+                        <input type="text" id="url_bgColor_text" value="#000000" oninput="document.getElementById('url_bgColor').value = this.value; updateCustomURL()">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_transparentBg" oninput="updateCustomURL()">
+                    <label for="url_transparentBg">Transparent Background</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_textColor">Text Color</label>
+                    <div class="color-input-group">
+                        <input type="color" id="url_textColor" value="#FFFFFF" oninput="updateCustomURL()">
+                        <input type="text" id="url_textColor_text" value="#FFFFFF" oninput="document.getElementById('url_textColor').value = this.value; updateCustomURL()">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_enableWordColorOverride" oninput="updateCustomURL(); toggleWordColorPicker()">
+                    <label for="url_enableWordColorOverride">Override Word Highlight Color</label>
+                </div>
+
+                <div class="form-group" id="wordColorPickerGroup" style="display: none;">
+                    <div class="color-input-group">
+                        <input type="color" id="url_wordHighlightColor" value="#ffff00" oninput="updateCustomURL()">
+                        <input type="text" id="url_wordHighlightColor_text" value="#ffff00" oninput="document.getElementById('url_wordHighlightColor').value = this.value; updateCustomURL()">
+                    </div>
+                    <small>Override color for all highlighted words (default: yellow)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_alignment">Horizontal Alignment</label>
+                    <select id="url_alignment" oninput="updateCustomURL()">
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_verticalAlign">Vertical Alignment</label>
+                    <select id="url_verticalAlign" oninput="updateCustomURL()">
+                        <option value="top">Top</option>
+                        <option value="middle">Middle</option>
+                        <option value="bottom">Bottom</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_fontFamily">Font Family</label>
+                    <select id="url_fontFamily" oninput="updateCustomURL()">
+                        <option value="Arial">Arial</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Verdana">Verdana</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Comic Sans MS">Comic Sans MS</option>
+                        <option value="Impact">Impact</option>
+                        <option value="Trebuchet MS">Trebuchet MS</option>
+                        <option value="monospace">Monospace</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_fontWeight">Font Weight</label>
+                    <select id="url_fontWeight" oninput="updateCustomURL()">
+                        <option value="300">Light</option>
+                        <option value="400" selected>Normal</option>
+                        <option value="500">Medium</option>
+                        <option value="600">Semi-Bold</option>
+                        <option value="700">Bold</option>
+                        <option value="900">Black</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_lineHeight">Line Height</label>
+                    <input type="number" id="url_lineHeight" min="1.0" max="3.0" value="1.5" step="0.1" oninput="updateCustomURL()">
+                    <small>Space between lines. 1.0=tight, 1.5=normal, 2.0=loose</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Padding (px)</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <small style="color: #999;">Top</small>
+                            <input type="number" id="url_paddingTop" min="0" max="200" value="20" step="5" oninput="updateCustomURL()">
+                        </div>
+                        <div>
+                            <small style="color: #999;">Bottom</small>
+                            <input type="number" id="url_paddingBottom" min="0" max="200" value="20" step="5" oninput="updateCustomURL()">
+                        </div>
+                        <div>
+                            <small style="color: #999;">Left</small>
+                            <input type="number" id="url_paddingLeft" min="0" max="200" value="20" step="5" oninput="updateCustomURL()">
+                        </div>
+                        <div>
+                            <small style="color: #999;">Right</small>
+                            <input type="number" id="url_paddingRight" min="0" max="200" value="20" step="5" oninput="updateCustomURL()">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_maxWidth">Max Width (%)</label>
+                    <input type="number" id="url_maxWidth" min="50" max="100" value="100" step="5" oninput="updateCustomURL()">
+                    <small>Maximum width of text container</small>
+                </div>
+
+                <h3 style="margin-top: 16px;">🎛️ Features</h3>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_showMenu" checked oninput="updateCustomURL()">
+                    <label for="url_showMenu">Show Status Menu</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_uppercase" oninput="updateCustomURL()">
+                    <label for="url_uppercase">UPPERCASE TEXT</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_enableWordHighlight" checked oninput="updateCustomURL()">
+                    <label for="url_enableWordHighlight">Enable Word Highlighting</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_hideInProgress" oninput="updateCustomURL()">
+                    <label for="url_hideInProgress">Hide In-Progress Transcription Text</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_hideTranslateInProgress" oninput="updateCustomURL()">
+                    <label for="url_hideTranslateInProgress">Hide In-Progress Translation Text</label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_showAll" oninput="updateCustomURL()">
+                    <label for="url_showAll">Show All Text (no 100-sentence limit)</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_inProgressStyle">In-Progress Text Style</label>
+                    <select id="url_inProgressStyle" oninput="updateCustomURL()">
+                        <option value="italic">Italic (stands out)</option>
+                        <option value="normal">Normal (matches text)</option>
+                    </select>
+                    <small>Style for text that is still being transcribed</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_inProgressOpacity">In-Progress Text Opacity</label>
+                    <input type="range" id="url_inProgressOpacity" min="0.5" max="1.0" step="0.1" value="0.7" oninput="updateCustomURL(); updateOpacityLabel()">
+                    <small id="opacityLabel">70% (slightly faded)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_maxLines">Max Lines (Caption Mode)</label>
+                    <input type="number" id="url_maxLines" min="0" max="10" value="0" step="1" oninput="updateCustomURL()">
+                    <small>0 = unlimited scroll, 1-10 = show only last N lines (like closed captions)</small>
+                </div>
+
+                <h3 style="margin-top: 16px;">🔊 Audio</h3>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_audioStream" oninput="updateCustomURL()">
+                    <label for="url_audioStream">Enable Live Audio Playback</label>
+                </div>
+                <small style="color: #999; display: block; margin: -4px 0 8px 24px;">Hear the microphone audio through the browser</small>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_ttsAudio" oninput="updateCustomURL()">
+                    <label for="url_ttsAudio">Enable TTS for Translation</label>
+                </div>
+                <small style="color: #999; display: block; margin: -4px 0 8px 24px;">Speak translated text using TTS engine (configure in Translation settings)</small>
+
+                <h3 style="margin-top: 16px;">🌐 Translation Display</h3>
+
+                <div class="form-group">
+                    <label for="url_translationMode">Translation Mode</label>
+                    <select id="url_translationMode" oninput="updateCustomURL()">
+                        <option value="transcribe">Transcription Only (default)</option>
+                        <option value="translate">Translation Only</option>
+                        <option value="both">Both (Original + Translation)</option>
+                    </select>
+                    <small>What to display when translation is enabled</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="url_translationLayout">Translation Layout</label>
+                    <select id="url_translationLayout" oninput="updateCustomURL()">
+                        <option value="stacked">Stacked (original top, translated bottom)</option>
+                        <option value="stacked_inverse">Stacked (translated top, original bottom)</option>
+                        <option value="side_by_side">Side by Side (original left, translated right)</option>
+                        <option value="side_by_side_inverse">Side by Side (translated left, original right)</option>
+                    </select>
+                    <small>Layout when showing both original and translation</small>
+                </div>
+            </div>
+
+            <!-- URL Builder Panel -->
+            <div class="url-builder-panel">
+                <!-- Generated URL Card -->
+                <div class="settings-card">
+                    <h4>🔗 Generated URL</h4>
+                    <div class="url-output">
+                        <input type="text" id="customURL" readonly onclick="this.select()">
+                        <button onclick="copyURL()">📋 Copy</button>
+                        <button onclick="openURL()">🚀 Open</button>
+                        <button onclick="saveAsDefault()">💾 Save as Default</button>
+                    </div>
+                    <div class="info-box">
+                        💡 <strong>Tip:</strong> Use generated URL on different screens/browsers with custom styling without changing server settings. Perfect for presentation displays, remote screens, or specific viewing scenarios.
+                    </div>
+                </div>
+
+                <!-- Preview Section -->
+                <div class="preview-section">
+                    <h3>👁️ Live Preview</h3>
+                    <div id="preview-container">
+                        <!-- Iframe shown when transcription is running -->
+                        <iframe id="live-iframe" style="display: none; width: 100%; height: 500px; border: none; border-radius: 6px;"></iframe>
+                        <!-- Sample text shown when transcription is not running -->
+                        <div id="preview-placeholder" class="preview-text">
+                            Sample transcription text will appear here with your custom styling. This is how your text will look when you use the generated URL.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        // Preset configurations
+        function applyPreset(presetName) {
+            const presets = {
+                dark: {
+                    bgColor: '#1a202c',
+                    textColor: '#f7fafc'
+                },
+                light: {
+                    bgColor: '#f7fafc',
+                    textColor: '#1a202c'
+                },
+                highContrast: {
+                    bgColor: '#000000',
+                    textColor: '#ffff00'
+                },
+                blue: {
+                    bgColor: '#1e3a8a',
+                    textColor: '#dbeafe'
+                },
+                green: {
+                    bgColor: '#064e3b',
+                    textColor: '#d1fae5'
+                },
+                gradient: {
+                    bgColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    textColor: '#ffffff'
+                },
+                transparent: {
+                    bgColor: '#000000',
+                    textColor: '#000000'
+                }
+            };
+
+            const preset = presets[presetName];
+            if (preset) {
+                document.getElementById('url_bgColor').value = preset.bgColor.startsWith('#') ? preset.bgColor : '#667eea';
+                document.getElementById('url_bgColor_text').value = preset.bgColor;
+                document.getElementById('url_textColor').value = preset.textColor;
+                document.getElementById('url_textColor_text').value = preset.textColor;
+
+                // Handle transparent preset
+                if (presetName === 'transparent') {
+                    document.getElementById('url_transparentBg').checked = true;
+                } else {
+                    document.getElementById('url_transparentBg').checked = false;
+                }
+
+                updateCustomURL();
+                updatePreview();
+                showNotification(`✅ Applied ${presetName} preset`, 'success');
+            }
+        }
+
+        // Reset all settings to default values
+        function resetToDefaults() {
+            // Reset all form fields to their original default values
+            document.getElementById('url_fontSize').value = 32;
+            document.getElementById('url_bgColor').value = '#000000';
+            document.getElementById('url_bgColor_text').value = '#000000';
+            document.getElementById('url_textColor').value = '#FFFFFF';
+            document.getElementById('url_textColor_text').value = '#FFFFFF';
+            document.getElementById('url_wordHighlightColor').value = '#ffff00';
+            document.getElementById('url_wordHighlightColor_text').value = '#ffff00';
+            document.getElementById('url_alignment').value = 'left';
+            document.getElementById('url_verticalAlign').value = 'top';
+            document.getElementById('url_fontFamily').value = 'Arial';
+            document.getElementById('url_fontWeight').value = '400';
+            document.getElementById('url_lineHeight').value = '1.5';
+            document.getElementById('url_paddingTop').value = '20';
+            document.getElementById('url_paddingBottom').value = '20';
+            document.getElementById('url_paddingLeft').value = '20';
+            document.getElementById('url_paddingRight').value = '20';
+            document.getElementById('url_maxWidth').value = '100';
+            document.getElementById('url_showMenu').checked = true;
+            document.getElementById('url_uppercase').checked = false;
+            document.getElementById('url_enableWordHighlight').checked = true;
+            document.getElementById('url_transparentBg').checked = false;
+            document.getElementById('url_enableWordColorOverride').checked = false;
+            document.getElementById('url_inProgressStyle').value = 'italic';
+            document.getElementById('url_inProgressOpacity').value = '0.7';
+            document.getElementById('url_maxLines').value = '0';
+            document.getElementById('url_translationMode').value = 'transcribe';
+            document.getElementById('url_translationLayout').value = 'stacked';
+            document.getElementById('url_hideInProgress').checked = false;
+            document.getElementById('url_hideTranslateInProgress').checked = false;
+            document.getElementById('url_showAll').checked = false;
+            toggleWordColorPicker();
+            updateOpacityLabel();
+
+            updateCustomURL();
+            updatePreview();
+            showNotification('✅ Reset to default settings', 'success');
+        }
+
+        // Toggle word color picker visibility
+        function toggleWordColorPicker() {
+            const enabled = document.getElementById('url_enableWordColorOverride').checked;
+            document.getElementById('wordColorPickerGroup').style.display = enabled ? 'block' : 'none';
+        }
+
+        // Update opacity label
+        function updateOpacityLabel() {
+            const opacity = parseFloat(document.getElementById('url_inProgressOpacity').value);
+            const percent = Math.round(opacity * 100);
+            let description = '';
+            if (percent === 100) {
+                description = '100% (matches normal text)';
+            } else if (percent === 70) {
+                description = '70% (slightly faded)';
+            } else {
+                description = percent + '%';
+            }
+            document.getElementById('opacityLabel').textContent = description;
+        }
+
+        // Update custom URL
+        function updateCustomURL() {
+            const fontSize = document.getElementById('url_fontSize').value;
+            const bgColor = document.getElementById('url_bgColor').value;
+            const textColor = document.getElementById('url_textColor').value;
+            const alignment = document.getElementById('url_alignment').value;
+            const verticalAlign = document.getElementById('url_verticalAlign').value;
+            const fontFamily = document.getElementById('url_fontFamily').value;
+            const fontWeight = document.getElementById('url_fontWeight').value;
+            const lineHeight = document.getElementById('url_lineHeight').value;
+            const paddingTop = document.getElementById('url_paddingTop').value;
+            const paddingBottom = document.getElementById('url_paddingBottom').value;
+            const paddingLeft = document.getElementById('url_paddingLeft').value;
+            const paddingRight = document.getElementById('url_paddingRight').value;
+            const maxWidth = document.getElementById('url_maxWidth').value;
+            const showMenu = document.getElementById('url_showMenu').checked;
+            const uppercase = document.getElementById('url_uppercase').checked;
+            const enableWordHighlight = document.getElementById('url_enableWordHighlight').checked;
+            const transparentBg = document.getElementById('url_transparentBg').checked;
+            const inProgressStyle = document.getElementById('url_inProgressStyle').value;
+            const inProgressOpacity = document.getElementById('url_inProgressOpacity').value;
+
+            // Update color text inputs to match color pickers
+            document.getElementById('url_bgColor_text').value = bgColor;
+            document.getElementById('url_textColor_text').value = textColor;
+            document.getElementById('url_wordHighlightColor_text').value = document.getElementById('url_wordHighlightColor').value;
+
+            const baseURL = window.location.origin;
+            const params = new URLSearchParams();
+
+            // Add style parameters
+            params.append('fontSize', fontSize);
+            if (!transparentBg) {
+                params.append('bgColor', bgColor.replace('#', ''));
+            }
+            params.append('textColor', textColor.replace('#', ''));
+            params.append('alignment', alignment);
+            if (verticalAlign !== 'top') params.append('verticalAlign', verticalAlign);
+            params.append('fontFamily', fontFamily);
+            params.append('fontWeight', fontWeight);
+            params.append('lineHeight', lineHeight);
+            params.append('paddingTop', paddingTop);
+            params.append('paddingBottom', paddingBottom);
+            params.append('paddingLeft', paddingLeft);
+            params.append('paddingRight', paddingRight);
+            params.append('maxWidth', maxWidth);
+
+            // Add parameters (only add when non-default to reduce URL length)
+            if (!showMenu) params.append('showMenu', 'false');
+            if (uppercase) params.append('uppercase', 'true');
+            if (!enableWordHighlight) params.append('disableWordHighlight', 'true');
+            if (transparentBg) params.append('transparentBg', 'true');
+            if (inProgressStyle !== 'italic') params.append('inProgressStyle', inProgressStyle);
+            if (inProgressOpacity !== '0.7') params.append('inProgressOpacity', inProgressOpacity);
+
+            // Add word highlight color override if enabled
+            const enableWordColorOverride = document.getElementById('url_enableWordColorOverride').checked;
+            if (enableWordColorOverride) {
+                const wordHighlightColor = document.getElementById('url_wordHighlightColor').value.replace('#', '');
+                params.append('wordHighlightColor', wordHighlightColor);
+            }
+
+            // Add maxLines for caption mode (only if > 0)
+            const maxLines = parseInt(document.getElementById('url_maxLines').value) || 0;
+            if (maxLines > 0) {
+                params.append('maxLines', maxLines);
+            }
+
+            // Add translation display parameters
+            const translationMode = document.getElementById('url_translationMode').value;
+            const translationLayoutFull = document.getElementById('url_translationLayout').value;
+            // Parse layout value - extract base layout and inverse flag
+            const isInverse = translationLayoutFull.endsWith('_inverse');
+            const translationLayout = isInverse ? translationLayoutFull.replace('_inverse', '') : translationLayoutFull;
+
+            if (translationMode !== 'transcribe') {
+                params.append('mode', translationMode);
+            }
+            if (translationLayout !== 'stacked') {
+                params.append('layout', translationLayout);
+            }
+            if (isInverse) {
+                params.append('inverse', 'true');
+            }
+            if (document.getElementById('url_hideInProgress').checked) {
+                params.append('hideInProgress', 'true');
+            }
+            if (document.getElementById('url_hideTranslateInProgress').checked) {
+                params.append('hideTranslateInProgress', 'true');
+            }
+            if (document.getElementById('url_showAll').checked) {
+                params.append('showAll', 'true');
+            }
+
+            // Audio streaming parameters
+            if (document.getElementById('url_audioStream').checked) {
+                params.append('audioStream', 'true');
+            }
+            if (document.getElementById('url_ttsAudio').checked) {
+                params.append('ttsAudio', 'true');
+            }
+
+            const customURL = `${baseURL}/?${params.toString()}`;
+            document.getElementById('customURL').value = customURL;
+
+            updatePreview();
+        }
+
+        // Track transcription running state
+        let isTranscriptionRunning = false;
+        let iframeRefreshTimeout = null;
+
+        // Update live preview (sample text styling when not running)
+        function updatePreview() {
+            const placeholder = document.getElementById('preview-placeholder');
+            const bgColor = document.getElementById('url_bgColor_text').value;
+            const textColor = document.getElementById('url_textColor').value;
+            const fontSize = document.getElementById('url_fontSize').value;
+            const fontFamily = document.getElementById('url_fontFamily').value;
+            const fontWeight = document.getElementById('url_fontWeight').value;
+            const lineHeight = document.getElementById('url_lineHeight').value;
+            const paddingTop = document.getElementById('url_paddingTop').value;
+            const paddingBottom = document.getElementById('url_paddingBottom').value;
+            const paddingLeft = document.getElementById('url_paddingLeft').value;
+            const paddingRight = document.getElementById('url_paddingRight').value;
+            const alignment = document.getElementById('url_alignment').value;
+            const uppercase = document.getElementById('url_uppercase').checked;
+            const transparentBg = document.getElementById('url_transparentBg').checked;
+
+            placeholder.style.background = transparentBg ? 'transparent' : bgColor;
+            placeholder.style.color = textColor;
+            placeholder.style.fontSize = fontSize + 'px';
+            placeholder.style.fontFamily = fontFamily;
+            placeholder.style.fontWeight = fontWeight;
+            placeholder.style.lineHeight = lineHeight;
+            placeholder.style.paddingTop = paddingTop + 'px';
+            placeholder.style.paddingBottom = paddingBottom + 'px';
+            placeholder.style.paddingLeft = paddingLeft + 'px';
+            placeholder.style.paddingRight = paddingRight + 'px';
+            placeholder.style.textAlign = alignment;
+            placeholder.style.textTransform = uppercase ? 'uppercase' : 'none';
+
+            // Add a border to show preview bounds when transparent
+            if (transparentBg) {
+                placeholder.style.border = '2px dashed #ccc';
+            } else {
+                placeholder.style.border = '2px solid #e9ecef';
+            }
+
+            // If transcription is running, update iframe with debounce
+            if (isTranscriptionRunning) {
+                updateIframeDebounced();
+            }
+        }
+
+        // Debounced iframe update to avoid too many reloads
+        function updateIframeDebounced() {
+            if (iframeRefreshTimeout) {
+                clearTimeout(iframeRefreshTimeout);
+            }
+            iframeRefreshTimeout = setTimeout(() => {
+                const iframe = document.getElementById('live-iframe');
+                const url = document.getElementById('customURL').value;
+                if (iframe && url) {
+                    iframe.src = url;
+                }
+            }, 500);
+        }
+
+        // Copy URL to clipboard
+        function copyURL() {
+            const urlInput = document.getElementById('customURL');
+            urlInput.select();
+
+            try {
+                document.execCommand('copy');
+                showNotification('✅ URL copied to clipboard!', 'success');
+            } catch (err) {
+                // Fallback for modern browsers
+                navigator.clipboard.writeText(urlInput.value).then(() => {
+                    showNotification('✅ URL copied to clipboard!', 'success');
+                }).catch(() => {
+                    showNotification('❌ Failed to copy URL', 'error');
+                });
+            }
+        }
+
+        // Open URL in new tab
+        function openURL() {
+            const url = document.getElementById('customURL').value;
+            window.open(url, '_blank');
+        }
+
+        // Save current settings as default
+        function saveAsDefault() {
+            const params = new URLSearchParams(document.getElementById('customURL').value.split('?')[1]);
+            const defaults = {};
+
+            // Convert URLSearchParams to plain object
+            for (const [key, value] of params.entries()) {
+                defaults[key] = value;
+            }
+
+            fetch('/api/url-builder/defaults', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(defaults)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('✅ Settings saved as default!', 'success');
+                } else {
+                    showNotification('❌ Failed to save defaults: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('❌ Error saving defaults: ' + error.message, 'error');
+            });
+        }
+
+        // Load saved defaults
+        function loadSavedDefaults() {
+            fetch('/api/url-builder/defaults')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.defaults && Object.keys(data.defaults).length > 0) {
+                        applyParametersToForm(data.defaults);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading saved defaults:', error);
+                });
+        }
+
+        // Apply URL parameters to form
+        function applyParametersToForm(params) {
+            // Apply all parameters to form fields
+            if (params.fontSize) document.getElementById('url_fontSize').value = params.fontSize;
+            if (params.bgColor) {
+                document.getElementById('url_bgColor').value = '#' + params.bgColor;
+                document.getElementById('url_bgColor_text').value = '#' + params.bgColor;
+            }
+            if (params.textColor) {
+                document.getElementById('url_textColor').value = '#' + params.textColor;
+                document.getElementById('url_textColor_text').value = '#' + params.textColor;
+            }
+            if (params.alignment) document.getElementById('url_alignment').value = params.alignment;
+            if (params.verticalAlign) {
+                document.getElementById('url_verticalAlign').value = params.verticalAlign;
+            } else {
+                document.getElementById('url_verticalAlign').value = 'top';
+            }
+            if (params.fontFamily) document.getElementById('url_fontFamily').value = params.fontFamily;
+            if (params.fontWeight) document.getElementById('url_fontWeight').value = params.fontWeight;
+            if (params.lineHeight) document.getElementById('url_lineHeight').value = params.lineHeight;
+            // Handle padding - support both old single value and new individual values
+            const paddingDefault = params.padding || '20';
+            document.getElementById('url_paddingTop').value = params.paddingTop || paddingDefault;
+            document.getElementById('url_paddingBottom').value = params.paddingBottom || paddingDefault;
+            document.getElementById('url_paddingLeft').value = params.paddingLeft || paddingDefault;
+            document.getElementById('url_paddingRight').value = params.paddingRight || paddingDefault;
+            if (params.maxWidth) document.getElementById('url_maxWidth').value = params.maxWidth;
+
+            // Apply checkboxes
+            document.getElementById('url_showMenu').checked = params.showMenu !== 'false';
+            document.getElementById('url_uppercase').checked = params.uppercase === 'true';
+            document.getElementById('url_enableWordHighlight').checked = params.disableWordHighlight !== 'true';
+            document.getElementById('url_transparentBg').checked = params.transparentBg === 'true';
+
+            // Apply in-progress style
+            if (params.inProgressStyle) {
+                document.getElementById('url_inProgressStyle').value = params.inProgressStyle;
+            } else {
+                document.getElementById('url_inProgressStyle').value = 'italic';
+            }
+
+            // Apply in-progress opacity
+            if (params.inProgressOpacity) {
+                document.getElementById('url_inProgressOpacity').value = params.inProgressOpacity;
+            } else {
+                document.getElementById('url_inProgressOpacity').value = '0.7';
+            }
+            updateOpacityLabel();
+
+            // Apply word highlight color override
+            if (params.wordHighlightColor) {
+                document.getElementById('url_enableWordColorOverride').checked = true;
+                document.getElementById('url_wordHighlightColor').value = '#' + params.wordHighlightColor;
+                document.getElementById('url_wordHighlightColor_text').value = '#' + params.wordHighlightColor;
+                toggleWordColorPicker();
+            } else {
+                document.getElementById('url_enableWordColorOverride').checked = false;
+                toggleWordColorPicker();
+            }
+
+            // Apply maxLines (caption mode)
+            if (params.maxLines) {
+                document.getElementById('url_maxLines').value = params.maxLines;
+            } else {
+                document.getElementById('url_maxLines').value = '0';
+            }
+
+            // Apply translation display parameters
+            if (params.mode) {
+                document.getElementById('url_translationMode').value = params.mode;
+            } else {
+                document.getElementById('url_translationMode').value = 'transcribe';
+            }
+            // Reconstruct full layout value from layout + inverse params
+            let layoutValue = params.layout || 'stacked';
+            if (params.inverse === 'true') {
+                layoutValue += '_inverse';
+            }
+            document.getElementById('url_translationLayout').value = layoutValue;
+            document.getElementById('url_hideInProgress').checked = params.hideInProgress === 'true';
+            document.getElementById('url_hideTranslateInProgress').checked = params.hideTranslateInProgress === 'true';
+            document.getElementById('url_showAll').checked = params.showAll === 'true';
+
+            // Update URL with loaded defaults
+            updateCustomURL();
+        }
+
+        function showNotification(message, type) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 500;
+                z-index: 1000;
+                max-width: 400px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                animation: slideIn 0.3s ease;
+            `;
+
+            if (type === 'success') {
+                notification.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+            } else {
+                notification.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+            }
+
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+
+        // Add animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Check transcription status and switch between iframe/placeholder
+        function checkPreviewTranscriptionStatus() {
+            fetch('/api/transcription/status')
+                .then(response => response.json())
+                .then(data => {
+                    const iframe = document.getElementById('live-iframe');
+                    const placeholder = document.getElementById('preview-placeholder');
+                    const wasRunning = isTranscriptionRunning;
+                    isTranscriptionRunning = data.state?.running || false;
+
+                    if (isTranscriptionRunning) {
+                        // Show iframe with live transcription
+                        iframe.style.display = 'block';
+                        placeholder.style.display = 'none';
+
+                        // Set iframe src if just started running or not set yet
+                        if (!wasRunning || !iframe.src || iframe.src === 'about:blank') {
+                            const url = document.getElementById('customURL').value;
+                            if (url) {
+                                iframe.src = url;
+                            }
+                        }
+                    } else {
+                        // Show styled sample text placeholder
+                        iframe.style.display = 'none';
+                        iframe.src = 'about:blank'; // Clear iframe
+                        placeholder.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking transcription status:', error);
+                    // On error, show placeholder
+                    const iframe = document.getElementById('live-iframe');
+                    const placeholder = document.getElementById('preview-placeholder');
+                    iframe.style.display = 'none';
+                    placeholder.style.display = 'block';
+                    isTranscriptionRunning = false;
+                });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load saved defaults
+            loadSavedDefaults();
+
+            updateCustomURL();
+            updatePreview();
+
+            // Check transcription status periodically (switches between iframe/placeholder)
+            checkPreviewTranscriptionStatus();
+            setInterval(checkPreviewTranscriptionStatus, 3000);
+        });
+    </script>
+{% endblock %}
