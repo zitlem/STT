@@ -339,8 +339,8 @@
                             <span id="status_text">Disabled</span>
                         </span>
                     </p>
-                    <p><strong>Target Language:</strong> <span id="current_language">-</span> &nbsp;|&nbsp; <strong>Model:</strong> <span id="current_model">-</span></p>
-                    <p><strong>Model Loaded:</strong> <span id="model_loaded">No</span></p>
+                    <p><strong>Target Language:</strong> <span id="current_language">-</span> &nbsp;|&nbsp; <strong><span id="model_label">Model</span>:</strong> <span id="current_model">-</span></p>
+                    <p><strong><span id="model_loaded_label">Model Loaded</span>:</strong> <span id="model_loaded">No</span></p>
                     <p><strong>Cache Size:</strong> <span id="cache_size">0</span> segments</p>
                     <p><strong>Transcription:</strong> <span id="transcription_status">-</span></p>
                     <p id="remote_clients_row" style="display:none;"><strong>Translating for:</strong> <span id="remote_clients_list" style="color: #4caf50;"></span></p>
@@ -816,6 +816,8 @@
                     document.getElementById('current_language').textContent = data.target_language_name || '-';
                     const modelId = data.translation_model || '-';
                     document.getElementById('current_model').textContent = modelId.split('/').pop() || modelId;
+                    document.getElementById('model_label').textContent = data.remote_active ? 'Local Model' : 'Model';
+                    document.getElementById('model_loaded_label').textContent = data.remote_active ? 'Remote Model' : 'Model Loaded';
                     if (data.remote_active) {
                         // Only fetch Machine B's status if we're actually paired
                         checkPairedStatus().then(paired => {
