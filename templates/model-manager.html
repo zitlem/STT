@@ -1641,12 +1641,8 @@
 
         async function loadTranslationConfig() {
             try {
-                const [settingsResp, statusResp] = await Promise.all([
-                    fetch('/api/translation/settings'),
-                    fetch('/api/translation/status')
-                ]);
+                const settingsResp = await fetch('/api/translation/settings');
                 const settings = await settingsResp.json();
-                const status = await statusResp.json();
 
                 if (settings.success) {
                     const model = settings.settings.translation_model || 'facebook/nllb-200-distilled-600M';
@@ -1654,13 +1650,8 @@
 
                     // Update summary
                     const modelName = model.split('/').pop() || model;
-                    const loaded = status.success && status.model_loaded;
-                    const loading = status.success && status.model_loading;
-                    let loadedText = loaded ? '<span style="color: var(--success);">Yes</span>' :
-                                     (loading ? '<span style="color: var(--warning);">Loading...</span>' : 'No');
                     document.getElementById('translation_model_summary').innerHTML =
-                        `<strong>Model:</strong> ${modelName}<br>` +
-                        `<strong>Loaded:</strong> ${loadedText}`;
+                        `<strong>Model:</strong> ${modelName}`;
                 }
             } catch (error) {
                 console.error('Error loading translation config:', error);
