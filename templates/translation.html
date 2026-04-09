@@ -109,6 +109,26 @@
             color: var(--bg-base);
             border-color: var(--accent);
         }
+
+        .unsaved-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid var(--accent);
+            padding: 10px 24px;
+            z-index: 1000;
+        }
+        .unsaved-bar-inner {
+            max-width: 1300px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .unsaved-bar span { color: var(--warning); font-size: 0.85em; font-weight: 600; }
 {% endblock %}
 
 {% block content %}
@@ -225,7 +245,7 @@
                     <small style="color: #999; font-size: 0.75em;">0 = disabled. Higher = more alternatives but slower translation</small>
                 </div>
 
-                <button onclick="saveSettings()" class="btn-save">Save Settings</button>
+                <button id="main-save-btn" onclick="saveSettings()" class="btn-save">Save Settings</button>
                 <button onclick="hotSwitchLanguage()" class="btn-save btn-primary">Hot Switch Language</button>
                 <button onclick="clearCache()" class="btn-save btn-warning">Clear Translation Cache</button>
 
@@ -319,7 +339,7 @@
                             <span id="status_text">Disabled</span>
                         </span>
                     </p>
-                    <p><strong>Target Language:</strong> <span id="current_language">-</span></p>
+                    <p><strong>Target Language:</strong> <span id="current_language">-</span> &nbsp;|&nbsp; <strong>Model:</strong> <span id="current_model">-</span></p>
                     <p><strong>Model Loaded:</strong> <span id="model_loaded">No</span></p>
                     <p><strong>Cache Size:</strong> <span id="cache_size">0</span> segments</p>
                     <p><strong>Transcription:</strong> <span id="transcription_status">-</span></p>
@@ -367,12 +387,36 @@
                 </div>
             </div>
         </div>
+
+        <div id="unsaved-bar" class="unsaved-bar" style="display:none;">
+            <div class="unsaved-bar-inner">
+                <span>Unsaved changes</span>
+                <button onclick="saveSettings()" class="btn-save" style="margin:0; width:auto; padding:8px 24px;">Save</button>
+            </div>
+        </div>
 {% endblock %}
 
 {% block scripts %}
     <script>
         let availableLanguages = {};
         let currentSettings = {};
+        let lastRemoteModel = '';
+        let unsavedChanges = false;
+        let saveBtnVisible = true;
+
+        function markDirty() {
+            if (!unsavedChanges) {
+                unsavedChanges = true;
+                if (!saveBtnVisible) {
+                    document.getElementById('unsaved-bar').style.display = 'flex';
+                }
+            }
+        }
+
+        function markClean() {
+            unsavedChanges = false;
+            document.getElementById('unsaved-bar').style.display = 'none';
+        }
 
         // Socket.IO connection for real-time preview
         const socket = io.connect(window.location.origin, {
@@ -458,12 +502,26 @@
         }
 
         // Load settings on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            loadNLLBModels();
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadNLLBModels();
             loadSettings();
             checkStatus();
             // Poll status every 3 seconds
             setInterval(checkStatus, 3000);
+
+            // Unsaved changes detection
+            const panel = document.querySelector('.settings-panel');
+            panel.addEventListener('input', markDirty);
+            panel.addEventListener('change', markDirty);
+
+            const saveBtn = document.getElementById('main-save-btn');
+            const observer = new IntersectionObserver(([entry]) => {
+                saveBtnVisible = entry.isIntersecting;
+                if (unsavedChanges) {
+                    document.getElementById('unsaved-bar').style.display = saveBtnVisible ? 'none' : 'flex';
+                }
+            });
+            observer.observe(saveBtn);
         });
 
         async function loadNLLBModels() {
@@ -654,6 +712,7 @@
                 const data = await response.json();
                 if (data.success) {
                     showAlert('Translation settings saved successfully!', 'success');
+                    markClean();
                     checkStatus();
                 } else {
                     showAlert('Error saving settings: ' + data.error, 'error');
@@ -755,14 +814,20 @@
 
                     // Update other status info
                     document.getElementById('current_language').textContent = data.target_language_name || '-';
+                    const modelId = data.translation_model || '-';
+                    document.getElementById('current_model').textContent = modelId.split('/').pop() || modelId;
                     if (data.remote_active) {
                         // Only fetch Machine B's status if we're actually paired
                         checkPairedStatus().then(paired => {
                             if (paired) {
-                                document.getElementById('model_loaded').textContent = 'Remote (fetching...)';
-                                document.getElementById('model_loaded').style.color = '#4caf50';
+                                const modelEl = document.getElementById('model_loaded');
+                                if (!lastRemoteModel) {
+                                    modelEl.textContent = 'Remote (fetching...)';
+                                }
+                                modelEl.style.color = '#4caf50';
                                 fetchRemoteModel();
                             } else {
+                                lastRemoteModel = '';
                                 document.getElementById('model_loaded').textContent = 'Remote (not paired)';
                                 document.getElementById('model_loaded').style.color = '#ff9800';
                             }
@@ -897,9 +962,11 @@
                 if (data.success) {
                     const model = data.translation_model || 'unknown';
                     const loaded = data.model_loaded ? '✓' : (data.model_loading ? 'loading...' : '✗ not loaded');
-                    document.getElementById('model_loaded').textContent = model + ' (' + loaded + ')';
+                    lastRemoteModel = model + ' (' + loaded + ')';
+                    document.getElementById('model_loaded').textContent = lastRemoteModel;
                 }
             } catch (_) {
+                lastRemoteModel = '';
                 document.getElementById('model_loaded').textContent = 'Remote (unreachable)';
                 document.getElementById('model_loaded').style.color = '#f44336';
             }
