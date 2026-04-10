@@ -524,7 +524,8 @@
                     <div class="model-tabs" style="display: flex; align-items: center; gap: 10px;">
                         <button class="model-tab active" onclick="switchModelTab('whisper')">🤖 Whisper</button>
                         <button class="model-tab" onclick="switchModelTab('faster_whisper')">⚡ Faster Whisper</button>
-                        <button class="model-tab" onclick="switchModelTab('downloaded')">📦 Downloaded Models</button>
+                        <button class="model-tab" onclick="switchModelTab('downloaded')">📥 Add Models</button>
+                        <button class="model-tab" onclick="switchModelTab('my_downloaded')">📦 Downloaded Models</button>
                         <button id="refresh_whisper_btn" class="model-btn" onclick="refreshWhisperModels()" style="margin-left: auto; background: var(--accent); color: white; padding: 8px 16px; font-size: 0.85em; border-radius: 6px;">🔄 Check for New Models</button>
                         <button id="refresh_faster_whisper_btn" class="model-btn" onclick="refreshFasterWhisperModels()" style="margin-left: auto; background: var(--warning); color: #1a1a2e; padding: 8px 16px; font-size: 0.85em; border-radius: 6px; display: none;">🔄 Check for New Models</button>
                     </div>
@@ -637,12 +638,21 @@
                             </div>
                         </div>
 
-                        <!-- Downloaded Models List (dynamically loaded) -->
+                    </div>
+
+                    <!-- Downloaded Models (separate tab) -->
+                    <div id="my_downloaded_models" class="model-list" style="display: none;">
+                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                            <div class="model-info" style="flex: 1;">
+                                <div class="model-name" style="color: var(--accent);">📦 Downloaded Models</div>
+                                <div class="model-details">All downloaded and uploaded models on this system</div>
+                            </div>
+                        </div>
                         <div id="downloaded_models_list">
                             <div class="model-item">
                                 <div class="model-info">
-                                    <div class="model-name">No other models found</div>
-                                    <div class="model-details">Custom HuggingFace or uploaded models will appear here</div>
+                                    <div class="model-name">No models found</div>
+                                    <div class="model-details">Download or upload models from the Add Models tab</div>
                                 </div>
                             </div>
                         </div>
@@ -1736,8 +1746,12 @@
 
             // Load downloaded models and check NLLB status if switching to downloaded tab
             if (tabName === 'downloaded') {
-                loadDownloadedModels();
                 checkNLLBStatus();
+            }
+
+            // Load downloaded models when switching to my_downloaded tab
+            if (tabName === 'my_downloaded') {
+                loadDownloadedModels();
             }
 
             // Load faster whisper models when switching to that tab
