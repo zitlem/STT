@@ -10073,6 +10073,18 @@ def list_models():
                             }
                         )
 
+        # Add downloaded Piper TTS models
+        for m in _PIPER_MODELS_CATALOG:
+            if _is_piper_model_downloaded(m["id"]):
+                downloaded_models.append(
+                    {
+                        "name": m["name"],
+                        "type": "piper",
+                        "path": _get_piper_model_dir(m["id"]),
+                        "directory": m["id"],
+                    }
+                )
+
         return jsonify(
             {
                 "success": True,

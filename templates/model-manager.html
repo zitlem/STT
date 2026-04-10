@@ -2164,6 +2164,8 @@
                                 displayType = 'Faster Whisper'; typeIcon = '⚡'; borderColor = 'var(--warning)';
                             } else if (dir.startsWith('facebook--nllb-')) {
                                 displayType = 'NLLB Translation'; typeIcon = '🌐'; borderColor = 'var(--success)';
+                            } else if (model.type === 'piper') {
+                                displayType = 'Piper TTS'; typeIcon = '🔊'; borderColor = '#8b5cf6';
                             } else if (model.type === 'huggingface') {
                                 displayType = 'HuggingFace'; typeIcon = '🤗'; borderColor = 'var(--accent)';
                             } else {
