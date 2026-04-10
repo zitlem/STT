@@ -10050,8 +10050,16 @@ def list_models():
                     if item.startswith("whisper-"):
                         continue
 
+                    # Skip Faster Whisper models (they have their own section)
+                    if item.startswith("faster-whisper"):
+                        continue
+
                     # Skip NLLB translation models (shown in Translation tab)
                     if item.startswith("facebook--nllb-"):
+                        continue
+
+                    # Skip internal cache/data directories
+                    if item in (".hf_cache", "tts", "piper"):
                         continue
 
                     # Detect if it's a HuggingFace model (contains --)
