@@ -2154,15 +2154,26 @@
                     let html = '';
 
                     if (data.downloaded_models && data.downloaded_models.length > 0) {
-                        html += '<div style="margin: 10px 0; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px;"><div style="font-weight: 600; color: var(--accent); margin-bottom: 8px;">Downloaded Models:</div>';
+                        html += '<div style="margin: 10px 0; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px;">';
                         data.downloaded_models.forEach(model => {
-                            const displayType = model.type === 'huggingface' ? 'HuggingFace model' : 'Local model';
-                            const typeIcon = model.type === 'huggingface' ? '🤗' : '💾';
+                            let displayType, typeIcon, borderColor;
+                            const dir = model.directory || model.name;
+                            if (dir.startsWith('whisper-')) {
+                                displayType = 'Whisper'; typeIcon = '🤖'; borderColor = 'var(--accent)';
+                            } else if (dir.startsWith('faster-whisper')) {
+                                displayType = 'Faster Whisper'; typeIcon = '⚡'; borderColor = 'var(--warning)';
+                            } else if (dir.startsWith('facebook--nllb-')) {
+                                displayType = 'NLLB Translation'; typeIcon = '🌐'; borderColor = 'var(--success)';
+                            } else if (model.type === 'huggingface') {
+                                displayType = 'HuggingFace'; typeIcon = '🤗'; borderColor = 'var(--accent)';
+                            } else {
+                                displayType = 'Local'; typeIcon = '💾'; borderColor = 'var(--accent)';
+                            }
                             html += `
-                                <div class="model-item">
+                                <div class="model-item" style="border-left: 3px solid ${borderColor};">
                                     <div class="model-info">
                                         <div class="model-name">${typeIcon} ${model.name}</div>
-                                        <div class="model-details">${displayType} • ${model.path}</div>
+                                        <div class="model-details"><span style="background: var(--bg-elevated); padding: 1px 6px; border-radius: 8px; font-size: 0.75em;">${displayType}</span></div>
                                     </div>
                                     <div class="model-actions">
                                         <button class="model-btn remove" onclick="removeModel('${model.name}', '${model.type}')">Remove</button>

@@ -10046,20 +10046,8 @@ def list_models():
         if os.path.exists(models_dir):
             for item in os.listdir(models_dir):
                 if os.path.isdir(os.path.join(models_dir, item)):
-                    # Skip Whisper models (they have their own section)
-                    if item.startswith("whisper-"):
-                        continue
-
-                    # Skip Faster Whisper models (they have their own section)
-                    if item.startswith("faster-whisper"):
-                        continue
-
-                    # Skip NLLB translation models (shown in Translation tab)
-                    if item.startswith("facebook--nllb-"):
-                        continue
-
                     # Skip internal cache/data directories
-                    if item in (".hf_cache", "tts", "piper"):
+                    if item.startswith(".") or item in ("tts", "piper"):
                         continue
 
                     # Detect if it's a HuggingFace model (contains --)
@@ -10081,6 +10069,7 @@ def list_models():
                                 "name": item,
                                 "type": "local",
                                 "path": os.path.join(models_dir, item),
+                                "directory": item,
                             }
                         )
 
