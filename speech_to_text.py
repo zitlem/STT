@@ -5570,7 +5570,8 @@ def download_tts_model():
             quality = parts[2]     # e.g., "medium"
 
             # HuggingFace piper voices URL
-            base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/{lang_code.replace('_', '/')}/{voice_name}/{quality}"
+            lang_family = lang_code.split("_")[0]  # "en_US" -> "en"
+            base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang_family}/{lang_code}/{voice_name}/{quality}"
             onnx_filename = f"{model_name}.onnx"
             json_filename = f"{model_name}.onnx.json"
 
