@@ -314,7 +314,7 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "target_language": "en",
         "source_language": "auto",
-        "translate_in_progress": True,
+        "translate_in_progress": False,
         "display_mode": "translated_only",
         "translation_model": "facebook/nllb-200-distilled-600M",
         "use_gpu": True,
@@ -694,7 +694,7 @@ def load_config():
                     "_target_language_comment": "Target language code (e.g., 'en', 'es', 'fr', 'de', 'ru')",
                     "source_language": "auto",
                     "_source_language_comment": "Source language (auto uses configured audio.language)",
-                    "translate_in_progress": True,
+                    "translate_in_progress": False,
                     "_translate_in_progress_comment": "Also translate in-progress text (may cause flicker)",
                     "display_mode": "translated_only",
                     "_display_mode_comment": "Display mode: translated_only, side_by_side, stacked",
@@ -11938,20 +11938,23 @@ def emit_translated_entries():
                     seg_data["alternatives"] = extras.get("alternatives", [])
                 translated_segments.append(seg_data)
 
-            # Translate in-progress text if enabled (skip for Whisper methods — no live partial translation)
+            # Always send in-progress text; only translate it if translate_in_progress is enabled
             in_progress_translation = None
-            if trans_config.get("translate_in_progress", False) and not _whisper_translation_active:
-                in_progress = transcription_state.get("live_text", "")
-                if in_progress and in_progress.strip():
+            in_progress = transcription_state.get("live_text", "")
+            if in_progress and in_progress.strip():
+                should_translate_ip = trans_config.get("translate_in_progress", False) and not _whisper_translation_active
+                if should_translate_ip:
                     translated_in_progress = translate_live_text(in_progress, source_lang, target_lang)
-                    if not is_whisper_hallucination(translated_in_progress):
-                        in_progress_translation = {
-                            "original_text": in_progress,
-                            "translated_text": translated_in_progress,
-                            "start": transcription_state.get("live_start", 0),
-                            "end": transcription_state.get("live_end", 0),
-                            "completed": False
-                        }
+                else:
+                    translated_in_progress = in_progress  # Show original (untranslated)
+                if not is_whisper_hallucination(translated_in_progress):
+                    in_progress_translation = {
+                        "original_text": in_progress,
+                        "translated_text": translated_in_progress,
+                        "start": transcription_state.get("live_start", 0),
+                        "end": transcription_state.get("live_end", 0),
+                        "completed": False
+                    }
 
             # Emit translation update
             socketio.emit("translation_update", {
@@ -11988,20 +11991,27 @@ def emit_audio_stream():
 _tts_last_spoken_id = 0
 
 def emit_tts_audio():
-    """Background task that synthesizes speech from translated text and emits audio"""
+    """Background task that synthesizes speech from translated text and emits audio.
+    Buffers segments until a sentence-ending punctuation is found so TTS speaks
+    complete phrases rather than tiny fragments."""
     global _tts_last_spoken_id
     import base64
+
+    _tts_buffer = []  # Buffered segments waiting for sentence end
+    _tts_buffer_last_update = 0  # Timestamp of last buffer addition
 
     while True:
         tts_config = config.get("live_translation", {}).get("tts", {})
         trans_config = config.get("live_translation", {})
 
         if not tts_config.get("enabled", False) or not trans_config.get("enabled", False):
+            _tts_buffer.clear()
             socketio.sleep(1)
             continue
 
         if not transcription_state.get("running", False):
             _tts_last_spoken_id = 0
+            _tts_buffer.clear()
             socketio.sleep(1)
             continue
 
@@ -12024,28 +12034,40 @@ def emit_tts_audio():
             # Sort by ID to speak in order
             new_segments.sort(key=lambda s: s["id"])
 
+            # Add new segments to buffer
             for segment in new_segments:
-                # Check if TTS is still enabled (could be toggled mid-loop)
-                if not config.get("live_translation", {}).get("tts", {}).get("enabled", False):
-                    break
-
-                audio_bytes, sample_rate = synthesize_tts(segment["translated_text"], language=target_lang)
-                if audio_bytes is None:
-                    continue
-
-                backend = _get_tts_backend()
-                audio_format = "mp3" if backend == "edge" else "wav"
-                audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
-                socketio.emit("tts_audio", {
-                    "segment_id": segment["id"],
-                    "audio": audio_b64,
-                    "format": audio_format,
-                    "sample_rate": sample_rate,
-                    "text": segment["translated_text"],
-                }, room="tts_audio")
-
+                _tts_buffer.append(segment)
                 _tts_last_spoken_id = segment["id"]
-                socketio.sleep(0.1)  # Small delay between segments
+                _tts_buffer_last_update = time.time()
+
+            # Check if buffer has a complete phrase to speak
+            # Speak when: buffer ends with sentence punctuation, or buffer has been waiting too long (flush timeout)
+            if _tts_buffer:
+                combined_text = " ".join(s["translated_text"] for s in _tts_buffer).strip()
+                last_char = combined_text.rstrip()[-1] if combined_text.rstrip() else ""
+                sentence_complete = last_char in ".!?;:。！？"
+                flush_timeout = time.time() - _tts_buffer_last_update > 4.0  # Flush after 4s of no new segments
+
+                if sentence_complete or flush_timeout:
+                    # Check if TTS is still enabled
+                    if not config.get("live_translation", {}).get("tts", {}).get("enabled", False):
+                        _tts_buffer.clear()
+                        continue
+
+                    audio_bytes, sample_rate = synthesize_tts(combined_text, language=target_lang)
+                    if audio_bytes:
+                        backend = _get_tts_backend()
+                        audio_format = "mp3" if backend == "edge" else "wav"
+                        audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
+                        socketio.emit("tts_audio", {
+                            "segment_id": _tts_buffer[-1]["id"],
+                            "audio": audio_b64,
+                            "format": audio_format,
+                            "sample_rate": sample_rate,
+                            "text": combined_text,
+                        }, room="tts_audio")
+
+                    _tts_buffer.clear()
 
         except Exception as e:
             print(f"[TTS EMIT ERROR] {e}")
