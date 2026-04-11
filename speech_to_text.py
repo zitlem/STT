@@ -12042,6 +12042,7 @@ def emit_tts_audio():
 
     _tts_buffer = []  # Buffered segments waiting for sentence end
     _tts_buffer_last_update = 0  # Timestamp of last buffer addition
+    _tts_was_off = True  # Start as off so first enable skips existing segments
 
     while True:
         tts_config = config.get("live_translation", {}).get("tts", {})
@@ -12049,8 +12050,20 @@ def emit_tts_audio():
 
         if not tts_config.get("enabled", False) or not trans_config.get("enabled", False):
             _tts_buffer.clear()
+            # Mark that TTS is off so we can skip existing segments when re-enabled
+            _tts_was_off = True
             socketio.sleep(1)
             continue
+
+        # When TTS is first enabled mid-session, skip to the latest segment
+        # so we don't replay everything from the beginning
+        if _tts_was_off:
+            _tts_was_off = False
+            cache = get_translation_cache()
+            with cache._lock:
+                max_id = max((sid for sid in cache._cache if isinstance(sid, int)), default=0)
+            if max_id > _tts_last_spoken_id:
+                _tts_last_spoken_id = max_id
 
         if not transcription_state.get("running", False):
             _tts_last_spoken_id = 0
