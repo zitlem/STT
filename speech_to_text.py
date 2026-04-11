@@ -321,6 +321,7 @@ DEFAULT_CONFIG = {
         "max_entries_to_send": 100,
         "srt_enabled": True,
         "html_enabled": True,
+        "translation_method": "nllb",
         "generation_params": {
             "num_beams": 5,
             "length_penalty": 1.0,
@@ -2008,15 +2009,33 @@ class ModelFactory:
         """
         try:
             if model_type == "whisper":
-                # Original Whisper model
+                # Original Whisper model (OpenAI whisper)
                 # Build params dict with language and whisper_params
                 params = {}
                 if language != "auto":
                     params["language"] = language
+
+                # OpenAI whisper supported parameters (transcribe-level + DecodingOptions)
+                whisper_transcribe_params = {
+                    "verbose", "temperature", "compression_ratio_threshold",
+                    "logprob_threshold", "no_speech_threshold",
+                    "condition_on_previous_text", "initial_prompt",
+                    "word_timestamps", "prepend_punctuations", "append_punctuations",
+                    "clip_timestamps", "hallucination_silence_threshold",
+                    "carry_initial_prompt",
+                    # DecodingOptions params
+                    "task", "language", "sample_len", "best_of", "beam_size",
+                    "patience", "length_penalty", "prefix", "suppress_tokens",
+                    "suppress_blank", "without_timestamps", "max_initial_timestamp",
+                    "fp16",
+                }
+
                 if whisper_params:
-                    # Filter out comment fields (keys starting with "_")
-                    filtered_params = {k: v for k, v in whisper_params.items() if not k.startswith("_")}
-                    params.update(filtered_params)
+                    for k, v in whisper_params.items():
+                        if k.startswith("_"):
+                            continue
+                        if k in whisper_transcribe_params:
+                            params[k] = v
 
                 result = model.transcribe(audio_data, **params)
 
@@ -2044,7 +2063,7 @@ class ModelFactory:
                     "without_timestamps", "max_initial_timestamp",
                     "word_timestamps", "prepend_punctuations",
                     "append_punctuations", "vad_filter", "vad_parameters",
-                    "hotwords",
+                    "hotwords", "task",
                 }
 
                 # Parameter name mapping (whisper -> faster-whisper)
@@ -4826,6 +4845,7 @@ def get_file_transcription_settings():
                 "translate_enabled": ft_config.get("translate_enabled", False),
                 "translate_to": ft_config.get("translate_to", "en"),
                 "translation_model": ft_config.get("translation_model", "facebook/nllb-200-distilled-600M"),
+                "translation_method": config.get("live_translation", {}).get("translation_method", "nllb"),
                 "model": {
                     "type": ft_config.get("model", {}).get("type", "whisper"),
                     "whisper": {
@@ -5033,10 +5053,11 @@ def save_translation_settings():
     old_target_lang = config.get("live_translation", {}).get("target_language", "en")
     old_model = config.get("live_translation", {}).get("translation_model", "")
     old_use_gpu = config.get("live_translation", {}).get("use_gpu", True)
+    old_method = config.get("live_translation", {}).get("translation_method", "nllb")
 
     # Update settings
     for key in ["enabled", "target_language", "source_language", "translate_in_progress",
-                "display_mode", "translation_model", "use_gpu", "context_window"]:
+                "display_mode", "translation_model", "use_gpu", "context_window", "translation_method"]:
         if key in data:
             config["live_translation"][key] = data[key]
 
@@ -5068,18 +5089,24 @@ def save_translation_settings():
     new_target_lang = config["live_translation"].get("target_language", "en")
     new_model = config["live_translation"].get("translation_model", "")
     new_use_gpu = config["live_translation"].get("use_gpu", True)
+    new_method = config["live_translation"].get("translation_method", "nllb")
 
     model_changed = old_model != new_model or old_use_gpu != new_use_gpu
+    method_changed = old_method != new_method
+    using_whisper = new_method in ("whisper_translate", "whisper_forced_lang")
 
     if not now_enabled and was_enabled:
         # Translation just disabled - unload model
         threading.Thread(target=unload_live_translation_model, daemon=True).start()
-    elif now_enabled and (not was_enabled or model_changed):
-        # Translation just enabled, or model/GPU setting changed - reload model
+    elif using_whisper and not (old_method in ("whisper_translate", "whisper_forced_lang")):
+        # Switched to Whisper method — unload NLLB model (not needed)
+        threading.Thread(target=unload_live_translation_model, daemon=True).start()
+    elif now_enabled and not using_whisper and (not was_enabled or model_changed or method_changed):
+        # Using NLLB: translation just enabled, model/GPU/method changed - reload model
         # Skip eager loading if this machine serves remote clients (Machine B) —
         # model will be loaded when Machine A starts transcription via /api/translate/preload
         if _trusted_translation_clients:
-            if was_enabled and model_changed:
+            if was_enabled and (model_changed or method_changed):
                 # Model changed — unload old one, new one loads on next request/preload
                 threading.Thread(target=unload_live_translation_model, daemon=True).start()
         else:
@@ -5091,8 +5118,8 @@ def save_translation_settings():
                 get_live_translation_model(use_gpu, model_id)
             threading.Thread(target=reload_translation_model, daemon=True).start()
 
-    # Clear cache if target language or model changed
-    if new_target_lang != old_target_lang or model_changed:
+    # Clear cache if target language, model, or method changed
+    if new_target_lang != old_target_lang or model_changed or method_changed:
         get_translation_cache().clear()
 
     return jsonify({
@@ -6252,8 +6279,53 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
         if translate_to and translate_to.strip() and translate_to in NLLB_LANG_CODES:
             source_lang = ft_language if ft_language != "auto" else "en"
 
+            # Check translation method
+            ft_translation_method = config.get("live_translation", {}).get("translation_method", "nllb")
             remote_cfg = config.get("live_translation", {}).get("remote", {})
-            if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
+
+            if ft_translation_method in ("whisper_translate", "whisper_forced_lang") and model is not None:
+                # Whisper-based translation: run a second pass on the same audio with translation params
+                socketio.emit(
+                    "file_progress",
+                    {"session_id": session_id, "percent": 60, "status": "Translating with Whisper (pass 2)..."},
+                )
+
+                pass2_params = dict(whisper_params)
+                pass2_language = ft_language
+                if ft_translation_method == "whisper_translate" and translate_to == "en":
+                    pass2_params["task"] = "translate"
+                elif ft_translation_method == "whisper_forced_lang":
+                    pass2_language = translate_to
+
+                pass2_segments = ModelFactory.transcribe(
+                    model, processor, model_type, audio_data,
+                    language=pass2_language, whisper_params=pass2_params,
+                    return_segments=True
+                )
+
+                socketio.emit(
+                    "file_progress",
+                    {"session_id": session_id, "percent": 85, "status": f"Whisper translation: {len(pass2_segments)} segments..."},
+                )
+
+                # Build translated_segments by matching pass 1 and pass 2 results
+                translated_segments = []
+                for i, seg in enumerate(segments):
+                    translated_seg = dict(seg)
+                    if i < len(pass2_segments):
+                        translated_seg["translated_text"] = pass2_segments[i].get("text", "").strip()
+                    else:
+                        # More segments in pass 1 than pass 2 — use last pass 2 text or original
+                        translated_seg["translated_text"] = pass2_segments[-1].get("text", "").strip() if pass2_segments else seg.get("text", "")
+                    translated_segments.append(translated_seg)
+
+                # If pass 2 had more segments, append remaining translated text to last segment
+                if len(pass2_segments) > len(segments) and translated_segments:
+                    extra_text = " ".join(s.get("text", "").strip() for s in pass2_segments[len(segments):] if s.get("text", "").strip())
+                    if extra_text:
+                        translated_segments[-1]["translated_text"] += " " + extra_text
+
+            elif remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
                 # Remote path: send each segment to Machine B, no local model load needed
                 socketio.emit(
                     "file_progress",
@@ -11705,6 +11777,10 @@ def emit_translated_entries():
             cache = get_translation_cache()
             translated_segments = []
 
+            # Check if Whisper-based translation is active (translations already cached by transcription loop)
+            _translation_method = trans_config.get("translation_method", "nllb")
+            _whisper_translation_active = _translation_method in ("whisper_translate", "whisper_forced_lang")
+
             # Check if corrections features are enabled for translation confidence
             corrections_cfg = config.get("corrections", {})
             want_confidence = corrections_cfg.get("enabled", True) and corrections_cfg.get("confidence_highlighting", True)
@@ -11716,6 +11792,24 @@ def emit_translated_entries():
             for idx, entry in enumerate(entries):
                 seg_id = entry[0]
                 original_text = entry[2]
+
+                # Whisper-based translation: translations are pre-cached by the transcription loop
+                if _whisper_translation_active:
+                    cached = cache.get(seg_id, "", target_lang)
+                    translated_text = cached if cached else original_text  # Fallback to original if not yet cached
+                    extras = None
+                    seg_data = {
+                        "id": seg_id,
+                        "timestamp": entry[1],
+                        "original_text": original_text,
+                        "translated_text": translated_text,
+                        "start": entry[3],
+                        "end": entry[4],
+                        "completed": True,
+                    }
+                    if not is_whisper_hallucination(translated_text):
+                        translated_segments.append(seg_data)
+                    continue
 
                 # Check cache first
                 cached = cache.get(seg_id, original_text, target_lang)
@@ -11800,9 +11894,9 @@ def emit_translated_entries():
                     seg_data["alternatives"] = extras.get("alternatives", [])
                 translated_segments.append(seg_data)
 
-            # Translate in-progress text if enabled
+            # Translate in-progress text if enabled (skip for Whisper methods — no live partial translation)
             in_progress_translation = None
-            if trans_config.get("translate_in_progress", False):
+            if trans_config.get("translate_in_progress", False) and not _whisper_translation_active:
                 in_progress = transcription_state.get("live_text", "")
                 if in_progress and in_progress.strip():
                     translated_in_progress = translate_live_text(in_progress, source_lang, target_lang)
@@ -13449,6 +13543,39 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         return_segments=True
                                     )
 
+                                    # === Whisper Translation Pass (dual-pass) ===
+                                    # If Whisper-based translation is active, run a second pass on the same audio
+                                    _whisper_translated_text = None
+                                    _trans_cfg = process_config.get("live_translation", {})
+                                    _trans_method = _trans_cfg.get("translation_method", "nllb")
+                                    _trans_enabled = _trans_cfg.get("enabled", False)
+                                    if _trans_enabled and _trans_method in ("whisper_translate", "whisper_forced_lang") and segments:
+                                        try:
+                                            _target_lang = _trans_cfg.get("target_language", "en")
+                                            _pass2_params = dict(whisper_params)  # Copy pass 1 params
+                                            _pass2_language = live_language
+
+                                            if _trans_method == "whisper_translate" and _target_lang == "en":
+                                                _pass2_params["task"] = "translate"
+                                            elif _trans_method == "whisper_forced_lang":
+                                                _pass2_language = _target_lang
+
+                                            _pass2_segments = ModelFactory.transcribe(
+                                                audio_model, processor, model_type,
+                                                audio_chunk,
+                                                language=_pass2_language,
+                                                whisper_params=_pass2_params,
+                                                return_segments=True
+                                            )
+                                            if _pass2_segments:
+                                                _whisper_translated_text = " ".join(
+                                                    s.get("text", "").strip() for s in _pass2_segments if s.get("text", "").strip()
+                                                )
+                                                if _whisper_translated_text:
+                                                    print(f"[WHISPER-TRANSLATE] Pass 2: '{_whisper_translated_text[:80]}'", flush=True)
+                                        except Exception as _wt_err:
+                                            print(f"[WHISPER-TRANSLATE] Pass 2 error: {_wt_err}", flush=True)
+
                                     # Filter out hallucinated foreign characters from each segment
                                     if segments and config.get("hallucination_filter", {}).get("cjk_filter_enabled", True):
                                         for seg in segments:
@@ -13493,6 +13620,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                                                 # Save substantial sentences to DB
                                                 MIN_WORDS = min_words_threshold
+                                                _newly_inserted_ids = []  # Track IDs for Whisper translation caching
                                                 with _db_lock:
                                                     try:
                                                         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -13509,6 +13637,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
                                                                     (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review),
                                                                 )
+                                                                _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(sentence)
                                                                 conf_str = f", conf={segment_confidence:.2f}" if segment_confidence is not None else ""
                                                                 print(f"[DB INSERT] '{sentence[:50]}...'{conf_str}" if len(sentence) > 50 else f"[DB INSERT] '{sentence}'{conf_str}", flush=True)
@@ -13532,14 +13661,26 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
                                                                     (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review),
                                                                 )
+                                                                _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(remainder)
                                                                 print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
                                                             elif rem_word_count < MIN_WORDS:
                                                                 print(f"[SKIP SHORT REMAINDER] '{remainder}' ({rem_word_count} words)", flush=True)
                                                             elif rem_is_dup:
                                                                 print(f"[SKIP DUP REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[SKIP DUP REMAINDER] '{remainder}'", flush=True)
-                                                        # print(f"[LOOP-DEBUG] {time.strftime('%H:%M:%S')} - DB commit start", flush=True)
                                                         persistent_db_conn.commit()
+                                                        # Cache Whisper translation for newly inserted rows
+                                                        if _whisper_translated_text and _newly_inserted_ids:
+                                                            _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
+                                                            _tcache = get_translation_cache()
+                                                            for _row_id in _newly_inserted_ids:
+                                                                _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
+                                                                # Also save to DB translated_text column
+                                                                persistent_db_cursor.execute(
+                                                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
+                                                                    (_whisper_translated_text, _target_lang, _row_id),
+                                                                )
+                                                            persistent_db_conn.commit()
                                                         # Track saved_sentences and database row count
                                                         # print(f"[DEBUG-SAVED] saved_sentences count: {len(saved_sentences)}, last 3: {[s[:30] for s in saved_sentences[-3:]] if len(saved_sentences) >= 3 else saved_sentences}", flush=True)
                                                         # Periodically verify database row count matches
@@ -13599,6 +13740,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                     sentences, remainder = split_into_sentences(segment_text)
                                                     # print(f"[DEBUG-PHRASE-SPLIT] Input: '{segment_text[:60]}' -> Sentences: {len(sentences)}, Remainder: '{remainder[:30] if remainder else 'None'}'", flush=True)
                                                     MIN_WORDS = min_words_threshold
+                                                    _phrase_inserted_ids = []
                                                     with _db_lock:
                                                         try:
                                                             timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -13614,6 +13756,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                         "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
                                                                         (timestamp, sentence, segment_start, segment_end),
                                                                     )
+                                                                    _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                     saved_sentences.append(sentence)
                                                                     print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
                                                                 elif word_count < MIN_WORDS:
@@ -13629,11 +13772,20 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                         "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
                                                                         (timestamp, remainder, segment_start, segment_end),
                                                                     )
+                                                                    _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                     saved_sentences.append(remainder)
-                                                                    # print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'")
-                                                                # elif rem_word_count < MIN_WORDS:
-                                                                #     print(f"[SKIP SHORT REMAINDER] '{remainder}' ({rem_word_count} words)")
                                                             persistent_db_conn.commit()
+                                                            # Cache Whisper translation for phrase-completed rows
+                                                            if _whisper_translated_text and _phrase_inserted_ids:
+                                                                _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
+                                                                _tcache = get_translation_cache()
+                                                                for _row_id in _phrase_inserted_ids:
+                                                                    _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
+                                                                    persistent_db_cursor.execute(
+                                                                        "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
+                                                                        (_whisper_translated_text, _target_lang, _row_id),
+                                                                    )
+                                                                persistent_db_conn.commit()
                                                         except Exception as db_error:
                                                             print(f"[ERROR] phrase_complete DB save failed: {db_error}")
 

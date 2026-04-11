@@ -424,14 +424,25 @@
                             <option value="pa">Punjabi</option>
                             <option value="ur">Urdu</option>
                         </select>
-                        <small style="color: var(--success); font-size: 0.75em; margin-top: 4px; display: block;">Uses NLLB-200 model for translation</small>
+                        <small id="ft_translate_hint" style="color: var(--success); font-size: 0.75em; margin-top: 4px; display: block;">Uses NLLB-200 model for translation</small>
                     </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label>Translation Method:</label>
+                        <select id="ft_translation_method" onchange="onFtTranslationMethodChange()">
+                            <option value="nllb">NLLB Model (any language)</option>
+                            <option value="whisper_translate">Whisper Translate (English only)</option>
+                            <option value="whisper_forced_lang">Whisper Forced Language (Experimental)</option>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 4px; display: block;">Whisper methods reuse the transcription model — no extra VRAM needed</small>
+                    </div>
+                    <div id="ft_nllb_model_group">
                     <div class="form-group" style="margin-top: 10px;">
                         <label>Translation Model:</label>
                         <select id="ft_translation_model">
                             <option value="">Loading models...</option>
                         </select>
                         <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 4px; display: block;">Select downloaded NLLB model. <a href="/model-manager" style="color: var(--success);">Download more in Model Manager</a></small>
+                    </div>
                     </div>
                 </div>
 
@@ -607,6 +618,32 @@
             }
         }
 
+        function onFtTranslationMethodChange() {
+            const method = document.getElementById('ft_translation_method').value;
+            const nllbGroup = document.getElementById('ft_nllb_model_group');
+            const nllbWarning = document.getElementById('nllb_warning');
+            const hint = document.getElementById('ft_translate_hint');
+
+            if (method === 'nllb') {
+                nllbGroup.style.display = '';
+                if (nllbWarning) nllbWarning.style.display = '';
+                if (hint) hint.textContent = 'Uses NLLB-200 model for translation';
+            } else {
+                nllbGroup.style.display = 'none';
+                if (nllbWarning) nllbWarning.style.display = 'none';
+                if (method === 'whisper_translate') {
+                    if (hint) hint.textContent = 'Whisper translates audio directly to English (official feature)';
+                    // Force English target
+                    const targetSelect = document.getElementById('ft_translate_to');
+                    if (targetSelect.value !== 'en') {
+                        targetSelect.value = 'en';
+                    }
+                } else {
+                    if (hint) hint.textContent = 'Experimental: Whisper outputs in the target language. Quality varies.';
+                }
+            }
+        }
+
         // Check if NLLB translation model is downloaded
         async function checkNLLBModelStatus() {
             try {
@@ -679,6 +716,11 @@
                     if (s.translate_to) {
                         document.getElementById('ft_translate_to').value = s.translate_to;
                     }
+                    // Translation method (shared with live translation config)
+                    const ftMethod = s.translation_method || 'nllb';
+                    document.getElementById('ft_translation_method').value = ftMethod;
+                    onFtTranslationMethodChange();
+
                     updateTranslationUI();
                     updateTranscribeButtonText();
 
