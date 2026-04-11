@@ -5265,10 +5265,13 @@ def translate_remote():
     target_lang = data.get("target_lang", cfg.get("target_language", "en"))
     return_extras = bool(data.get("return_extras", False))
     num_alternatives = int(data.get("num_alternatives", 0))
+    # Use generation_params from request (Machine A's settings) if provided
+    generation_params = data.get("generation_params")
 
     result = translate_live_text(text, source_lang, target_lang,
                                  return_extras=return_extras,
-                                 num_alternatives=num_alternatives)
+                                 num_alternatives=num_alternatives,
+                                 generation_params=generation_params)
 
     if return_extras and isinstance(result, dict):
         return jsonify({
@@ -11588,19 +11591,22 @@ def emit_new_entries():
 
 
 def _translate_via_remote(text, source_lang, target_lang, endpoint,
-                          return_extras=False, num_alternatives=0):
+                          return_extras=False, num_alternatives=0, generation_params=None):
     """Send text to a remote machine's /api/translate endpoint."""
     import requests as _requests
     try:
+        payload = {
+            "text": text,
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+            "return_extras": return_extras,
+            "num_alternatives": num_alternatives,
+        }
+        if generation_params:
+            payload["generation_params"] = generation_params
         resp = _requests.post(
             endpoint.rstrip("/") + "/api/translate",
-            json={
-                "text": text,
-                "source_lang": source_lang,
-                "target_lang": target_lang,
-                "return_extras": return_extras,
-                "num_alternatives": num_alternatives,
-            },
+            json=payload,
             timeout=15,
         )
         resp.raise_for_status()
@@ -11619,14 +11625,18 @@ def _translate_via_remote(text, source_lang, target_lang, endpoint,
         return text
 
 
-def translate_live_text(text, source_lang, target_lang, return_extras=False, num_alternatives=0):
+def translate_live_text(text, source_lang, target_lang, return_extras=False, num_alternatives=0, generation_params=None):
     """Translate text for live display using the singleton model"""
+    # Get generation params: explicit param > config fallback
+    gen_params = generation_params or config.get("live_translation", {}).get("generation_params", {})
+
     # Route to remote translation server if configured
     # Skip remote offload if this machine is itself serving remote clients (prevents chaining)
     remote_cfg = config.get("live_translation", {}).get("remote", {})
     if remote_cfg.get("enabled") and remote_cfg.get("endpoint") and not _trusted_translation_clients:
         return _translate_via_remote(text, source_lang, target_lang, remote_cfg["endpoint"],
-                                     return_extras=return_extras, num_alternatives=num_alternatives)
+                                     return_extras=return_extras, num_alternatives=num_alternatives,
+                                     generation_params=gen_params)
 
     if not text or not text.strip():
         if return_extras:
@@ -11640,9 +11650,6 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
             if return_extras:
                 return {"text": text, "confidence": None, "alternatives": []}
             return text
-
-        # Get generation params from config
-        gen_params = config.get("live_translation", {}).get("generation_params", {})
 
         result = translate_text(
             text, source_lang, target_lang, model, tokenizer,

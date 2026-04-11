@@ -922,7 +922,7 @@
 
                     // Grey out local-only settings when remote is active
                     const tip = data.remote_active ? 'Not used when remote translation is active' : '';
-                    for (const id of ['local_translation_settings', 'local_model_settings', 'quality_settings_section']) {
+                    for (const id of ['local_translation_settings', 'local_model_settings']) {
                         const el = document.getElementById(id);
                         if (el) {
                             el.style.opacity = data.remote_active ? '0.4' : '';
