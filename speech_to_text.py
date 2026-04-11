@@ -1559,11 +1559,15 @@ class TranslationCache:
         self._lock = threading.Lock()
         self._target_lang = None
 
-    def get(self, segment_id, original_text, target_lang):
-        """Get cached translation or None"""
+    def get(self, segment_id, original_text, target_lang, accept_stale_lang=False):
+        """Get cached translation or None.
+        If accept_stale_lang=True, return cached translation even if target_lang differs
+        (used to avoid retranslating old segments after a hot language switch)."""
         with self._lock:
             entry = self._cache.get(segment_id)
             if entry and entry['original'] == original_text and entry['target_lang'] == target_lang:
+                return entry['translated']
+            if accept_stale_lang and entry and entry['original'] == original_text:
                 return entry['translated']
             return None
 
@@ -5084,6 +5088,13 @@ def save_translation_settings():
 
     save_config(config)
 
+    # Push to config queue for hot-reload (so transcription subprocess picks up translation_method changes)
+    if config_queue:
+        try:
+            config_queue.put({"type": "config_update", "config": config.copy()})
+        except:
+            pass
+
     # Handle model loading/unloading based on enabled state
     now_enabled = config["live_translation"].get("enabled", False)
     new_target_lang = config["live_translation"].get("target_language", "en")
@@ -5221,6 +5232,14 @@ def get_translation_status():
     remote_cfg = trans_config.get("remote", {})
     remote_active = bool(remote_cfg.get("enabled") and remote_cfg.get("endpoint"))
 
+    # Show Whisper model when using Whisper translation methods
+    _method = trans_config.get("translation_method", "nllb")
+    _using_whisper = _method in ("whisper_translate", "whisper_forced_lang")
+    if _using_whisper:
+        _status_model = "whisper/" + config.get("model", {}).get("whisper", {}).get("model", "whisper")
+    else:
+        _status_model = trans_config.get("translation_model", "facebook/nllb-200-distilled-600M")
+
     result = {
         "success": True,
         "enabled": trans_config.get("enabled", False),
@@ -5228,9 +5247,10 @@ def get_translation_status():
         "target_language_name": TRANSLATION_LANGUAGES.get(
             trans_config.get("target_language", "en"), "English"
         ),
-        "model_loaded": True if remote_active else is_live_translation_model_loaded(),
-        "model_loading": False if remote_active else is_live_translation_model_loading(),
-        "translation_model": trans_config.get("translation_model", "facebook/nllb-200-distilled-600M"),
+        "model_loaded": True if (remote_active or _using_whisper) else is_live_translation_model_loaded(),
+        "model_loading": False if (remote_active or _using_whisper) else is_live_translation_model_loading(),
+        "translation_model": _status_model,
+        "translation_method": _method,
         "remote_active": remote_active,
         "remote_endpoint": remote_cfg.get("endpoint", "") if remote_active else "",
         "cache_size": get_translation_cache().get_size(),
@@ -11796,6 +11816,9 @@ def emit_translated_entries():
                 # Whisper-based translation: translations are pre-cached by the transcription loop
                 if _whisper_translation_active:
                     cached = cache.get(seg_id, "", target_lang)
+                    if not cached:
+                        # After hot switch, keep old translation instead of falling back to original
+                        cached = cache.get(seg_id, "", target_lang, accept_stale_lang=True)
                     translated_text = cached if cached else original_text  # Fallback to original if not yet cached
                     extras = None
                     seg_data = {
@@ -11811,13 +11834,34 @@ def emit_translated_entries():
                         translated_segments.append(seg_data)
                     continue
 
-                # Check cache first
+                # Check cache first (exact language match)
                 cached = cache.get(seg_id, original_text, target_lang)
                 if cached:
                     translated_text = cached
                     # Get cached extras (confidence, alternatives)
                     extras = cache.get_extras(seg_id) if want_confidence else None
                 else:
+                    # After a hot language switch, keep old translations for already-translated segments
+                    # instead of retranslating everything — only new segments get the new language
+                    stale_cached = cache.get(seg_id, original_text, target_lang, accept_stale_lang=True)
+                    if stale_cached:
+                        translated_text = stale_cached
+                        extras = cache.get_extras(seg_id) if want_confidence else None
+                        seg_data = {
+                            "id": seg_id,
+                            "timestamp": entry[1],
+                            "original_text": original_text,
+                            "translated_text": translated_text,
+                            "start": entry[3],
+                            "end": entry[4],
+                            "completed": True,
+                        }
+                        if extras:
+                            seg_data["confidence"] = extras.get("confidence")
+                            seg_data["alternatives"] = extras.get("alternatives", [])
+                        if not is_whisper_hallucination(translated_text):
+                            translated_segments.append(seg_data)
+                        continue
                     # Build context from preceding segments if context_window > 1
                     text_to_translate = original_text
                     context_prefix = ""

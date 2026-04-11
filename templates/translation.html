@@ -929,7 +929,8 @@
                     document.getElementById('current_language').textContent = data.target_language_name || '-';
                     const modelId = data.translation_model || '-';
                     document.getElementById('current_model').textContent = modelId.split('/').pop() || modelId;
-                    document.getElementById('model_label').textContent = data.remote_active ? 'Local Model' : 'Model';
+                    const isWhisperMethod = data.translation_method && data.translation_method !== 'nllb';
+                    document.getElementById('model_label').textContent = isWhisperMethod ? 'Whisper Model' : (data.remote_active ? 'Local Model' : 'Model');
                     document.getElementById('model_loaded_label').textContent = data.remote_active ? 'Remote Model' : 'Model Loaded';
                     if (data.remote_active) {
                         // Only fetch Machine B's status if we're actually paired
