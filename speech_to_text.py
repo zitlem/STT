@@ -1133,9 +1133,13 @@ def translate_text(text, source_lang, target_lang, model, tokenizer, return_conf
     no_repeat_ngram_size = gp.get("no_repeat_ngram_size", 0)
     repetition_penalty = gp.get("repetition_penalty", 1.0)
 
-    # Build generate kwargs
+    # Build generate kwargs — validate target token is known
+    forced_bos_id = tokenizer.convert_tokens_to_ids(tgt_nllb)
+    if forced_bos_id == tokenizer.unk_token_id:
+        print(f"[LIVE-TRANSLATION WARNING] Unknown target language token: {tgt_nllb} for lang={target_lang}, falling back to eng_Latn")
+        forced_bos_id = tokenizer.convert_tokens_to_ids("eng_Latn")
     generate_kwargs = {
-        "forced_bos_token_id": tokenizer.convert_tokens_to_ids(tgt_nllb),
+        "forced_bos_token_id": forced_bos_id,
         "max_length": 1024,
         "num_beams": num_beams,
         "length_penalty": length_penalty,
@@ -1263,32 +1267,47 @@ _live_translation_tokenizer = None
 _live_translation_lock = threading.Lock()
 _live_translation_model_loaded = False
 _live_translation_model_loading = False  # Track when model is being loaded
+_live_translation_model_id = None  # Track which model is loaded to detect config changes
 _live_translation_target_lang = None
 
 
 def get_live_translation_model(use_gpu=True, model_id=None):
-    """Get or load the live translation model (singleton pattern)"""
-    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_loading
+    """Get or load the live translation model (singleton pattern).
+    If model_id differs from the currently loaded model, unloads and reloads."""
+    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_loading, _live_translation_model_id
 
     with _live_translation_lock:
         # Don't load model if transcription is actively stopping (to prevent GPU memory leak)
-        # Only block during "stopping" - allow loading when "stopped" (user may start again)
         status = transcription_state.get("status", "")
         if _live_translation_model is None and status == "stopping":
             print(f"[LIVE-TRANSLATION] Skipping model load - transcription is stopping")
             return None, None
 
+        # If model_id changed, unload the stale model so it reloads with the correct one
+        if _live_translation_model is not None and model_id and _live_translation_model_id and model_id != _live_translation_model_id:
+            print(f"[LIVE-TRANSLATION] Model changed: {_live_translation_model_id} -> {model_id}, reloading...")
+            import gc
+            del _live_translation_model
+            del _live_translation_tokenizer
+            _live_translation_model = None
+            _live_translation_tokenizer = None
+            _live_translation_model_loaded = False
+            _live_translation_model_id = None
+            if torch is not None and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
         if _live_translation_model is None:
             _live_translation_model_loading = True
             try:
-                # Use GPU for translation - worker stays alive so no CUDA fork issues
-                print("[LIVE-TRANSLATION] Loading live translation model on GPU...")
+                print(f"[LIVE-TRANSLATION] Loading live translation model: {model_id or 'default'}...")
                 _live_translation_model, _live_translation_tokenizer = load_translation_model(
-                    use_gpu=use_gpu,  # Use GPU for speed (worker stays alive, no fork issues)
+                    use_gpu=use_gpu,
                     model_id=model_id
                 )
                 _live_translation_model_loaded = True
-                print("[LIVE-TRANSLATION] Live translation model loaded on GPU")
+                _live_translation_model_id = model_id
+                print(f"[LIVE-TRANSLATION] Live translation model loaded: {model_id or 'default'}")
             finally:
                 _live_translation_model_loading = False
         return _live_translation_model, _live_translation_tokenizer
@@ -1296,7 +1315,7 @@ def get_live_translation_model(use_gpu=True, model_id=None):
 
 def unload_live_translation_model():
     """Unload the live translation model to free GPU memory"""
-    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded
+    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_id
     import gc
 
     with _live_translation_lock:
@@ -1307,6 +1326,7 @@ def unload_live_translation_model():
             _live_translation_model = None
             _live_translation_tokenizer = None
             _live_translation_model_loaded = False
+            _live_translation_model_id = None
             if torch is not None and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
@@ -11737,7 +11757,8 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
 
     try:
         trans_use_gpu = config.get("live_translation", {}).get("use_gpu", True)
-        model, tokenizer = get_live_translation_model(trans_use_gpu)
+        trans_model_id = config.get("live_translation", {}).get("translation_model")
+        model, tokenizer = get_live_translation_model(trans_use_gpu, model_id=trans_model_id)
         if model is None:
             if return_extras:
                 return {"text": text, "confidence": None, "alternatives": []}
