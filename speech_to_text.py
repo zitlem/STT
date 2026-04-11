@@ -5215,8 +5215,15 @@ def hot_switch_translation_language():
 
     save_config(config)
 
-    # Don't clear cache — old segments keep their translations
-    # Only new segments will be translated to the new language
+    # Push to config queue so transcription subprocess picks up the new target language
+    if config_queue:
+        try:
+            config_queue.put({"type": "config_update", "config": config.copy()})
+        except:
+            pass
+
+    # Clear cache so all segments get re-translated to the new language
+    get_translation_cache().clear()
 
     language_name = TRANSLATION_LANGUAGES.get(new_language, new_language)
     print(f"[LIVE-TRANSLATION] Hot-switched language: {old_language} -> {new_language} ({language_name})")

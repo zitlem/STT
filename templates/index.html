@@ -1196,6 +1196,12 @@
        let lastInProgressText = '';  // Track in-progress text for change detection
 
        // Unified transcription display - uses Whisper-Live's temporal validation pattern
+       // Persistent DOM references for incremental updates (created once, updated in-place)
+       let _transcriptionStructureBuilt = false;
+       let _finalizedTextEl = null;
+       let _inProgressTextEl = null;
+       let _lastFinalizedHTML = '';
+
        function updateTranscriptionDisplay(data) {
          const tableBody = $("#transcription-table-body");
          const table = document.getElementById('transcription-table');
@@ -1214,6 +1220,10 @@
            lastEndTime = 0;
            lastSegmentCount = 0;
            lastInProgressText = '';
+           _lastFinalizedHTML = '';
+           _transcriptionStructureBuilt = false;
+           _finalizedTextEl = null;
+           _inProgressTextEl = null;
            tableBody.empty();
            emptyState.style.display = 'block';
            table.classList.remove('has-content');
@@ -1260,34 +1270,41 @@
          lastSegmentCount = allSegments.length;
          lastIncompleteSegment = hasInProgress ? inProgressSegment : null;
 
-         // Build display text from segments (client-facing: word highlighting only, no confidence)
-         let fullText = allSegments.map(s => s.text).join(' ');
+         // Build the persistent DOM structure once, then update in-place
+         if (!_transcriptionStructureBuilt) {
+           tableBody.empty();
+           const row = $("<tr>");
+           const cell = $("<td>").css({ "font-family": "inherit" });
+           const flowDiv = $('<div class="transcription-flow"><div class="transcription-text"><span id="finalized-text"></span> <span id="in-progress-text"></span></div></div>');
+           cell.append(flowDiv);
+           row.append(cell);
+           tableBody.append(row);
+           _finalizedTextEl = document.getElementById('finalized-text');
+           _inProgressTextEl = document.getElementById('in-progress-text');
+           _transcriptionStructureBuilt = true;
+         }
 
-         // In-progress text
-         let inProgressHTML = '';
+         // Update finalized text only when segments changed
+         if (segmentsChanged || !_lastFinalizedHTML) {
+           const fullText = allSegments.map(s => s.text).join(' ');
+           const highlightedText = applyWordHighlighting(fullText);
+           if (highlightedText !== _lastFinalizedHTML) {
+             _finalizedTextEl.innerHTML = highlightedText;
+             _lastFinalizedHTML = highlightedText;
+           }
+         }
+
+         // Always update in-progress text (changes frequently)
          if (hasInProgress && !window.displayConfig?.hideInProgress) {
-           if (fullText) fullText += ' ';
            const highlightedInProgress = applyWordHighlighting(inProgressSegment.text);
            const styleClass = (window.displayConfig?.inProgressStyle === 'normal') ? 'in-progress-text normal-style' : 'in-progress-text';
            const opacity = window.displayConfig?.inProgressOpacity || 0.7;
-           inProgressHTML = `<span class="${styleClass}" style="opacity: ${opacity}">${highlightedInProgress}</span>`;
+           _inProgressTextEl.className = styleClass;
+           _inProgressTextEl.style.opacity = opacity;
+           _inProgressTextEl.innerHTML = highlightedInProgress;
+         } else {
+           _inProgressTextEl.innerHTML = '';
          }
-
-         // Apply word highlighting to finalized text
-         const highlightedText = applyWordHighlighting(fullText);
-
-         // Create a single flowing text display
-         tableBody.empty();
-
-         const row = $("<tr>");
-         const cellHTML = `<div class="transcription-flow"><div class="transcription-text">${highlightedText}${inProgressHTML}</div></div>`;
-
-         const textCell = $("<td>").html(cellHTML).css({
-           "font-family": "inherit",
-         });
-
-         row.append(textCell);
-         tableBody.append(row);
 
          // Auto-scroll to show latest content (including in caption mode)
          if (autoScrollEnabled) {
@@ -1301,19 +1318,16 @@
              // In caption mode, snap scroll to line boundary to avoid partial line cutoff
              if (window.captionLineHeight) {
                const lineHeight = window.captionLineHeight;
-               // Calculate how much content is hidden above
                const hiddenAbove = container.scrollHeight - container.clientHeight;
-               // Round up to next line boundary so we don't show partial line
                const snappedHidden = Math.ceil(hiddenAbove / lineHeight) * lineHeight;
                targetScroll = snappedHidden;
              }
-             container.scrollTop = targetScroll;
+             container.scrollTo({ top: targetScroll, behavior: 'smooth' });
              setTimeout(() => {
-               container.scrollTop = targetScroll;
                if (window.setProgrammaticScroll) {
                  window.setProgrammaticScroll(false);
                }
-             }, 10);
+             }, 300);
            });
          }
        }
@@ -1325,6 +1339,12 @@
        let lastTranslatedInProgressText = '';
 
        // Update translation display - handles translated content
+       // Persistent DOM references for translation incremental updates
+       let _translationStructureBuilt = false;
+       let _translationFinalizedEl = null;
+       let _translationInProgressEl = null;
+       let _lastTranslationFinalizedHTML = '';
+
        function updateTranslationDisplay(data) {
          const mode = window.displayConfig?.translationMode || 'transcribe';
          const layout = window.displayConfig?.translationLayout || 'stacked';
@@ -1344,6 +1364,10 @@
            lastTranslationInProgress = null;
            lastTranslatedSegmentCount = 0;
            lastTranslatedInProgressText = '';
+           _lastTranslationFinalizedHTML = '';
+           _translationStructureBuilt = false;
+           _translationFinalizedEl = null;
+           _translationInProgressEl = null;
 
            // Clear translation display if in translate-only mode
            if (mode === 'translate') {
@@ -1401,26 +1425,41 @@
          table.classList.add('has-content');
 
          if (mode === 'translate') {
-           // Translate-only mode: show only translated text
-           let fullText = allTranslatedSegments.map(s => s.translated_text).join(' ');
-           let inProgressHTML = '';
+           // Build persistent DOM structure once
+           if (!_translationStructureBuilt) {
+             tableBody.empty();
+             const row = $("<tr>");
+             const cell = $("<td>").css({ "font-family": "inherit" });
+             const flowDiv = $('<div class="transcription-flow"><div class="transcription-text"><span id="translation-finalized-text"></span> <span id="translation-in-progress-text"></span></div></div>');
+             cell.append(flowDiv);
+             row.append(cell);
+             tableBody.append(row);
+             _translationFinalizedEl = document.getElementById('translation-finalized-text');
+             _translationInProgressEl = document.getElementById('translation-in-progress-text');
+             _translationStructureBuilt = true;
+           }
 
+           // Update finalized text only when segments changed
+           if (segmentsChanged || !_lastTranslationFinalizedHTML) {
+             const fullText = allTranslatedSegments.map(s => s.translated_text).join(' ');
+             const highlightedText = applyWordHighlighting(fullText);
+             if (highlightedText !== _lastTranslationFinalizedHTML) {
+               _translationFinalizedEl.innerHTML = highlightedText;
+               _lastTranslationFinalizedHTML = highlightedText;
+             }
+           }
+
+           // Always update in-progress text
            if (hasInProgress) {
-             if (fullText) fullText += ' ';
              const highlightedInProgress = applyWordHighlighting(inProgress.translated_text);
              const styleClass = (window.displayConfig?.inProgressStyle === 'normal') ? 'in-progress-text normal-style' : 'in-progress-text';
              const opacity = window.displayConfig?.inProgressOpacity || 0.7;
-             inProgressHTML = `<span class="${styleClass}" style="opacity: ${opacity}">${highlightedInProgress}</span>`;
+             _translationInProgressEl.className = styleClass;
+             _translationInProgressEl.style.opacity = opacity;
+             _translationInProgressEl.innerHTML = highlightedInProgress;
+           } else {
+             _translationInProgressEl.innerHTML = '';
            }
-
-           const highlightedText = applyWordHighlighting(fullText);
-
-           tableBody.empty();
-           const row = $("<tr>");
-           const cellHTML = `<div class="transcription-flow"><div class="transcription-text">${highlightedText}${inProgressHTML}</div></div>`;
-           const textCell = $("<td>").html(cellHTML).css({ "font-family": "inherit" });
-           row.append(textCell);
-           tableBody.append(row);
          }
          // Note: 'both' mode is handled by iframes, not here
 
@@ -1430,25 +1469,20 @@
            if (window.setProgrammaticScroll) {
              window.setProgrammaticScroll(true);
            }
-           // Use requestAnimationFrame to ensure DOM is rendered before scrolling
            requestAnimationFrame(() => {
              let targetScroll = container.scrollHeight;
-             // In caption mode, snap scroll to line boundary to avoid partial line cutoff
              if (window.captionLineHeight) {
                const lineHeight = window.captionLineHeight;
-               // Calculate how much content is hidden above
                const hiddenAbove = container.scrollHeight - container.clientHeight;
-               // Round up to next line boundary so we don't show partial line
                const snappedHidden = Math.ceil(hiddenAbove / lineHeight) * lineHeight;
                targetScroll = snappedHidden;
              }
-             container.scrollTop = targetScroll;
+             container.scrollTo({ top: targetScroll, behavior: 'smooth' });
              setTimeout(() => {
-               container.scrollTop = targetScroll;
                if (window.setProgrammaticScroll) {
                  window.setProgrammaticScroll(false);
                }
-             }, 10);
+             }, 300);
            });
          }
        }
