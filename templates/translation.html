@@ -498,6 +498,12 @@
             updateTranslationPreview(data);
         });
 
+        // Handle clean language switch — update status display
+        socket.on('language_switched', (data) => {
+            checkStatus();
+            showAlert(`Switched to ${data.language_name}. New segments will use the new language.`, 'success');
+        });
+
         // Also listen for transcription updates (for original text when translation disabled)
         socket.on('transcription_update', (data) => {
             updateOriginalPreview(data);

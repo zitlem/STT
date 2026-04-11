@@ -5149,9 +5149,17 @@ def save_translation_settings():
                 get_live_translation_model(use_gpu, model_id)
             threading.Thread(target=reload_translation_model, daemon=True).start()
 
-    # Clear cache if target language, model, or method changed
-    if new_target_lang != old_target_lang or model_changed or method_changed:
+    # Clear cache on model or method change (stale tokenizer/model).
+    # Don't clear on language change — stale-lang fallback keeps old translations.
+    if model_changed or method_changed:
         get_translation_cache().clear()
+    elif new_target_lang != old_target_lang:
+        # Notify clients to reset display for clean language transition
+        socketio.emit("language_switched", {
+            "old_language": old_target_lang,
+            "new_language": new_target_lang,
+            "language_name": TRANSLATION_LANGUAGES.get(new_target_lang, new_target_lang),
+        })
 
     return jsonify({
         "success": True,
@@ -5222,11 +5230,17 @@ def hot_switch_translation_language():
         except:
             pass
 
-    # Clear cache so all segments get re-translated to the new language
-    get_translation_cache().clear()
-
+    # Don't clear cache — old segments keep their cached translations (stale-lang fallback).
+    # Only new segments will be translated to the new language.
     language_name = TRANSLATION_LANGUAGES.get(new_language, new_language)
     print(f"[LIVE-TRANSLATION] Hot-switched language: {old_language} -> {new_language} ({language_name})")
+
+    # Notify clients so they can cleanly reset their display
+    socketio.emit("language_switched", {
+        "old_language": old_language,
+        "new_language": new_language,
+        "language_name": language_name,
+    })
 
     result = {
         "success": True,

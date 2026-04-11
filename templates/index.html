@@ -502,6 +502,11 @@
           }
         });
 
+        // Handle language switch — no display reset, new segments simply append
+        socket.on("language_switched", function (data) {
+          // Nothing to reset — old text stays, new segments append in the new language
+        });
+
         // Handle correction applied (update display with corrected text)
         socket.on("correction_applied", function (data) {
           if (data.segment_id) {
