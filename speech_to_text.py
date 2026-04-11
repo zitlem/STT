@@ -11808,6 +11808,7 @@ def emit_translated_entries():
 
             context_window = trans_config.get("context_window", 1)
 
+            max_translations_per_cycle = 3  # Limit new translations per cycle so cached segments emit fast
             translations_this_cycle = 0
             for idx, entry in enumerate(entries):
                 seg_id = entry[0]
@@ -11914,10 +11915,10 @@ def emit_translated_entries():
                     except Exception:
                         pass
 
-                    # Yield control after each translation so socketio can process events
+                    # Limit new translations per cycle so cached segments emit quickly on page load
                     translations_this_cycle += 1
-                    if translations_this_cycle % 3 == 0:
-                        socketio.sleep(0)
+                    if translations_this_cycle >= max_translations_per_cycle:
+                        break
 
                 # Skip known Whisper hallucinations in translated text
                 if is_whisper_hallucination(translated_text):
