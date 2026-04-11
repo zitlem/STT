@@ -258,6 +258,18 @@
     "_translation_model_comment": "HuggingFace model ID for translation",
     "use_gpu": true,
     "_use_gpu_comment": "Use GPU for translation model. Disable to run NLLB on CPU and free VRAM for Whisper",
+    "generation_params": {
+      "num_beams": 5,
+      "_num_beams_comment": "Number of beams for beam search (1-20). Higher = better quality but slower",
+      "length_penalty": 1.0,
+      "_length_penalty_comment": "Length penalty (0.1-3.0). <1.0 = shorter, >1.0 = longer translations",
+      "no_repeat_ngram_size": 0,
+      "_no_repeat_ngram_size_comment": "Prevent repeating n-grams of this size (0 = disabled, 2-5 recommended)",
+      "repetition_penalty": 1.0,
+      "_repetition_penalty_comment": "Penalize repeated tokens (1.0 = disabled, 1.1-1.5 recommended)"
+    },
+    "context_window": 1,
+    "_context_window_comment": "Number of segments to combine for translation context (1 = no batching, 2-5 = better quality but slower)",
     "max_entries_to_send": 100,
     "_max_entries_to_send_comment": "Number of recent translations to send to web UI. Lower = faster, Higher = more history shown",
     "srt_enabled": true,

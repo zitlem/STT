@@ -237,6 +237,55 @@
 
                 <hr class="divider">
 
+                <!-- Translation Quality Settings -->
+                <div id="quality_settings_section">
+                <div style="margin-bottom: 10px;">
+                    <label style="font-weight: 500; color: #e0e0e0; font-size: 0.85em;">Translation Quality</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="context_window">Context Window: <span id="contextWindowValue">1</span> segment(s)</label>
+                    <input type="range" id="context_window" min="1" max="5" value="1" step="1"
+                           oninput="document.getElementById('contextWindowValue').textContent = this.value"
+                           style="width:100%;">
+                    <small style="color: #999; font-size: 0.75em;">Combine adjacent segments for better context. 1 = no batching, 2-5 = more context but slower</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="num_beams">Beam Search Width: <span id="numBeamsValue">5</span></label>
+                    <input type="range" id="num_beams" min="1" max="20" value="5" step="1"
+                           oninput="document.getElementById('numBeamsValue').textContent = this.value"
+                           style="width:100%;">
+                    <small style="color: #999; font-size: 0.75em;">Higher = better quality but slower. 1 = greedy (fastest), 5 = default, 10+ = high quality</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="length_penalty">Length Penalty: <span id="lengthPenaltyValue">1.0</span></label>
+                    <input type="range" id="length_penalty" min="0.1" max="3.0" value="1.0" step="0.1"
+                           oninput="document.getElementById('lengthPenaltyValue').textContent = parseFloat(this.value).toFixed(1)"
+                           style="width:100%;">
+                    <small style="color: #999; font-size: 0.75em;">&lt;1.0 = shorter translations, 1.0 = neutral, &gt;1.0 = longer translations</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="no_repeat_ngram_size">No Repeat N-gram Size: <span id="noRepeatValue">0</span></label>
+                    <input type="range" id="no_repeat_ngram_size" min="0" max="10" value="0" step="1"
+                           oninput="document.getElementById('noRepeatValue').textContent = this.value"
+                           style="width:100%;">
+                    <small style="color: #999; font-size: 0.75em;">Prevents repeating phrases. 0 = disabled, 3 = recommended for reducing repetition</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="repetition_penalty">Repetition Penalty: <span id="repPenaltyValue">1.0</span></label>
+                    <input type="range" id="repetition_penalty" min="0.5" max="3.0" value="1.0" step="0.1"
+                           oninput="document.getElementById('repPenaltyValue').textContent = parseFloat(this.value).toFixed(1)"
+                           style="width:100%;">
+                    <small style="color: #999; font-size: 0.75em;">1.0 = disabled. 1.1-1.5 = recommended to reduce repeated tokens</small>
+                </div>
+                </div>
+
+                <hr class="divider">
+
                 <div class="form-group">
                     <label for="translation_alternatives">Translation Alternatives: <span id="translationAltsValue">3</span></label>
                     <input type="range" id="translation_alternatives" min="0" max="5" value="3" step="1"
@@ -603,6 +652,28 @@
                         modelSelect.value = modelValue;
                     }
 
+                    // Translation quality settings
+                    const genParams = currentSettings.generation_params || {};
+                    const numBeams = genParams.num_beams ?? 5;
+                    document.getElementById('num_beams').value = numBeams;
+                    document.getElementById('numBeamsValue').textContent = numBeams;
+
+                    const lengthPenalty = genParams.length_penalty ?? 1.0;
+                    document.getElementById('length_penalty').value = lengthPenalty;
+                    document.getElementById('lengthPenaltyValue').textContent = parseFloat(lengthPenalty).toFixed(1);
+
+                    const noRepeat = genParams.no_repeat_ngram_size ?? 0;
+                    document.getElementById('no_repeat_ngram_size').value = noRepeat;
+                    document.getElementById('noRepeatValue').textContent = noRepeat;
+
+                    const repPenalty = genParams.repetition_penalty ?? 1.0;
+                    document.getElementById('repetition_penalty').value = repPenalty;
+                    document.getElementById('repPenaltyValue').textContent = parseFloat(repPenalty).toFixed(1);
+
+                    const contextWindow = currentSettings.context_window ?? 1;
+                    document.getElementById('context_window').value = contextWindow;
+                    document.getElementById('contextWindowValue').textContent = contextWindow;
+
                     // Translation alternatives
                     const altCount = data.translation_count ?? 3;
                     document.getElementById('translation_alternatives').value = altCount;
@@ -695,6 +766,13 @@
                 translate_in_progress: document.getElementById('translate_in_progress').checked,
                 translation_model: document.getElementById('translation_model').value,
                 use_gpu: document.getElementById('translation_use_gpu').checked,
+                generation_params: {
+                    num_beams: parseInt(document.getElementById('num_beams').value),
+                    length_penalty: parseFloat(document.getElementById('length_penalty').value),
+                    no_repeat_ngram_size: parseInt(document.getElementById('no_repeat_ngram_size').value),
+                    repetition_penalty: parseFloat(document.getElementById('repetition_penalty').value),
+                },
+                context_window: parseInt(document.getElementById('context_window').value),
                 remote: {
                     enabled: document.getElementById('remote_translation_enabled').checked,
                     endpoint: document.getElementById('remote_translation_endpoint').value.trim(),
@@ -844,7 +922,7 @@
 
                     // Grey out local-only settings when remote is active
                     const tip = data.remote_active ? 'Not used when remote translation is active' : '';
-                    for (const id of ['local_translation_settings', 'local_model_settings']) {
+                    for (const id of ['local_translation_settings', 'local_model_settings', 'quality_settings_section']) {
                         const el = document.getElementById(id);
                         if (el) {
                             el.style.opacity = data.remote_active ? '0.4' : '';

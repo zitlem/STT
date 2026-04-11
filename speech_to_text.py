@@ -321,6 +321,13 @@ DEFAULT_CONFIG = {
         "max_entries_to_send": 100,
         "srt_enabled": True,
         "html_enabled": True,
+        "generation_params": {
+            "num_beams": 5,
+            "length_penalty": 1.0,
+            "no_repeat_ngram_size": 0,
+            "repetition_penalty": 1.0,
+        },
+        "context_window": 1,
         "remote": {
             "enabled": False,
             "endpoint": "",
@@ -1081,7 +1088,7 @@ def _apply_glossary(text, source_lang, target_lang):
         return text
 
 
-def translate_text(text, source_lang, target_lang, model, tokenizer, return_confidence=False, num_alternatives=0):
+def translate_text(text, source_lang, target_lang, model, tokenizer, return_confidence=False, num_alternatives=0, generation_params=None):
     """
     Translate text using NLLB-200
 
@@ -1093,6 +1100,7 @@ def translate_text(text, source_lang, target_lang, model, tokenizer, return_conf
         tokenizer: Loaded NLLB tokenizer
         return_confidence: If True, return (text, confidence) tuple
         num_alternatives: Number of alternative translations to return (0 = none)
+        generation_params: Dict of generation parameters (num_beams, length_penalty, etc.)
 
     Returns:
         Translated text string, or dict with text/confidence/alternatives if extras requested
@@ -1117,13 +1125,27 @@ def translate_text(text, source_lang, target_lang, model, tokenizer, return_conf
     if _device.type != "cpu":
         inputs = {k: v.to(_device) for k, v in inputs.items()}
 
+    # Merge user generation params with defaults
+    gp = generation_params or {}
+    num_beams = gp.get("num_beams", 5)
+    length_penalty = gp.get("length_penalty", 1.0)
+    no_repeat_ngram_size = gp.get("no_repeat_ngram_size", 0)
+    repetition_penalty = gp.get("repetition_penalty", 1.0)
+
     # Build generate kwargs
     generate_kwargs = {
         "forced_bos_token_id": tokenizer.convert_tokens_to_ids(tgt_nllb),
         "max_length": 1024,
-        "num_beams": 5,
+        "num_beams": num_beams,
+        "length_penalty": length_penalty,
         "early_stopping": True,
     }
+
+    # Only add these if non-default to avoid warnings
+    if no_repeat_ngram_size > 0:
+        generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+    if repetition_penalty != 1.0:
+        generate_kwargs["repetition_penalty"] = repetition_penalty
 
     # Enable confidence scoring and/or alternatives
     if return_confidence or num_alternatives > 0:
@@ -1157,7 +1179,7 @@ def translate_text(text, source_lang, target_lang, model, tokenizer, return_conf
     return _apply_glossary(result_text, source_lang, target_lang)
 
 
-def translate_segments(segments, source_lang, target_lang, model, tokenizer, progress_callback=None):
+def translate_segments(segments, source_lang, target_lang, model, tokenizer, progress_callback=None, generation_params=None, context_window=1):
     """
     Translate a list of transcription segments
 
@@ -1168,15 +1190,40 @@ def translate_segments(segments, source_lang, target_lang, model, tokenizer, pro
         model: Loaded NLLB model
         tokenizer: Loaded NLLB tokenizer
         progress_callback: Optional callback function(percent, status) for progress updates
+        generation_params: Dict of generation parameters (num_beams, length_penalty, etc.)
+        context_window: Number of segments to combine for context (1 = no batching)
 
     Returns:
         List of translated segment dicts with same structure
     """
     translated_segments = []
     total = len(segments)
+    context_window = max(1, context_window)
 
     for i, seg in enumerate(segments):
-        translated_text = translate_text(seg["text"], source_lang, target_lang, model, tokenizer)
+        if context_window > 1 and total > 1:
+            # Build context by combining adjacent segments
+            start_idx = max(0, i - (context_window - 1))
+            context_texts = [segments[j]["text"] for j in range(start_idx, min(i + 1, total))]
+            combined_text = " ".join(context_texts)
+            # Translate combined text, then extract only the last segment's translation
+            combined_translated = translate_text(combined_text, source_lang, target_lang, model, tokenizer, generation_params=generation_params)
+            # If we added context, try to extract just the target segment portion
+            if len(context_texts) > 1:
+                # Translate the target segment alone to get its approximate length
+                # Use the combined translation but trim prefix from context-only translation
+                context_only = " ".join(context_texts[:-1])
+                context_only_translated = translate_text(context_only, source_lang, target_lang, model, tokenizer, generation_params=generation_params)
+                # Remove the context prefix from the combined translation
+                if combined_translated.startswith(context_only_translated):
+                    translated_text = combined_translated[len(context_only_translated):].strip()
+                else:
+                    # Fallback: use combined translation as-is for this segment
+                    translated_text = translate_text(seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
+            else:
+                translated_text = combined_translated
+        else:
+            translated_text = translate_text(seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
         translated_segments.append({
             "text": translated_text,
             "start": seg["start"],
@@ -4989,9 +5036,19 @@ def save_translation_settings():
 
     # Update settings
     for key in ["enabled", "target_language", "source_language", "translate_in_progress",
-                "display_mode", "translation_model", "use_gpu"]:
+                "display_mode", "translation_model", "use_gpu", "context_window"]:
         if key in data:
             config["live_translation"][key] = data[key]
+
+    # Save generation parameters
+    if "generation_params" in data:
+        gp = data["generation_params"]
+        config["live_translation"]["generation_params"] = {
+            "num_beams": max(1, min(20, int(gp.get("num_beams", 5)))),
+            "length_penalty": max(0.1, min(3.0, float(gp.get("length_penalty", 1.0)))),
+            "no_repeat_ngram_size": max(0, min(10, int(gp.get("no_repeat_ngram_size", 0)))),
+            "repetition_penalty": max(0.5, min(3.0, float(gp.get("repetition_penalty", 1.0)))),
+        }
 
     # Save remote translation endpoint config
     if "remote" in data:
@@ -6248,10 +6305,16 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
                         {"session_id": session_id, "percent": percent, "status": status},
                     )
 
+                # Get generation params from live_translation config (shared settings)
+                ft_gen_params = config.get("live_translation", {}).get("generation_params", {})
+                ft_context_window = config.get("live_translation", {}).get("context_window", 1)
+
                 translated_segments = translate_segments(
                     segments, source_lang, translate_to,
                     translation_model, translation_tokenizer,
-                    progress_callback=translation_progress
+                    progress_callback=translation_progress,
+                    generation_params=ft_gen_params,
+                    context_window=ft_context_window
                 )
 
                 # Cleanup translation model
@@ -11578,10 +11641,14 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
                 return {"text": text, "confidence": None, "alternatives": []}
             return text
 
+        # Get generation params from config
+        gen_params = config.get("live_translation", {}).get("generation_params", {})
+
         result = translate_text(
             text, source_lang, target_lang, model, tokenizer,
             return_confidence=return_extras,
             num_alternatives=num_alternatives if return_extras else 0,
+            generation_params=gen_params,
         )
         return result
     except Exception as e:
@@ -11636,8 +11703,10 @@ def emit_translated_entries():
             want_confidence = corrections_cfg.get("enabled", True) and corrections_cfg.get("confidence_highlighting", True)
             n_alternatives = corrections_cfg.get("n_best_alternatives", {}).get("translation_count", 0) if corrections_cfg.get("enabled", True) else 0
 
+            context_window = trans_config.get("context_window", 1)
+
             translations_this_cycle = 0
-            for entry in entries:
+            for idx, entry in enumerate(entries):
                 seg_id = entry[0]
                 original_text = entry[2]
 
@@ -11648,18 +11717,42 @@ def emit_translated_entries():
                     # Get cached extras (confidence, alternatives)
                     extras = cache.get_extras(seg_id) if want_confidence else None
                 else:
+                    # Build context from preceding segments if context_window > 1
+                    text_to_translate = original_text
+                    context_prefix = ""
+                    if context_window > 1 and idx > 0:
+                        ctx_start = max(0, idx - (context_window - 1))
+                        context_texts = [entries[j][2] for j in range(ctx_start, idx)]
+                        if context_texts:
+                            context_prefix = " ".join(context_texts) + " "
+                            text_to_translate = context_prefix + original_text
+
                     # Translate with confidence/alternatives if corrections enabled
                     if want_confidence or n_alternatives > 0:
                         result = translate_live_text(
-                            original_text, source_lang, target_lang,
+                            text_to_translate, source_lang, target_lang,
                             return_extras=True, num_alternatives=n_alternatives,
                         )
+                        # If we used context, strip the context portion from the translation
+                        if context_prefix:
+                            ctx_result = translate_live_text(context_prefix.strip(), source_lang, target_lang)
+                            if isinstance(ctx_result, str) and result["text"].startswith(ctx_result):
+                                result["text"] = result["text"][len(ctx_result):].strip()
+                                result["alternatives"] = [
+                                    a[len(ctx_result):].strip() if a.startswith(ctx_result) else a
+                                    for a in result.get("alternatives", [])
+                                ]
                         translated_text = result["text"]
                         extras = {"confidence": result.get("confidence"), "alternatives": result.get("alternatives", [])}
                         cache.set_with_extras(seg_id, original_text, translated_text, target_lang,
                                               confidence=extras["confidence"], alternatives=extras["alternatives"])
                     else:
-                        translated_text = translate_live_text(original_text, source_lang, target_lang)
+                        translated_text = translate_live_text(text_to_translate, source_lang, target_lang)
+                        # Strip context prefix from translation
+                        if context_prefix and isinstance(translated_text, str):
+                            ctx_result = translate_live_text(context_prefix.strip(), source_lang, target_lang)
+                            if isinstance(ctx_result, str) and translated_text.startswith(ctx_result):
+                                translated_text = translated_text[len(ctx_result):].strip()
                         extras = None
                         cache.set(seg_id, original_text, translated_text, target_lang)
 
