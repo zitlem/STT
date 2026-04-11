@@ -258,6 +258,8 @@
     "_translation_model_comment": "HuggingFace model ID for translation",
     "use_gpu": true,
     "_use_gpu_comment": "Use GPU for translation model. Disable to run NLLB on CPU and free VRAM for Whisper",
+    "translation_method": "nllb",
+    "_translation_method_comment": "Translation method: nllb (NLLB model), whisper_translate (Whisper to English), whisper_forced_lang (Whisper forced language, experimental)",
     "generation_params": {
       "num_beams": 5,
       "_num_beams_comment": "Number of beams for beam search (1-20). Higher = better quality but slower",

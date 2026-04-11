@@ -180,6 +180,7 @@
                     Also translate text being typed (may cause flicker)
                 </small>
 
+                <div id="nllb_remote_section">
                 <div id="local_translation_settings">
                 <div class="checkbox-group">
                     <input type="checkbox" id="translation_use_gpu" checked>
@@ -224,9 +225,28 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- /nllb_remote_section -->
 
                 <hr class="divider">
 
+                <div class="form-group">
+                    <label for="translation_method">Translation Method</label>
+                    <select id="translation_method" onchange="onTranslationMethodChange()">
+                        <option value="nllb">NLLB Model (any language)</option>
+                        <option value="whisper_translate">Whisper Translate (English only)</option>
+                        <option value="whisper_forced_lang">Whisper Forced Language (Experimental)</option>
+                    </select>
+                    <small id="translation_method_hint" style="color: #999; font-size: 0.75em;">NLLB uses a separate model. Whisper methods reuse the transcription model (no extra VRAM).</small>
+                </div>
+
+                <div id="whisper_translate_warning" style="display:none; background: #2a2000; border: 1px solid #665500; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
+                    <small style="color: #ffcc00; font-size: 0.8em;">Whisper Translate only supports English as target language. Whisper runs twice per audio chunk (transcribe + translate).</small>
+                </div>
+                <div id="whisper_forced_warning" style="display:none; background: #2a1500; border: 1px solid #664400; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
+                    <small style="color: #ff9900; font-size: 0.8em;">Experimental: Forces Whisper to output in the target language. Quality varies by language pair. Whisper runs twice per audio chunk.</small>
+                </div>
+
+                <div id="nllb_settings_group">
                 <div class="form-group" id="local_model_settings">
                     <label for="translation_model">Translation Model</label>
                     <select id="translation_model">
@@ -293,6 +313,7 @@
                            style="width:100%;">
                     <small style="color: #999; font-size: 0.75em;">0 = disabled. Higher = more alternatives but slower translation</small>
                 </div>
+                </div><!-- /nllb_settings_group -->
 
                 <button id="main-save-btn" onclick="saveSettings()" class="btn-save">Save Settings</button>
                 <button onclick="hotSwitchLanguage()" class="btn-save btn-primary">Hot Switch Language</button>
@@ -652,6 +673,11 @@
                         modelSelect.value = modelValue;
                     }
 
+                    // Translation method
+                    const translationMethod = currentSettings.translation_method || 'nllb';
+                    document.getElementById('translation_method').value = translationMethod;
+                    onTranslationMethodChange();
+
                     // Translation quality settings
                     const genParams = currentSettings.generation_params || {};
                     const numBeams = genParams.num_beams ?? 5;
@@ -749,6 +775,14 @@
             updateTargetLanguageLabel();
             updateLanguageGrid();
 
+            // If whisper_translate is selected but target changed away from English, revert to NLLB
+            const method = document.getElementById('translation_method').value;
+            if (method === 'whisper_translate' && code !== 'en') {
+                document.getElementById('translation_method').value = 'nllb';
+                onTranslationMethodChange();
+                showAlert('Switched to NLLB — Whisper Translate only supports English target.', 'warning');
+            }
+
             // If translation is enabled, do a hot switch
             if (document.getElementById('trans_enabled').checked) {
                 await hotSwitchLanguage();
@@ -764,6 +798,7 @@
                 target_language: document.getElementById('target_language').value,
                 source_language: document.getElementById('source_language').value,
                 translate_in_progress: document.getElementById('translate_in_progress').checked,
+                translation_method: document.getElementById('translation_method').value,
                 translation_model: document.getElementById('translation_model').value,
                 use_gpu: document.getElementById('translation_use_gpu').checked,
                 generation_params: {
@@ -973,6 +1008,37 @@
                 }
             } catch (error) {
                 console.error('Error checking status:', error);
+            }
+        }
+
+        function onTranslationMethodChange() {
+            const method = document.getElementById('translation_method').value;
+            const whisperTransWarn = document.getElementById('whisper_translate_warning');
+            const whisperForcedWarn = document.getElementById('whisper_forced_warning');
+            const nllbRemoteSection = document.getElementById('nllb_remote_section');
+            const nllbSettingsGroup = document.getElementById('nllb_settings_group');
+
+            if (method === 'nllb') {
+                nllbRemoteSection.style.display = '';
+                nllbSettingsGroup.style.display = '';
+                whisperTransWarn.style.display = 'none';
+                whisperForcedWarn.style.display = 'none';
+            } else {
+                nllbRemoteSection.style.display = 'none';
+                nllbSettingsGroup.style.display = 'none';
+                whisperTransWarn.style.display = method === 'whisper_translate' ? '' : 'none';
+                whisperForcedWarn.style.display = method === 'whisper_forced_lang' ? '' : 'none';
+            }
+
+            // Validate whisper_translate requires English target
+            if (method === 'whisper_translate') {
+                const targetLang = document.getElementById('target_language').value;
+                if (targetLang !== 'en') {
+                    document.getElementById('target_language').value = 'en';
+                    updateTargetLanguageLabel();
+                    updateLanguageGrid();
+                    showAlert('Whisper Translate only supports English. Target language set to English.', 'warning');
+                }
             }
         }
 
