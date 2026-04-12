@@ -11567,7 +11567,7 @@ def get_new_entries(limit_override=None):
                 cursor.execute(
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                           confidence, needs_review
+                           confidence, needs_review, translated_text, translation_language
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
                     ORDER BY id ASC
@@ -11578,9 +11578,9 @@ def get_new_entries(limit_override=None):
                 # Use subquery to get last N entries by id DESC, then re-order ASC for display
                 cursor.execute(
                     """
-                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review FROM (
+                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language FROM (
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                               confidence, needs_review
+                               confidence, needs_review, translated_text, translation_language
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
                         ORDER BY id DESC
@@ -11856,13 +11856,17 @@ def emit_translated_entries():
                 seg_id = entry[0]
                 original_text = entry[2]
 
-                # Whisper-based translation: translations are pre-cached by the transcription loop
+                # Whisper-based translation: translations saved to DB by subprocess
+                # (subprocess cache is in separate memory, so read from DB instead)
                 if _whisper_translation_active:
                     cached = cache.get(seg_id, "", target_lang)
                     if not cached:
-                        # After hot switch, keep old translation instead of falling back to original
                         cached = cache.get(seg_id, "", target_lang, accept_stale_lang=True)
-                    translated_text = cached if cached else original_text  # Fallback to original if not yet cached
+                    if not cached and len(entry) > 7 and entry[7]:
+                        # Read translation from DB (written by subprocess)
+                        cached = entry[7]
+                        cache.set(seg_id, "", cached, entry[8] or target_lang)
+                    translated_text = cached if cached else original_text
                     extras = None
                     seg_data = {
                         "id": seg_id,
