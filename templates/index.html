@@ -467,6 +467,19 @@
           }
         });
 
+        // Client-side heartbeat — detect stale connections and force reconnect
+        // iOS Safari can silently kill WebSockets without firing disconnect events
+        let _lastDataReceived = Date.now();
+        socket.onAny(function() { _lastDataReceived = Date.now(); });
+        setInterval(function() {
+          const staleSec = (Date.now() - _lastDataReceived) / 1000;
+          if (staleSec > 10 && socket.connected) {
+            console.warn('[HEARTBEAT] No data for ' + Math.round(staleSec) + 's, forcing reconnect');
+            socket.disconnect();
+            socket.connect();
+          }
+        }, 5000);
+
         // Initialize socket monitoring for dual status indicators
         initializeSocketMonitoring();
 
