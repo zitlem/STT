@@ -28,7 +28,11 @@ class AudioProcessor extends AudioWorkletProcessor {
             // When buffer is full, convert to Int16 and send
             if (this.bufferIndex >= this.bufferSize) {
                 const int16Buffer = this.float32ToInt16(this.buffer);
-                this.port.postMessage(int16Buffer.buffer, [int16Buffer.buffer]);
+                try {
+                    this.port.postMessage(int16Buffer.buffer, [int16Buffer.buffer]);
+                } catch (e) {
+                    // Port may be disconnected; ignore and continue
+                }
 
                 // Reset buffer
                 this.buffer = new Float32Array(this.bufferSize);
@@ -50,7 +54,7 @@ class AudioProcessor extends AudioWorkletProcessor {
             // Clamp to -1.0 to 1.0 range
             const sample = Math.max(-1, Math.min(1, float32Array[i]));
             // Convert to Int16
-            int16Array[i] = sample < 0 ? sample * 32768 : sample * 32767;
+            int16Array[i] = Math.round(sample * 32767);
         }
         return int16Array;
     }

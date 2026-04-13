@@ -1085,7 +1085,8 @@ def _apply_glossary(text, source_lang, target_lang):
             text = re.sub(re.escape(source_term), target_term, text, flags=re.IGNORECASE)
 
         return text
-    except Exception:
+    except Exception as e:
+        print(f"[WARNING] Glossary application failed: {e}")
         return text
 
 
@@ -2215,8 +2216,9 @@ class ModelFactory:
                         result = model(
                             audio_data, generate_kwargs={"language": language}
                         )
-                except:
+                except (TypeError, ValueError, RuntimeError) as e:
                     # Fallback if language parameter not supported
+                    print(f"[WARNING] Model language parameter failed ({e}), falling back to auto-detect")
                     result = model(audio_data)
                     if return_segments:
                         text = result["text"].strip()
@@ -2392,7 +2394,6 @@ class WhisperLiveTranscriber:
         all_text = ' '.join(seg.get('text', '').strip() for seg in segments)
         if len(all_text) < 5 or all_text == '...' or all_text.strip() == '':
             # Whisper is overwhelmed - force buffer trim and skip garbage
-            # print(f"[DEBUG-BUFFER] Garbage detected: '{all_text[:30]}', forcing buffer trim", flush=True)
             with self.lock:
                 if self.frames_np is not None:
                     buffer_duration = self.frames_np.shape[0] / self.RATE
@@ -2402,7 +2403,6 @@ class WhisperLiveTranscriber:
                         # Force advance to keep only 10 seconds
                         extra_advance = chunk_to_process - 10
                         self.timestamp_offset += extra_advance
-                        # print(f"[DEBUG-BUFFER] Garbage trim: advanced by {extra_advance:.1f}s (was {chunk_to_process:.1f}s)", flush=True)
             return result  # Skip processing garbage segments
 
         offset = None
@@ -2419,7 +2419,6 @@ class WhisperLiveTranscriber:
                 end = self.timestamp_offset + min(duration, seg.get('end', duration))
 
                 if start >= end:
-                    # print(f"[DEBUG-TRANSCRIBER] Skipping segment (start >= end): start={start:.2f}, end={end:.2f}, text='{text[:50]}'", flush=True)
                     continue
 
                 completed = {
@@ -2456,7 +2455,6 @@ class WhisperLiveTranscriber:
                 self.end_time_for_same_output = last_seg.get('end', duration)
 
             # Debug logging for same_output tracking
-            # print(f"[DEBUG-SAME-OUTPUT] count={self.same_output_count}, threshold={self.same_output_threshold}, current='{self.current_out[:40]}', prev='{self.prev_out[:40]}'", flush=True)
         else:
             self.same_output_count = 0
             self.end_time_for_same_output = None
@@ -2511,7 +2509,6 @@ class WhisperLiveTranscriber:
                 if chunk_to_process > 20:
                     extra_advance = chunk_to_process - 15  # Keep 15 seconds
                     self.timestamp_offset += extra_advance
-                    # print(f"[DEBUG-BUFFER] PROACTIVE: Advanced by {extra_advance:.1f}s (chunk was {chunk_to_process:.1f}s)", flush=True)
 
         return result
 
@@ -2762,23 +2759,28 @@ def initialize_database():
             if "id" not in columns:
                 print("[DB] Migrating database: adding id column...")
                 # SQLite doesn't support ALTER TABLE ADD COLUMN with PRIMARY KEY
-                # So we need to recreate the table
-                db_cursor.execute(
-                    """CREATE TABLE transcriptions_new (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, text TEXT)"""
-                )
-                db_cursor.execute(
-                    """INSERT INTO transcriptions_new (timestamp, text) SELECT timestamp, text FROM transcriptions"""
-                )
-                db_cursor.execute("""DROP TABLE transcriptions""")
-                db_cursor.execute(
-                    """ALTER TABLE transcriptions_new RENAME TO transcriptions"""
-                )
-                # Recreate index
-                db_cursor.execute(
-                    """CREATE INDEX IF NOT EXISTS idx_timestamp ON transcriptions(timestamp DESC)"""
-                )
-                db_connection.commit()
-                print("[DB] OK: Migration complete")
+                # So we need to recreate the table (wrapped in transaction for safety)
+                try:
+                    db_cursor.execute("BEGIN")
+                    db_cursor.execute(
+                        """CREATE TABLE transcriptions_new (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, text TEXT)"""
+                    )
+                    db_cursor.execute(
+                        """INSERT INTO transcriptions_new (timestamp, text) SELECT timestamp, text FROM transcriptions"""
+                    )
+                    db_cursor.execute("""DROP TABLE transcriptions""")
+                    db_cursor.execute(
+                        """ALTER TABLE transcriptions_new RENAME TO transcriptions"""
+                    )
+                    # Recreate index
+                    db_cursor.execute(
+                        """CREATE INDEX IF NOT EXISTS idx_timestamp ON transcriptions(timestamp DESC)"""
+                    )
+                    db_connection.commit()
+                    print("[DB] OK: Migration complete")
+                except Exception:
+                    db_connection.rollback()
+                    raise
 
             # Migration: Check if start_time/end_time columns exist, add them if missing
             db_cursor.execute("PRAGMA table_info(transcriptions)")
@@ -2831,7 +2833,7 @@ def initialize_database():
         if db_name and os.path.exists(db_name):
             try:
                 os.unlink(db_name)
-            except:
+            except OSError:
                 pass
         raise
 
@@ -2893,7 +2895,7 @@ def extract_audio_from_file(file_path):
         if temp_wav and os.path.exists(temp_wav.name):
             try:
                 os.unlink(temp_wav.name)
-            except:
+            except OSError:
                 pass
         raise Exception(f"Failed to extract audio: {str(e)}")
 
@@ -4150,7 +4152,7 @@ def update_config():
         # Send config update through queue for hot-reload
         try:
             config_queue.put({"type": "config_update", "config": config})
-        except:
+        except (OSError, ValueError):
             pass  # Queue might be full or process not ready
 
         # Determine which settings need restart
@@ -4228,7 +4230,7 @@ def reset_config():
         # Send config update through queue
         try:
             config_queue.put({"type": "config_update", "config": config})
-        except:
+        except (OSError, ValueError):
             pass
 
         response_data = {
@@ -5112,7 +5114,7 @@ def save_translation_settings():
     if config_queue:
         try:
             config_queue.put({"type": "config_update", "config": config.copy()})
-        except:
+        except (OSError, ValueError):
             pass
 
     # Handle model loading/unloading based on enabled state
@@ -5227,7 +5229,7 @@ def hot_switch_translation_language():
     if config_queue:
         try:
             config_queue.put({"type": "config_update", "config": config.copy()})
-        except:
+        except (OSError, ValueError):
             pass
 
     # Don't clear cache — old segments keep their cached translations (stale-lang fallback).
@@ -5822,7 +5824,11 @@ def proxy_remote_translation_status():
     import requests as _req
     try:
         r = _req.get(endpoint + "/api/translation/status", timeout=5)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"success": False, "error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 502
 
@@ -5838,7 +5844,11 @@ def proxy_pair_request():
     import requests as _req
     try:
         r = _req.post(endpoint + "/api/translate/pair/request", timeout=10)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -5855,7 +5865,11 @@ def proxy_pair_confirm():
     try:
         r = _req.post(endpoint + "/api/translate/pair/confirm",
                       json=request.get_json() or {}, timeout=10)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -5871,7 +5885,11 @@ def proxy_pair_status():
     import requests as _req
     try:
         r = _req.get(endpoint + "/api/translate/pair/status", timeout=5)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"paired": False, "error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"paired": False, "error": str(e)}), 200
 
@@ -5887,7 +5905,11 @@ def proxy_translate_unload():
     import requests as _req
     try:
         r = _req.post(endpoint + "/api/translate/unload", timeout=10)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"success": False, "error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 502
 
@@ -5903,7 +5925,11 @@ def proxy_translate_preload():
     import requests as _req
     try:
         r = _req.post(endpoint + "/api/translate/preload", timeout=10)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"success": False, "error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 502
 
@@ -5919,7 +5945,11 @@ def proxy_translate_unpair():
     import requests as _req
     try:
         r = _req.post(endpoint + "/api/translate/pair/unpair-me", timeout=10)
-        return jsonify(r.json()), r.status_code
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"success": False, "error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 502
 
@@ -6242,7 +6272,7 @@ def transcribe_file_endpoint():
         if temp_upload and os.path.exists(temp_upload.name):
             try:
                 os.unlink(temp_upload.name)
-            except:
+            except OSError:
                 pass
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -7634,7 +7664,7 @@ def force_reset_transcription():
             try:
                 transcription_process.terminate()
                 transcription_process.join(timeout=3)
-            except:
+            except (OSError, ProcessLookupError):
                 pass
 
             # If still alive, force kill
@@ -7643,14 +7673,15 @@ def force_reset_transcription():
                 try:
                     transcription_process.kill()
                     transcription_process.join(timeout=2)
-                except:
+                except (OSError, ProcessLookupError):
                     pass
 
         # Clear the control queue
+        import queue as _queue_mod
         while not control_queue.empty():
             try:
                 control_queue.get_nowait()
-            except:
+            except _queue_mod.Empty:
                 break
 
         # Reset transcription state
@@ -8177,7 +8208,7 @@ def search_models():
                                 size_str = f"{size_mb / 1024:.2f} GB"
                             else:
                                 size_str = f"{size_mb:.0f} MB"
-                except:
+                except OSError:
                     pass
 
                 model_list.append(
@@ -8195,7 +8226,7 @@ def search_models():
                         "size_bytes": size_bytes,
                     }
                 )
-            except:
+            except (KeyError, ValueError, OSError, AttributeError):
                 model_list.append(
                     {
                         "id": model.modelId,
@@ -8342,7 +8373,7 @@ def get_model_info():
                         size_str = f"{size_mb / 1024:.2f} GB"
                     else:
                         size_str = f"{size_mb:.0f} MB"
-        except:
+        except OSError:
             pass
 
         model_details = {
@@ -10762,7 +10793,7 @@ def download_translation_model():
                                         total_size += size
                                         if f.endswith('.incomplete'):
                                             incomplete_files.append((f, size))
-                                    except:
+                                    except OSError:
                                         pass
 
                             size_mb = total_size / (1024 * 1024)
@@ -12438,19 +12469,19 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         if audio_model is not None:
                             try:
                                 del audio_model
-                            except:
+                            except (NameError, AttributeError):
                                 pass
                             audio_model = None
                         if processor is not None:
                             try:
                                 del processor
-                            except:
+                            except (NameError, AttributeError):
                                 pass
                             processor = None
                         if vad_model is not None:
                             try:
                                 del vad_model
-                            except:
+                            except (NameError, AttributeError):
                                 pass
                             vad_model = None
                         model_type = None
@@ -12649,7 +12680,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             if source:
                                 try:
                                     source.stop()
-                                except:
+                                except Exception:
                                     pass
                             source = None
                             # Continue to next device
@@ -12792,7 +12823,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 if hasattr(source, "__del__"):
                                     source.__del__()
                                 del source
-                            except:
+                            except Exception:
                                 pass
                         return  # Exit main() function early
 
@@ -12853,7 +12884,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         if source:
                             try:
                                 source.stop()
-                            except:
+                            except Exception:
                                 pass
 
                         # Clear orphaned GPU memory from failed model load
@@ -12861,7 +12892,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
                                 print("[CLEANUP] GPU cache cleared after failed model load")
-                        except:
+                        except (RuntimeError, AttributeError):
                             pass
 
                         return
@@ -12954,7 +12985,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         if source:
                             try:
                                 source.stop()
-                            except:
+                            except Exception:
                                 pass
                         # Clear references BEFORE cleanup to allow garbage collection
                         audio_model = None
@@ -12963,7 +12994,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         vad_model = None
                         try:
                             ModelFactory.cleanup_models()
-                        except:
+                        except Exception:
                             pass
                         return
 
@@ -13186,7 +13217,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         if persistent_db_conn:
                             try:
                                 persistent_db_conn.close()
-                            except:
+                            except (sqlite3.Error, OSError):
                                 pass
                         if os.path.exists(temp_file):
                             os.unlink(temp_file)
@@ -13194,7 +13225,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         if vad_model:
                             try:
                                 del vad_model
-                            except:
+                            except (NameError, AttributeError):
                                 pass
                         audio_model = None
                         processor = None
@@ -13206,7 +13237,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 if hasattr(source, "__del__"):
                                     source.__del__()
                                 del source
-                            except:
+                            except Exception:
                                 pass
                         return  # Exit main() function early
 
@@ -13457,7 +13488,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     speech_prob = vad_model(audio_tensor, source.SAMPLE_RATE).item()
                                                                     calibration_data["vad_probabilities"].append(speech_prob)
                                                                     calibration_data_shared["vad_probabilities"].append(speech_prob)
-                                                                except:
+                                                                except (RuntimeError, TypeError, ValueError):
                                                                     pass
                                                         else:
                                                             # Still collecting some noise during speech phase
@@ -13614,7 +13645,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 # === WHISPER-LIVE TRANSCRIPTION APPROACH ===
                                 # Get audio chunk from the rolling buffer
                                 audio_chunk, chunk_duration = live_transcriber.get_audio_chunk_for_processing()
-                                # print(f"[DEBUG-AUDIO] Chunk duration: {chunk_duration:.2f}s, audio size: {len(audio_chunk) if audio_chunk is not None else 'None'}", flush=True)
 
                                 # Need at least 1 second of audio before transcribing
                                 if chunk_duration < 1.0:
@@ -13711,7 +13741,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     # Update segments using Whisper-Live's approach
                                     # This finalizes all segments except the last one immediately
                                     result = live_transcriber.update_segments(segments, chunk_duration)
-                                    # print(f"[DEBUG-SEGMENTS] Completed: {len(result.get('completed_segments', []))}, Current text: '{result.get('current_text', '')[:50]}...'", flush=True)
 
                                     # Handle completed segments (save to DB)
                                     if result['completed_segments']:
@@ -13739,10 +13768,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                                                 # Split into sentences
                                                 sentences, remainder = split_into_sentences(segment_text)
-                                                # print(f"[DEBUG-SPLIT] Input: '{segment_text[:60]}' -> Sentences: {len(sentences)}, Remainder: '{remainder[:30] if remainder else 'None'}'", flush=True)
                                                 # Debug logging commented out for production
                                                 # if not sentences:
-                                                #     print(f"[DEBUG] No sentences from: '{segment_text[:60]}...' (remainder: '{remainder}')")
 
                                                 # Save substantial sentences to DB
                                                 MIN_WORDS = min_words_threshold
@@ -13808,11 +13835,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 )
                                                             persistent_db_conn.commit()
                                                         # Track saved_sentences and database row count
-                                                        # print(f"[DEBUG-SAVED] saved_sentences count: {len(saved_sentences)}, last 3: {[s[:30] for s in saved_sentences[-3:]] if len(saved_sentences) >= 3 else saved_sentences}", flush=True)
                                                         # Periodically verify database row count matches
                                                         if len(saved_sentences) % 10 == 0:
                                                             db_count = persistent_db_cursor.execute("SELECT COUNT(*) FROM transcriptions").fetchone()[0]
-                                                            # print(f"[DEBUG-DB-COUNT] Database has {db_count} rows, saved_sentences has {len(saved_sentences)} entries", flush=True)
                                                             if db_count != len(saved_sentences) + 1:  # +1 for default first entry
                                                                 pass  # Row count mismatch — non-critical
                                                         # print(f"[LOOP-DEBUG] {time.strftime('%H:%M:%S')} - DB commit done", flush=True)
@@ -13827,7 +13852,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         # If so, don't double-process (it's already in completed_segments)
                                         just_finalized = result.get('just_finalized_text', '')
                                         if just_finalized:
-                                            # print(f"[DEBUG-PHRASE] Text already finalized via same_output: '{just_finalized[:50]}'", flush=True)
                                             finalized_segment = None  # Already handled
                                         else:
                                             # FIX: Capture pending text BEFORE force_finalize (which clears current_out)
@@ -13836,11 +13860,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                                             # Force finalize any remaining text
                                             finalized_segment = live_transcriber.force_finalize()
-                                            # print(f"[DEBUG-PHRASE] Force finalize returned: {finalized_segment is not None}, text: '{finalized_segment.get('text', '')[:50] if finalized_segment else 'None'}'", flush=True)
 
                                             # FIX: If force_finalize returned nothing but we had pending text, create segment from it
                                             if finalized_segment is None and pending_text:
-                                                # print(f"[DEBUG-PHRASE] Using pending text (force_finalize was empty): '{pending_text[:50]}'", flush=True)
                                                 finalized_segment = {
                                                     'text': pending_text,
                                                     'start': live_transcriber.timestamp_offset,
@@ -13864,7 +13886,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                                                 if segment_text:  # Check again after overlap removal
                                                     sentences, remainder = split_into_sentences(segment_text)
-                                                    # print(f"[DEBUG-PHRASE-SPLIT] Input: '{segment_text[:60]}' -> Sentences: {len(sentences)}, Remainder: '{remainder[:30] if remainder else 'None'}'", flush=True)
                                                     MIN_WORDS = min_words_threshold
                                                     _phrase_inserted_ids = []
                                                     with _db_lock:
@@ -13934,7 +13955,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         # Store word-level confidence for in-progress display
                                         if hasattr(live_transcriber, '_last_seg_confidence'):
                                             transcription_state["live_word_confidences"] = live_transcriber._last_seg_confidence.get('words', [])
-                                        # print(f"[DEBUG-LIVE] Setting live_text: '{current_text[:50]}...' (was: '{old_live_text[:30]}...')", flush=True)
 
                                 except Exception as transcribe_error:
                                     print(f"[ERROR] Transcription failed: {transcribe_error}")

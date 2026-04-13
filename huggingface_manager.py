@@ -6,7 +6,7 @@ Handles downloading and uploading models
 
 import os
 import json
-from huggingface_hub import HfApi, HfFolder, Repository, snapshot_download
+from huggingface_hub import HfApi, snapshot_download
 from pathlib import Path
 import argparse
 import zipfile
@@ -21,14 +21,14 @@ class HuggingFaceManager:
         """Login to Hugging Face"""
         if token:
             self.token = token
-            HfFolder.save_token(token)
+            self.api.token = token
         else:
             # Try to get existing token
-            self.token = HfFolder.get_token()
-            
+            self.token = self.api.token
+
         if not self.token:
             raise ValueError("No Hugging Face token provided. Use --token or run `huggingface-cli login`")
-            
+
         print(f"✓ Logged in to Hugging Face")
         return self.token
     
