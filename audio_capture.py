@@ -52,7 +52,9 @@ class FFmpegAudioCapture:
         elif ts_enabled:
             # Default: _AUTOMATIC_BACKUP/YYYY/MM (same as full session audio)
             # Use local timezone for path
-            base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_AUTOMATIC_BACKUP")
+            # Use APP_DIR from main module if available, else fallback to script dir
+            _app_dir = getattr(sys.modules.get('speech_to_text'), 'APP_DIR', None) or os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.join(_app_dir, "_AUTOMATIC_BACKUP")
             date_path = datetime.now().astimezone().strftime("%Y/%m")
             self.backup_dir = os.path.join(base_dir, date_path)
         else:
