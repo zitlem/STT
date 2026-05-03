@@ -225,6 +225,7 @@
          const uppercase = urlParams.get('uppercase') === 'true';
          const inProgressStyle = urlParams.get('inProgressStyle') || 'italic';
          const inProgressOpacity = parseFloat(urlParams.get('inProgressOpacity')) || 0.7;
+         const dripSpeed = parseInt(urlParams.get('dripSpeed')) || 80;  // ms per word drip-feed when in-progress is hidden (0 = disabled)
          const maxLines = parseInt(urlParams.get('maxLines')) || 0;  // 0 = unlimited, 1-10 = caption mode
 
          // Translation mode: 'transcribe' (default), 'translate', 'both'
@@ -260,7 +261,8 @@
            hideTranslateInProgress,
            showAll,
            audioStream,
-           ttsAudio
+           ttsAudio,
+           dripSpeed
          };
 
         // Load word highlighting configuration
@@ -1213,6 +1215,81 @@
        let lastSegmentCount = 0;  // Track segment count for change detection
        let lastInProgressText = '';  // Track in-progress text for change detection
 
+       // Drip-feed state for transcription
+       let _dripTimer = null;
+       let _dripRevealedHTML = '';
+
+       // Drip-feed state for translation
+       let _transDripTimer = null;
+       let _transDripRevealedHTML = '';
+
+       function dripFeedWords(newFullHTML, prevFullHTML, element, isTranslation) {
+         const dripSpeed = window.displayConfig?.dripSpeed || 80;
+         if (!dripSpeed || dripSpeed <= 0) {
+           element.innerHTML = newFullHTML;
+           if (isTranslation) { _transDripRevealedHTML = newFullHTML; }
+           else { _dripRevealedHTML = newFullHTML; }
+           return;
+         }
+
+         // Extract plain text to find new words
+         const tempDiv = document.createElement('div');
+         tempDiv.innerHTML = prevFullHTML;
+         const oldText = tempDiv.textContent || '';
+         tempDiv.innerHTML = newFullHTML;
+         const newText = tempDiv.textContent || '';
+
+         // Find the new portion
+         let newPortion = '';
+         if (newText.startsWith(oldText)) {
+           newPortion = newText.slice(oldText.length).trim();
+         } else {
+           // Fallback: drip entire new text
+           newPortion = newText;
+         }
+
+         if (!newPortion) {
+           element.innerHTML = newFullHTML;
+           if (isTranslation) { _transDripRevealedHTML = newFullHTML; }
+           else { _dripRevealedHTML = newFullHTML; }
+           return;
+         }
+
+         const newWords = newPortion.split(/\s+/).filter(w => w.length > 0);
+
+         // Flush any existing timer
+         if (isTranslation && _transDripTimer) {
+           clearInterval(_transDripTimer);
+           _transDripTimer = null;
+         } else if (!isTranslation && _dripTimer) {
+           clearInterval(_dripTimer);
+           _dripTimer = null;
+         }
+
+         // Show base (already revealed text) immediately
+         element.innerHTML = prevFullHTML;
+
+         let wordIndex = 0;
+         const timer = setInterval(() => {
+           if (wordIndex >= newWords.length) {
+             clearInterval(timer);
+             if (isTranslation) { _transDripTimer = null; _transDripRevealedHTML = newFullHTML; }
+             else { _dripTimer = null; _dripRevealedHTML = newFullHTML; }
+             element.innerHTML = newFullHTML;
+             return;
+           }
+           wordIndex++;
+           const partialNewText = oldText + (oldText ? ' ' : '') + newWords.slice(0, wordIndex).join(' ');
+           const partialHTML = applyWordHighlighting(partialNewText);
+           element.innerHTML = partialHTML;
+           if (isTranslation) { _transDripRevealedHTML = partialHTML; }
+           else { _dripRevealedHTML = partialHTML; }
+         }, dripSpeed);
+
+         if (isTranslation) { _transDripTimer = timer; }
+         else { _dripTimer = timer; }
+       }
+
        // Unified transcription display - uses Whisper-Live's temporal validation pattern
        // Persistent DOM references for incremental updates (created once, updated in-place)
        let _transcriptionStructureBuilt = false;
@@ -1307,8 +1384,15 @@
            const fullText = allSegments.map(s => s.text).join(' ');
            const highlightedText = applyWordHighlighting(fullText);
            if (highlightedText !== _lastFinalizedHTML) {
-             _finalizedTextEl.innerHTML = highlightedText;
+             const prevHTML = _lastFinalizedHTML;
              _lastFinalizedHTML = highlightedText;
+             // Drip-feed when in-progress is hidden
+             if (window.displayConfig?.hideInProgress && prevHTML) {
+               dripFeedWords(highlightedText, prevHTML, _finalizedTextEl, false);
+             } else {
+               _finalizedTextEl.innerHTML = highlightedText;
+               _dripRevealedHTML = highlightedText;
+             }
            }
          }
 
@@ -1462,8 +1546,15 @@
              const fullText = allTranslatedSegments.map(s => s.translated_text).join(' ');
              const highlightedText = applyWordHighlighting(fullText);
              if (highlightedText !== _lastTranslationFinalizedHTML) {
-               _translationFinalizedEl.innerHTML = highlightedText;
+               const prevHTML = _lastTranslationFinalizedHTML;
                _lastTranslationFinalizedHTML = highlightedText;
+               // Drip-feed when in-progress translation is hidden
+               if (window.displayConfig?.hideTranslateInProgress && prevHTML) {
+                 dripFeedWords(highlightedText, prevHTML, _translationFinalizedEl, true);
+               } else {
+                 _translationFinalizedEl.innerHTML = highlightedText;
+                 _transDripRevealedHTML = highlightedText;
+               }
              }
            }
 
