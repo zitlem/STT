@@ -13,6 +13,15 @@ on:
           - windows
           - macos
           - linux
+      publish_release:
+        description: 'Publish as GitHub Release'
+        required: false
+        default: true
+        type: boolean
+      release_tag:
+        description: 'Release tag (e.g. v1.0.0). Required if publishing.'
+        required: false
+        type: string
 
 jobs:
   build-windows:
@@ -110,3 +119,39 @@ jobs:
           name: stt-linux
           path: dist/stt-linux/
           retention-days: 30
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    # Run even if some platform builds were skipped (not all platforms selected)
+    if: ${{ always() && github.event.inputs.publish_release == 'true' && github.event.inputs.release_tag != '' }}
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Zip artifacts
+        run: |
+          cd artifacts
+          for dir in */; do
+            name="${dir%/}"
+            zip -r "../${name}.zip" "$dir"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: STT ${{ github.event.inputs.release_tag }}
+          draft: false
+          prerelease: false
+          files: |
+            stt-windows.zip
+            stt-macos.zip
+            stt-linux.zip
+          generate_release_notes: true
