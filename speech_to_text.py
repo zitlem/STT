@@ -1,7 +1,18 @@
 import argparse
 import io
 import os
+import sys
 import warnings
+
+# Determine application directory (works for both dev and PyInstaller bundle)
+# APP_DIR = where the exe lives (or script dir in dev) — for user files like config, models, DBs
+# BUNDLE_DIR = where bundled resources live (templates, static) — _MEIPASS in frozen mode
+if getattr(sys, 'frozen', False):
+    APP_DIR = os.path.dirname(sys.executable)
+    BUNDLE_DIR = sys._MEIPASS
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = APP_DIR
 
 # Suppress NNPACK warnings from PyTorch (harmless but spammy)
 # These are C++ warnings so we need to disable at the PyTorch level
@@ -14,14 +25,14 @@ warnings.filterwarnings('ignore', message='.*NNPACK.*')
 
 # Set HuggingFace cache to local models directory BEFORE any HF imports
 # This prevents models from being downloaded to ~/.cache/huggingface/hub
-_models_cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", ".hf_cache")
+_models_cache_dir = os.path.join(APP_DIR, "models", ".hf_cache")
 os.makedirs(_models_cache_dir, exist_ok=True)
 os.environ["HF_HUB_CACHE"] = _models_cache_dir
 os.environ["HF_HOME"] = _models_cache_dir
 os.environ["HUGGINGFACE_HUB_CACHE"] = _models_cache_dir
 
 # TTS models directory (for piper models)
-_tts_cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "tts")
+_tts_cache_dir = os.path.join(APP_DIR, "models", "tts")
 os.makedirs(_tts_cache_dir, exist_ok=True)
 
 import sqlite3
@@ -152,7 +163,7 @@ FILE_TRANSCRIPTION_PARAMS = {
 
 
 # Configuration file management
-CONFIG_FILE = "config.json"
+CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 DEFAULT_CONFIG = {
     "model": {
         "type": "whisper",
@@ -1067,7 +1078,7 @@ def _apply_glossary(text, source_lang, target_lang):
 
         dict_file = dict_config.get("file", "custom_dictionary.json")
         if not os.path.isabs(dict_file):
-            dict_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), dict_file)
+            dict_file = os.path.join(APP_DIR, dict_file)
 
         if not os.path.exists(dict_file):
             return text
@@ -3257,7 +3268,7 @@ def convert_db_to_html(db_path):
         # Load word highlighting configuration
         highlight_config = None
         highlight_config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "word_highlighting.json"
+            APP_DIR, "word_highlighting.json"
         )
         if os.path.exists(highlight_config_path):
             try:
@@ -3761,11 +3772,13 @@ def validate_file(file):
     return True, None
 
 
-app = Flask(__name__)
+app = Flask(__name__,
+            template_folder=os.path.join(BUNDLE_DIR, "templates"),
+            static_folder=os.path.join(BUNDLE_DIR, "static"))
 app.config["SECRET_KEY"] = "your_secret_keyss"
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # Auto-reload templates when they change
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching for static files
-socketio = SocketIO(app, async_mode="threading", static_url_path="/static", static_folder="static", ping_timeout=120, ping_interval=25)
+socketio = SocketIO(app, async_mode="threading", static_url_path="/static", static_folder=os.path.join(BUNDLE_DIR, "static"), ping_timeout=120, ping_interval=25)
 
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
@@ -6651,7 +6664,7 @@ def restart_server():
 
             if sys.platform.startswith('win'):
                 # Windows: use restart_server.bat to cleanly stop and restart
-                script_dir = os.path.dirname(os.path.abspath(__file__))
+                script_dir = APP_DIR
                 restart_bat = os.path.join(script_dir, "restart_server.bat")
                 if os.path.exists(restart_bat):
                     print("[RESTART] Calling restart_server.bat...")
@@ -6689,7 +6702,7 @@ def restart_server():
                     return
 
             # Fallback: not running under systemd, use restart_server.sh or execv
-            script_dir = os.path.dirname(os.path.abspath(__file__))
+            script_dir = APP_DIR
             restart_script = os.path.join(script_dir, "restart_server.sh")
 
             if os.path.exists(restart_script):
@@ -7588,7 +7601,7 @@ def stop_transcription():
         def cleanup_process():
             """Background cleanup to send unload command and update status"""
             import time
-            _log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server.log")
+            _log_path = os.path.join(APP_DIR, "server.log")
             def log(msg):
                 with open(_log_path, "a") as f:
                     f.write(msg + "\n")
@@ -7614,7 +7627,7 @@ def stop_transcription():
 
         # Run cleanup in background thread
         import threading
-        _server_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server.log")
+        _server_log = os.path.join(APP_DIR, "server.log")
         # Write directly to log file since stdout might be buffered
         with open(_server_log, "a") as logf:
             logf.write(f"[STOP] Creating cleanup thread, transcription_process={transcription_process}\n")
@@ -7895,7 +7908,7 @@ def load_custom_dictionary():
 
     dict_file = config.get("custom_dictionary", {}).get("file", "custom_dictionary.json")
     if not os.path.isabs(dict_file):
-        dict_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), dict_file)
+        dict_file = os.path.join(APP_DIR, dict_file)
 
     try:
         if os.path.exists(dict_file):
@@ -7929,7 +7942,7 @@ def save_custom_dictionary(data):
 
     dict_file = config.get("custom_dictionary", {}).get("file", "custom_dictionary.json")
     if not os.path.isabs(dict_file):
-        dict_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), dict_file)
+        dict_file = os.path.join(APP_DIR, dict_file)
 
     try:
         import json as _json
@@ -13672,7 +13685,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     if dict_config.get("whisper_hotwords_enabled", False) or dict_config.get("whisper_initial_prompt_enabled", False):
                                         dict_file = dict_config.get("file", "custom_dictionary.json")
                                         if not os.path.isabs(dict_file):
-                                            dict_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), dict_file)
+                                            dict_file = os.path.join(APP_DIR, dict_file)
                                         if os.path.exists(dict_file):
                                             try:
                                                 import json as _json

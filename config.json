@@ -45,7 +45,7 @@
   "web_server": {
     "host": "0.0.0.0",
     "_host_comment": "Server host. 0.0.0.0 = accessible from network, 127.0.0.1 = localhost only",
-    "port": 80,
+    "port": 8080,
     "_port_comment": "Server port. Port 80 requires admin/root privileges. Use 8080 for non-privileged access",
     "update_interval": 0.5,
     "_update_interval_comment": "Seconds between web UI updates. Lower = more responsive, Higher = less network traffic",

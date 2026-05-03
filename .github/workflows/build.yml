@@ -1,0 +1,112 @@
+name: Build Executable
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build for'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+
+jobs:
+  build-windows:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install flask flask-socketio flask-cors python-socketio
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+          pip install transformers huggingface_hub accelerate datasets
+          pip install openai-whisper faster-whisper silero-vad
+          pip install SpeechRecognition pyaudio soundfile librosa pydub numpy"<2.0.0"
+          pip install edge-tts piper-tts
+          pip install pytz smbprotocol eventlet
+
+      - name: Build with PyInstaller
+        run: python build.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stt-windows
+          path: dist/stt-windows/
+          retention-days: 30
+
+  build-macos:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install flask flask-socketio flask-cors python-socketio
+          pip install torch torchaudio
+          pip install transformers huggingface_hub accelerate datasets
+          pip install openai-whisper faster-whisper silero-vad
+          pip install SpeechRecognition pyaudio soundfile librosa pydub numpy"<2.0.0"
+          pip install edge-tts piper-tts
+          pip install pytz smbprotocol eventlet
+
+      - name: Build with PyInstaller
+        run: python build.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stt-macos
+          path: dist/stt-macos/
+          retention-days: 30
+
+  build-linux:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install flask flask-socketio flask-cors python-socketio
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+          pip install transformers huggingface_hub accelerate datasets
+          pip install openai-whisper faster-whisper silero-vad
+          pip install SpeechRecognition pyaudio soundfile librosa pydub numpy"<2.0.0"
+          pip install edge-tts piper-tts
+          pip install pytz smbprotocol eventlet
+
+      - name: Build with PyInstaller
+        run: python build.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stt-linux
+          path: dist/stt-linux/
+          retention-days: 30
