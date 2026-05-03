@@ -402,6 +402,12 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="url_dripSpeed">Word Drip Speed (ms)</label>
+                    <input type="number" id="url_dripSpeed" min="0" max="500" step="10" value="80" oninput="updateCustomURL()">
+                    <small>When in-progress is hidden, words appear one-by-one at this interval. 0 = disabled (instant).</small>
+                </div>
+
+                <div class="form-group">
                     <label for="url_maxLines">Max Lines (Caption Mode)</label>
                     <input type="number" id="url_maxLines" min="0" max="10" value="0" step="1" oninput="updateCustomURL()">
                     <small>0 = unlimited scroll, 1-10 = show only last N lines (like closed captions)</small>
@@ -564,6 +570,7 @@
             document.getElementById('url_translationLayout').value = 'stacked';
             document.getElementById('url_hideInProgress').checked = false;
             document.getElementById('url_hideTranslateInProgress').checked = false;
+            document.getElementById('url_dripSpeed').value = '80';
             document.getElementById('url_showAll').checked = false;
             toggleWordColorPicker();
             updateOpacityLabel();
@@ -683,6 +690,10 @@
             }
             if (document.getElementById('url_hideTranslateInProgress').checked) {
                 params.append('hideTranslateInProgress', 'true');
+            }
+            const dripSpeed = parseInt(document.getElementById('url_dripSpeed').value) || 0;
+            if (dripSpeed !== 80) {
+                params.append('dripSpeed', dripSpeed.toString());
             }
             if (document.getElementById('url_showAll').checked) {
                 params.append('showAll', 'true');
@@ -913,6 +924,9 @@
             document.getElementById('url_translationLayout').value = layoutValue;
             document.getElementById('url_hideInProgress').checked = params.hideInProgress === 'true';
             document.getElementById('url_hideTranslateInProgress').checked = params.hideTranslateInProgress === 'true';
+            if (params.dripSpeed) {
+                document.getElementById('url_dripSpeed').value = params.dripSpeed;
+            }
             document.getElementById('url_showAll').checked = params.showAll === 'true';
 
             // Update URL with loaded defaults

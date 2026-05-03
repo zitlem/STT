@@ -292,6 +292,7 @@ DEFAULT_CONFIG = {
         "paddingRight": "20",
         "maxWidth": "100",
         "inProgressOpacity": "0.9",
+        "dripSpeed": "80",
         "layout": "side_by_side",
         "inverse": "true",
     },
@@ -666,6 +667,7 @@ def load_config():
                     "paddingRight": "20",
                     "maxWidth": "100",
                     "inProgressOpacity": "0.9",
+                    "dripSpeed": "80",
                     "layout": "side_by_side",
                     "inverse": "true",
                 },
@@ -3763,7 +3765,7 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "your_secret_keyss"
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # Auto-reload templates when they change
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching for static files
-socketio = SocketIO(app, static_url_path="/static", static_folder="static", ping_timeout=120, ping_interval=25)
+socketio = SocketIO(app, async_mode="threading", static_url_path="/static", static_folder="static", ping_timeout=120, ping_interval=25)
 
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
