@@ -356,6 +356,8 @@
           baseParams.delete('layout');
           baseParams.delete('inverse');
           baseParams.set('showMenu', 'false'); // Hide menu in iframes
+          baseParams.delete('audioStream');  // Parent handles audio — don't duplicate in iframes
+          baseParams.delete('ttsAudio');
 
           // Original transcription iframe
           const transcribeParams = new URLSearchParams(baseParams);
@@ -1785,6 +1787,38 @@
         var ttsQueue = [];
         var ttsPlaying = false;
         var ttsAudioCtx = null;
+
+        // Unlock AudioContext on first user gesture (browser autoplay policy)
+        function unlockAudio() {
+          if (window.displayConfig.audioStream) {
+            if (!audioStreamCtx) {
+              try {
+                audioStreamCtx = new (window.AudioContext || window.webkitAudioContext)({
+                  sampleRate: audioStreamSampleRate
+                });
+              } catch(e) { /* will retry on first chunk */ }
+            }
+            if (audioStreamCtx && audioStreamCtx.state === 'suspended') {
+              audioStreamCtx.resume();
+            }
+          }
+          if (window.displayConfig.ttsAudio) {
+            if (!ttsAudioCtx) {
+              try {
+                ttsAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              } catch(e) { /* will retry on first event */ }
+            }
+            if (ttsAudioCtx && ttsAudioCtx.state === 'suspended') {
+              ttsAudioCtx.resume();
+            }
+          }
+          document.removeEventListener('click', unlockAudio);
+          document.removeEventListener('touchstart', unlockAudio);
+          document.removeEventListener('keydown', unlockAudio);
+        }
+        document.addEventListener('click', unlockAudio);
+        document.addEventListener('touchstart', unlockAudio);
+        document.addEventListener('keydown', unlockAudio);
 
         socket.on('tts_audio', function(data) {
           if (!window.displayConfig.ttsAudio) return;
