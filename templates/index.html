@@ -1778,9 +1778,9 @@
 
         socket.on('audio_chunk', function(data) {
           if (!window.displayConfig.audioStream) return;
-          if (!audioUnlocked) { showAudioOverlay(); return; }
+          if (!audioUnlocked) return;
 
-          // Initialize AudioContext on first chunk (requires prior user gesture or autoplay policy)
+          // Initialize AudioContext on first chunk
           if (!audioStreamCtx) {
             try {
               audioStreamCtx = new (window.AudioContext || window.webkitAudioContext)({
@@ -1826,16 +1826,25 @@
         var ttsPlaying = false;
         var ttsAudioCtx = null;
 
-        // Audio unlock overlay — only shown when first audio event arrives (browser autoplay policy)
+        // Audio unlock overlay — proactive check on page load (browser autoplay policy)
         var audioUnlocked = false;
         var audioOverlay = document.getElementById('audio-unlock-overlay');
 
-        function showAudioOverlay() {
-          if (audioUnlocked || audioOverlay.style.display === 'flex') return;
-          audioOverlay.style.display = 'flex';
+        if (window.displayConfig.audioStream || window.displayConfig.ttsAudio) {
+          try {
+            var testCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (testCtx.state === 'suspended') {
+              audioOverlay.style.display = 'flex';
+            } else {
+              audioUnlocked = true;
+            }
+            testCtx.close();
+          } catch(e) {
+            audioOverlay.style.display = 'flex';
+          }
         }
 
-        function unlockAudioContexts() {
+        audioOverlay.addEventListener('click', function() {
           audioUnlocked = true;
           audioOverlay.style.display = 'none';
           if (window.displayConfig.audioStream) {
@@ -1860,13 +1869,11 @@
               ttsAudioCtx.resume();
             }
           }
-        }
-
-        audioOverlay.addEventListener('click', unlockAudioContexts);
+        });
 
         socket.on('tts_audio', function(data) {
           if (!window.displayConfig.ttsAudio) return;
-          if (!audioUnlocked) { showAudioOverlay(); return; }
+          if (!audioUnlocked) return;
           ttsQueue.push(data);
           ttsQueue.sort(function(a, b) { return a.segment_id - b.segment_id; });
           // Limit queue size - drop old unplayed segments
