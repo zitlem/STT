@@ -1750,8 +1750,10 @@
           // Re-join audio streaming rooms after reconnect (e.g. server restart)
           if (window.displayConfig.audioStream) {
             socket.emit('join_audio_stream');
-            // Reset audio scheduling so playback resumes cleanly
-            audioStreamNextPlayTime = 0;
+            // Reset scheduling only if not currently playing (next play time is in the past)
+            if (!audioStreamCtx || audioStreamNextPlayTime < audioStreamCtx.currentTime) {
+              audioStreamNextPlayTime = 0;
+            }
             if (audioStreamCtx && audioStreamCtx.state === 'suspended') {
               audioStreamCtx.resume();
             }
@@ -1826,21 +1828,17 @@
         var ttsPlaying = false;
         var ttsAudioCtx = null;
 
-        // Audio unlock overlay — proactive check on page load (browser autoplay policy)
+        // Audio unlock overlay — shown on page reload (browser autoplay policy blocks audio after refresh)
         var audioUnlocked = false;
         var audioOverlay = document.getElementById('audio-unlock-overlay');
 
         if (window.displayConfig.audioStream || window.displayConfig.ttsAudio) {
-          try {
-            var testCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (testCtx.state === 'suspended') {
-              audioOverlay.style.display = 'flex';
-            } else {
-              audioUnlocked = true;
-            }
-            testCtx.close();
-          } catch(e) {
+          var navEntry = performance.getEntriesByType('navigation')[0];
+          var isReload = navEntry ? navEntry.type === 'reload' : false;
+          if (isReload) {
             audioOverlay.style.display = 'flex';
+          } else {
+            audioUnlocked = true;
           }
         }
 
