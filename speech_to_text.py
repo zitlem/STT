@@ -13957,6 +13957,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         transcription_state["live_text"] = ""
                                         transcription_state["live_start"] = 0
                                         transcription_state["live_end"] = 0
+                                        # Reset phrase_time so next silence doesn't immediately re-trigger
+                                        phrase_time = None
 
                                     # Update live preview with current incomplete text only
                                     # (finalized segments are already shown separately from the database)
