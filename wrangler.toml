@@ -1,0 +1,11 @@
+name = "stt-crash-reporter"
+main = "cloudflare_worker.js"
+compatibility_date = "2024-09-01"
+
+# ── KV namespace for server-side rate limiting (recommended) ────────────────
+# Create first:  wrangler kv:namespace create CRASH_CACHE
+# Then paste the returned id below and uncomment:
+#
+# [[kv_namespaces]]
+# binding = "CRASH_CACHE"
+# id      = "YOUR_KV_NAMESPACE_ID"
