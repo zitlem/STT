@@ -1,10 +1,16 @@
 [Unit]
-Description=STT Watchdog (manages speech_to_text.py with crash recovery and auto-updates)
+Description=STT Watchdog (manages STT with crash recovery and auto-updates)
 After=network.target
 
 [Service]
 Type=simple
-User=root
+User=YOUR_USER
+
+# ── Compiled binary install ────────────────────────────────────────────────
+# ExecStart=/opt/STT/STT-Watchdog --headless
+
+# ── Python source install ──────────────────────────────────────────────────
+# Uncomment and adjust paths for your install:
 WorkingDirectory=/home/ai/STT
 Environment="PYTHONUNBUFFERED=1"
 Environment="HOME=/home/ai"
