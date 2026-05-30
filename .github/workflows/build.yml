@@ -6,12 +6,6 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      platform:
-        description: "Platform to build for"
-        required: true
-        default: all
-        type: choice
-        options: [all, windows, macos, linux]
       prerelease:
         description: "Mark as pre-release"
         required: false
@@ -21,43 +15,34 @@ on:
 permissions:
   contents: write
 
-# Self-hosted runners are used because:
-#   - CUDA PyTorch requires a real GPU machine (can't run in GitHub-hosted CI)
-#   - Build output is ~2 GB — faster on local machines with cached packages
-# Register runners: Settings → Actions → Runners → New self-hosted runner
-# Label each runner with its OS: [self-hosted, Windows] / [self-hosted, macOS] / [self-hosted, Linux]
-
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: [self-hosted, Windows]
+          - os: windows-latest
             platform: windows
             artifact: STT-windows
-          - os: [self-hosted, macOS]
+          - os: macos-latest
             platform: macos
             artifact: STT-macos
-          - os: [self-hosted, Linux]
+          - os: ubuntu-22.04
             platform: linux
             artifact: STT-linux
 
     runs-on: ${{ matrix.os }}
-    if: >
-      github.event_name == 'push' ||
-      github.event.inputs.platform == 'all' ||
-      github.event.inputs.platform == matrix.platform
-
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Dependencies ───────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── System packages ────────────────────────────────────────────────────
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -68,26 +53,23 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install portaudio libsndfile
 
-      - name: Install PyTorch (CUDA on Windows/Linux, MPS on macOS)
-        run: |
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            pip install torch torchaudio
-          else
-            pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-          fi
+      # ── Python packages ────────────────────────────────────────────────────
+      # CPU-only PyTorch keeps the build under GitHub-hosted runner limits.
+      # For CUDA support users should run from source or use self-hosted runners.
+      - name: Install PyTorch (CPU)
+        run: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
-          pip install pyinstaller
-          pip install flask flask-socketio flask-cors python-socketio
+          pip install pyinstaller certifi
           pip install "numpy<2.0.0"
+          pip install flask flask-socketio flask-cors python-socketio
           pip install transformers huggingface_hub accelerate datasets
           pip install "git+https://github.com/openai/whisper.git"
           pip install faster-whisper silero-vad
           pip install SpeechRecognition pyaudio soundfile librosa pydub
           pip install edge-tts piper-tts
-          pip install pytz smbprotocol certifi
-          pip install -r requirements.txt --no-deps
+          pip install pytz smbprotocol
 
       # ── Build ──────────────────────────────────────────────────────────────
       - name: Build STT
@@ -96,9 +78,10 @@ jobs:
       - name: Build Watchdog
         run: pyinstaller watchdog.spec --noconfirm
 
-      - name: Copy watchdog into STT dist dir
+      - name: Copy watchdog into STT dist
+        shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
+          if [ "$RUNNER_OS" = "Windows" ]; then
             cp dist/STT-Watchdog.exe dist/STT/
           else
             cp dist/STT-Watchdog dist/STT/
@@ -108,13 +91,13 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path dist/STT -DestinationPath ${{ matrix.artifact }}.zip
+        run: Compress-Archive -Path dist\STT -DestinationPath ${{ matrix.artifact }}.zip
 
       - name: Package (macOS / Linux)
         if: runner.os != 'Windows'
         run: tar -czf ${{ matrix.artifact }}.tar.gz -C dist STT
 
-      # ── Artifacts ─────────────────────────────────────────────────────────
+      # ── Upload ────────────────────────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -125,11 +108,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # ── Release (tag pushes only) ────────────────────────────────────────────
+  # ── GitHub Release (tag pushes only) ──────────────────────────────────────
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: [self-hosted, Linux]
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Download all artifacts
@@ -137,7 +120,7 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Create GitHub Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: STT ${{ github.ref_name }}
