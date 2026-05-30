@@ -120,16 +120,16 @@ jobs:
         run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Sign (ad-hoc)
         run: |
-          find dist/STT-Watchdog/_internal -type f \( -name "*.dylib" -o -name "*.so" \) \
+          find dist/STT/_internal -type f \( -name "*.dylib" -o -name "*.so" \) \
             -exec codesign --force --sign - {} \;
-          find dist/STT-Watchdog/_internal -maxdepth 1 -name "Python" -type f \
+          find dist/STT/_internal -maxdepth 1 -name "Python" -type f \
             -exec codesign --force --sign - {} \;
-          codesign --force --sign - dist/STT-Watchdog/STT-Watchdog
+          codesign --force --sign - dist/STT/STT
       - name: Package installer
         run: |
           VERSION="${{ needs.version.outputs.tag }}"
           pkgbuild \
-            --root dist/STT-Watchdog \
+            --root dist/STT \
             --install-location /Applications/STT \
             --scripts installer/macos/scripts \
             --identifier com.stt.watchdog \
@@ -178,7 +178,7 @@ jobs:
           VERSION="${{ needs.version.outputs.tag }}"
           PKGDIR="stt-watchdog_${VERSION}_amd64"
           mkdir -p "$PKGDIR/opt/STT"
-          cp -r dist/STT-Watchdog/. "$PKGDIR/opt/STT/"
+          cp -r dist/STT/. "$PKGDIR/opt/STT/"
           cp -r installer/linux/DEBIAN "$PKGDIR/DEBIAN"
           sed -i "s/VERSION_PLACEHOLDER/$VERSION/" "$PKGDIR/DEBIAN/control"
           chmod 755 "$PKGDIR/DEBIAN/postinst" "$PKGDIR/DEBIAN/prerm"

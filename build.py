@@ -5,8 +5,7 @@ Usage:
     python build.py [--platform NAME]
 
 Output:
-    dist/STT/            — main application (one-dir)
-    dist/STT/STT-Watchdog[.exe]  — watchdog (one-file, copied in)
+    dist/STT/            — single application directory (one-dir)
 """
 
 import os
@@ -47,9 +46,9 @@ def main():
     # Clean intermediate build dir
     shutil.rmtree("build", ignore_errors=True)
 
-    out = os.path.abspath(os.path.join("dist", "STT-Watchdog"))
+    out = os.path.abspath(os.path.join("dist", "STT"))
     print(f"\nBuild complete: {out}")
-    exe = "STT-Watchdog.exe" if sys.platform == "win32" else "STT-Watchdog"
+    exe = "STT.exe" if sys.platform == "win32" else "STT"
     print(f"Run: {os.path.join(out, exe)}")
 
 
