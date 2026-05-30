@@ -66,8 +66,15 @@ GITHUB_REPO = "zitlem/STT"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
 VERSION_FILE = os.path.join(APP_DIR, "VERSION")
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
-STT_SCRIPT = os.path.join(APP_DIR, "speech_to_text.py")
 LOG_DIR = os.path.join(APP_DIR, "logs")
+
+# When frozen the watchdog launches the bundled STT exe (same install dir).
+# In dev mode it launches the Python script via the venv.
+if _FROZEN:
+    _install_dir = os.path.dirname(sys.executable)
+    STT_SCRIPT = os.path.join(_install_dir, "STT.exe" if IS_WINDOWS else "STT")
+else:
+    STT_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "speech_to_text.py")
 
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
@@ -229,8 +236,9 @@ class ProcessManager:
                 except Exception:
                     pass
             self._log_fh = open(log_path, "a", encoding="utf-8")
+            cmd = [STT_SCRIPT] if _FROZEN else [self._python, STT_SCRIPT]
             proc = subprocess.Popen(
-                [self._python, STT_SCRIPT],
+                cmd,
                 cwd=APP_DIR,
                 stdout=self._log_fh,
                 stderr=self._log_fh,
