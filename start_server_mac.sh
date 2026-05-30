@@ -1,1 +1,0 @@
-sudo /Users/ai/Desktop/STT/.venv/bin/python3 speech_to_text.py
