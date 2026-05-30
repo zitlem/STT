@@ -191,13 +191,3 @@ jobs:
           files: artifacts/**/*
           generate_release_notes: true
 
-      - name: Bump VERSION in repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout main
-          git pull
-          echo "${{ needs.version.outputs.tag }}" > VERSION
-          git add VERSION
-          git commit -m "chore: bump version to ${{ needs.version.outputs.tag }} [skip ci]"
-          git push
