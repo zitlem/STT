@@ -385,6 +385,11 @@ DEFAULT_CONFIG = {
     "watchdog": {
         "update_channel": "stable",
     },
+    "crash_reporting": {
+        "enabled": False,
+        "worker_url": "",
+        "api_key": "",
+    },
 }
 
 
