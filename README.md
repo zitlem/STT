@@ -36,6 +36,63 @@ Open http://localhost:80 in your browser.
 2. Go to `/live-settings` to select your microphone and language
 3. Start transcribing on the home page
 
+## Running Headless (No GUI)
+
+The **Watchdog** manages STT with crash recovery and auto-updates. Run it headless to keep STT running in the background without a desktop.
+
+### Binary install (downloaded release)
+
+| Platform | Command |
+|----------|---------|
+| Linux / macOS | `./STT-Watchdog --headless` |
+| Windows | `STT-Watchdog.exe --headless` |
+
+Or use the provided scripts which handle logging automatically:
+
+```bash
+# Linux / macOS
+./start_watchdog.sh
+
+# Windows (cmd)
+start_watchdog.bat
+
+# Windows (PowerShell)
+.\start_watchdog.ps1
+```
+
+### Source install
+
+```bash
+python3 watchdog.py --headless
+```
+
+### Persistent service (auto-start on boot)
+
+**Linux (systemd)**
+
+```bash
+sudo cp stt-watchdog.service /etc/systemd/system/
+# Edit the file to set User= and adjust paths if needed
+sudo systemctl daemon-reload
+sudo systemctl enable --now stt-watchdog
+sudo journalctl -u stt-watchdog -f   # view logs
+```
+
+**macOS (LaunchAgent)**
+
+```bash
+cp com.stt.watchdog.plist ~/Library/LaunchAgents/
+# Edit INSTALL_DIR placeholders to your actual install path
+launchctl load ~/Library/LaunchAgents/com.stt.watchdog.plist
+```
+
+**Windows (Task Scheduler)**
+
+Run once at startup via Task Scheduler:
+- Action: `STT-Watchdog.exe --headless` (or `pythonw watchdog.py --headless` for source)
+- Trigger: At log on / At startup
+- Settings: Run whether user is logged on or not
+
 ## Web Interface Pages
 
 | Page | Description |
