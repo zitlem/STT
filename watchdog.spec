@@ -94,6 +94,9 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+_icon_file = "icon.icns" if IS_MACOS else "icon.ico"
+_icon = _icon_file if os.path.exists(_icon_file) else None
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -109,6 +112,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=_icon,
 )
 
 coll = COLLECT(
