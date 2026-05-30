@@ -120,6 +120,14 @@ jobs:
           uv run pyinstaller stt.spec --noconfirm
           uv run pyinstaller watchdog.spec --noconfirm
           cp dist/STT-Watchdog dist/STT/
+      - name: Sign (ad-hoc)
+        run: |
+          find dist/STT/_internal -type f \( -name "*.dylib" -o -name "*.so" \) \
+            -exec codesign --force --sign - {} \;
+          find dist/STT/_internal -maxdepth 1 -name "Python" -type f \
+            -exec codesign --force --sign - {} \;
+          codesign --force --sign - dist/STT/STT
+          codesign --force --sign - dist/STT/STT-Watchdog
       - name: Package
         run: tar -czf STT-macos.tar.gz -C dist STT
       - uses: actions/upload-artifact@v4
