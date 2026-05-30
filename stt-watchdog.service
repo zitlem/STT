@@ -1,0 +1,20 @@
+[Unit]
+Description=STT Watchdog (manages speech_to_text.py with crash recovery and auto-updates)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ai/STT
+Environment="PYTHONUNBUFFERED=1"
+Environment="HOME=/home/ai"
+ExecStart=/home/ai/STT/.venv/bin/python3 /home/ai/STT/watchdog.py --headless
+# systemd restarts the watchdog itself if it crashes; the watchdog handles STT restarts
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stt-watchdog
+
+[Install]
+WantedBy=multi-user.target
