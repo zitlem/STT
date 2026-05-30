@@ -293,6 +293,30 @@
     "cjk_filter_enabled": true,
     "_cjk_filter_enabled_comment": "Filter out hallucinated CJK characters when transcribing Latin-based languages"
   },
+  "profanity_filter": {
+    "enabled": false,
+    "_enabled_comment": "Replace broadcast-forbidden words with **** in all transcription output",
+    "replacement": "****",
+    "_replacement_comment": "String substituted for each matched word",
+    "words": [
+      "fuck", "fucking", "fucked", "fucker",
+      "shit", "shitting", "bullshit",
+      "cunt",
+      "cocksucker", "cock",
+      "motherfucker",
+      "piss",
+      "tits",
+      "ass", "asshole", "asses",
+      "bitch", "bitches",
+      "bastard",
+      "damn", "goddamn",
+      "dick",
+      "pussy",
+      "nigger", "nigga",
+      "faggot", "fag"
+    ],
+    "_words_comment": "List of words to replace. Case-insensitive, word-boundary matched (so 'ass' won't match 'bass' or 'classic')"
+  },
   "live_translation": {
     "enabled": true,
     "_enabled_comment": "Enable real-time translation of live transcription",

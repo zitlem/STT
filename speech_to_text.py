@@ -6032,6 +6032,7 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
             language=ft_language, whisper_params=whisper_params,
             return_segments=True
         )
+        segments = [dict(s, text=apply_profanity_filter(s.get("text", ""))) for s in segments]
 
         socketio.emit(
             "file_progress",
@@ -11212,6 +11213,7 @@ def _flush_staged_to_db(items):
                 text = seg.get("text", "").strip()
                 if not text:
                     continue
+                text = apply_profanity_filter(text)
                 confidence = seg.get("confidence")
                 confidence_threshold = config.get("corrections", {}).get("confidence_threshold", 0.7)
                 needs_review = 1 if (confidence is not None and confidence < confidence_threshold) else 0
@@ -11916,6 +11918,21 @@ def normalize_for_hallucination_check(text):
     # Normalize whitespace
     normalized = ' '.join(normalized.split())
     return normalized
+
+
+def apply_profanity_filter(text):
+    """Replace broadcast-forbidden words with **** (or configured replacement)."""
+    if not text:
+        return text
+    cfg = config.get("profanity_filter", {})
+    if not cfg.get("enabled", False):
+        return text
+    words = cfg.get("words", [])
+    if not words:
+        return text
+    replacement = cfg.get("replacement", "****")
+    pattern = r'\b(' + '|'.join(re.escape(w) for w in words) + r')\b'
+    return re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
 
 def is_whisper_hallucination(text):
@@ -13458,6 +13475,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             if is_whisper_hallucination(sentence):
                                                                 print(f"[SKIP HALLUCINATION] '{sentence[:40]}'", flush=True)
                                                                 continue
+                                                            sentence = apply_profanity_filter(sentence)
                                                             word_count = len(sentence.split())
                                                             is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                             if word_count >= MIN_WORDS and not is_dup:
@@ -13482,6 +13500,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                         break
                                                         # Also save substantial remainder from finalized segments
                                                         if remainder and not is_whisper_hallucination(remainder):
+                                                            remainder = apply_profanity_filter(remainder)
                                                             rem_word_count = len(remainder.split())
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                             if rem_word_count >= MIN_WORDS and not rem_is_dup:
@@ -13572,6 +13591,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 if is_whisper_hallucination(sentence):
                                                                     print(f"[SKIP HALLUCINATION PHRASE] '{sentence[:40]}'", flush=True)
                                                                     continue
+                                                                sentence = apply_profanity_filter(sentence)
                                                                 word_count = len(sentence.split())
                                                                 is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                                 if word_count >= MIN_WORDS and not is_dup:
@@ -13588,6 +13608,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     print(f"[SKIP DUP PHRASE] '{sentence[:40]}'", flush=True)
                                                             # Also save substantial remainder from phrase_complete
                                                             if remainder and not is_whisper_hallucination(remainder):
+                                                                remainder = apply_profanity_filter(remainder)
                                                                 rem_word_count = len(remainder.split())
                                                                 rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                                 if rem_word_count >= MIN_WORDS and not rem_is_dup:
