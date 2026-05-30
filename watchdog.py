@@ -40,6 +40,14 @@ import zipfile
 
 IS_WINDOWS = sys.platform == "win32"
 
+# ---------------------------------------------------------------------------
+# Crash reporting endpoint — set after deploying cloudflare_worker.js
+# ---------------------------------------------------------------------------
+# The Worker URL and key are baked into every release so all users can
+# report without any per-user setup. The GitHub token never leaves Cloudflare.
+_CRASH_WORKER_URL = ""           # fill in after: wrangler deploy
+_CRASH_API_KEY    = "stt-crash-v1"  # matched in the Worker; rate limiting is server-side
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 GITHUB_REPO = "zitlem/STT"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
@@ -717,19 +725,17 @@ def _crash_fingerprint(log_tail: str) -> str:
 
 
 class CrashReporter:
-    """Collects, sanitizes, and files GitHub issues directly via the API.
+    """Collects, sanitizes, and POSTs crash reports to a Cloudflare Worker.
 
-    The GitHub token is read from .crash_token in the app directory — it is
-    never stored in config.json and is excluded from git via .gitignore.
-    Use a fine-grained PAT with only 'Issues: write' on this repo so that
-    even if the file is read by an attacker, the blast radius is minimal.
+    The Worker holds the GitHub token in encrypted CF secrets and files
+    the issue on behalf of any user. The token never touches user machines.
+    All users get crash reporting just by having enabled=true in config.json.
     """
 
-    _TOKEN_FILE  = os.path.join(APP_DIR, '.crash_token')
-    _STATE_FILE  = os.path.join(LOG_DIR, 'crash_reporter.json')
-    _COOLDOWN    = 600   # seconds between reports with the same fingerprint
+    _STATE_FILE    = os.path.join(LOG_DIR, 'crash_reporter.json')
+    _COOLDOWN      = 600    # client-side cooldown per fingerprint (seconds)
     _MAX_LOG_BYTES = 8_000
-    _LOG_LINES   = 120
+    _LOG_LINES     = 120
 
     def __init__(self):
         self._state = self._load_state()
@@ -751,11 +757,10 @@ class CrashReporter:
         except Exception:
             pass
 
-    # -- Rate limiting -------------------------------------------------------
+    # -- Rate limiting (client-side) -----------------------------------------
 
     def _is_rate_limited(self, fingerprint: str) -> bool:
-        last = self._state.get(fingerprint, 0)
-        return (time.time() - last) < self._COOLDOWN
+        return (time.time() - self._state.get(fingerprint, 0)) < self._COOLDOWN
 
     def _mark_sent(self, fingerprint: str):
         self._state[fingerprint] = time.time()
@@ -766,17 +771,15 @@ class CrashReporter:
     # -- Public API ----------------------------------------------------------
 
     def report(self, exit_code: int, consecutive_crashes: int):
-        """Non-blocking: spawns a daemon thread to collect and send the report."""
-        cfg = load_config()
-        cr = cfg.get('crash_reporting', {})
-        if not cr.get('enabled', False):
+        """Non-blocking: fire-and-forget daemon thread."""
+        if not _CRASH_WORKER_URL:
             return
-        repo = cr.get('repo', '').strip()
-        if not repo:
+        cfg = load_config()
+        if not cfg.get('crash_reporting', {}).get('enabled', False):
             return
         threading.Thread(
             target=self._send,
-            args=(exit_code, consecutive_crashes, repo, cfg),
+            args=(exit_code, consecutive_crashes, cfg),
             daemon=True,
             name='CrashReport',
         ).start()
@@ -784,98 +787,54 @@ class CrashReporter:
     # -- Internal ------------------------------------------------------------
 
     def _collect_log(self) -> str:
-        log_path = os.path.join(LOG_DIR, 'stt.log')
         try:
-            with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
-                lines = f.readlines()
-            raw = ''.join(lines[-self._LOG_LINES:])
+            with open(os.path.join(LOG_DIR, 'stt.log'), 'r',
+                      encoding='utf-8', errors='replace') as f:
+                raw = ''.join(f.readlines()[-self._LOG_LINES:])
         except Exception:
             raw = '(stt.log unavailable)'
         return sanitize_log(raw)
 
-    def _read_token(self) -> str:
-        """Read the GitHub token from .crash_token (chmod 600, never in config.json)."""
-        try:
-            with open(self._TOKEN_FILE) as f:
-                return f.read().strip()
-        except FileNotFoundError:
-            logging.warning(
-                '[CrashReport] .crash_token not found — '
-                'create it with your GitHub PAT (Issues: write only) and chmod 600'
-            )
-            return ''
-        except Exception as e:
-            logging.warning(f'[CrashReport] Cannot read .crash_token: {e}')
-            return ''
-
-    def _send(self, exit_code, consecutive_crashes, repo, cfg):
-        token = self._read_token()
-        if not token:
-            return
-
-        log_tail = self._collect_log()
+    def _send(self, exit_code: int, consecutive_crashes: int, cfg: dict):
+        log_tail    = self._collect_log()
         fingerprint = _crash_fingerprint(log_tail)
 
         if self._is_rate_limited(fingerprint):
-            logging.debug(f'[CrashReport] Skipped — rate limited (fingerprint {fingerprint})')
+            logging.debug(f'[CrashReport] Skipped — rate limited ({fingerprint})')
             return
 
-        version  = read_version()
-        os_str   = f'{platform.system()} {platform.release()} {platform.machine()}'
-        ts       = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-        log_body = log_tail[-self._MAX_LOG_BYTES:]
-        gpu      = cfg.get('performance', {}).get('use_gpu', False)
-        model    = cfg.get('model', {}).get('whisper', {}).get('model', 'unknown')
-        backend  = cfg.get('audio', {}).get('backend', 'unknown')
+        payload = {
+            'version':             read_version(),
+            'platform':            f'{platform.system()} {platform.release()} {platform.machine()}',
+            'python_version':      platform.python_version(),
+            'exit_code':           exit_code,
+            'consecutive_crashes': consecutive_crashes,
+            'timestamp':           datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'log_tail':            log_tail[-self._MAX_LOG_BYTES:],
+            'fingerprint':         fingerprint,
+            'gpu_enabled':         cfg.get('performance', {}).get('use_gpu', False),
+            'whisper_model':       cfg.get('model', {}).get('whisper', {}).get('model', 'unknown'),
+            'audio_backend':       cfg.get('audio', {}).get('backend', 'unknown'),
+        }
 
-        exit_label = 'clean exit' if exit_code == 0 else f'exit {exit_code}'
-        title = f'[Crash] v{version} {os_str.split()[0]} — {exit_label} (#{fingerprint})'
-
-        rows = '\n'.join([
-            f'| **Version** | {version} |',
-            f'| **Platform** | {os_str} |',
-            f'| **Python** | {platform.python_version()} |',
-            f'| **Timestamp (UTC)** | {ts} |',
-            f'| **Exit Code** | `{exit_code}` |',
-            f'| **Consecutive Crashes** | {consecutive_crashes} |',
-            f'| **GPU Enabled** | {"Yes" if gpu else "No"} |',
-            f'| **Model** | {model} |',
-            f'| **Audio Backend** | {backend} |',
-            f'| **Fingerprint** | `{fingerprint}` |',
-        ])
-        # Prevent log content from breaking the markdown code fence
-        safe_log = log_body.replace('```', "'''")
-        body = (
-            '## Crash Report\n\n'
-            '> ⚠️ Filed automatically by STT Watchdog. '
-            'Log content has been sanitized (IPs, paths, credentials redacted).\n\n'
-            '| Field | Value |\n|---|---|\n'
-            f'{rows}\n\n'
-            '## Log Tail (sanitized)\n\n'
-            f'```\n{safe_log}\n```\n'
-        )
-
-        issue = {'title': title, 'body': body, 'labels': ['crash-report', 'bug']}
         try:
-            data = json.dumps(issue).encode('utf-8')
-            req = urllib.request.Request(
-                f'https://api.github.com/repos/{repo}/issues',
+            data = json.dumps(payload).encode('utf-8')
+            req  = urllib.request.Request(
+                _CRASH_WORKER_URL,
                 data=data,
                 headers={
-                    'Authorization': f'token {token}',
-                    'Content-Type':  'application/json',
-                    'Accept':        'application/vnd.github.v3+json',
-                    'User-Agent':    f'STT-Watchdog/{version}',
+                    'Content-Type': 'application/json',
+                    'X-Api-Key':    _CRASH_API_KEY,
+                    'User-Agent':   f'STT-Watchdog/{read_version()}',
                 },
                 method='POST',
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 result = json.loads(resp.read().decode())
-            logging.info(f'[CrashReport] Issue filed: {result.get("html_url", "?")}')
+            logging.info(f'[CrashReport] Filed: {result.get("issue_url", "OK")}')
             self._mark_sent(fingerprint)
         except urllib.error.HTTPError as e:
-            body_err = e.read().decode(errors='replace')
-            logging.warning(f'[CrashReport] GitHub API {e.code}: {body_err[:200]}')
+            logging.warning(f'[CrashReport] Worker {e.code}: {e.read().decode()[:120]}')
         except Exception as e:
             logging.warning(f'[CrashReport] Failed: {e}')
 

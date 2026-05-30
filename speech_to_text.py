@@ -388,7 +388,6 @@ DEFAULT_CONFIG = {
     },
     "crash_reporting": {
         "enabled": False,
-        "repo": "zitlem/STT",
     },
 }
 
