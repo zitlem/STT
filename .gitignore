@@ -4,3 +4,7 @@ logs/
 .claude/
 server.log
 /_AUTOMATIC_BACKUP
+.crash_token
+config.json.backup
+config.json.watchdog.tmp
+watchdog.lock
