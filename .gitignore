@@ -11,3 +11,7 @@ config.json.tmp
 .wrangler/
 config.json.watchdog.tmp
 watchdog.lock
+icon.ico
+icon.icns
+icon.png
+icon.iconset/
