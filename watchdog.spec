@@ -99,7 +99,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="STT-Watchdog",
+    name="STT",
     debug=False,
     strip=False,
     upx=True,
@@ -119,5 +119,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="STT-Watchdog",
+    name="STT",
 )

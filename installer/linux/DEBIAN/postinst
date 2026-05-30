@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-chmod +x /opt/STT/STT-Watchdog
+chmod +x /opt/STT/STT
 
 cat > /etc/systemd/system/stt-watchdog.service << 'EOF'
 [Unit]
@@ -10,7 +10,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/STT/STT-Watchdog --headless
+ExecStart=/opt/STT/STT --headless
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
