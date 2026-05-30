@@ -45,7 +45,7 @@ IS_WINDOWS = sys.platform == "win32"
 # ---------------------------------------------------------------------------
 # The Worker URL and key are baked into every release so all users can
 # report without any per-user setup. The GitHub token never leaves Cloudflare.
-_CRASH_WORKER_URL = ""           # fill in after: wrangler deploy
+_CRASH_WORKER_URL = "https://stt-crash-reporter.zitlem-a.workers.dev"
 _CRASH_API_KEY    = "stt-crash-v1"  # matched in the Worker; rate limiting is server-side
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
