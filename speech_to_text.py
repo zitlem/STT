@@ -278,6 +278,7 @@ DEFAULT_CONFIG = {
             "download_progress.json",
             "watchdog.py",
             "watchdog.lock",
+            ".crash_token",
             "VERSION",
             "start_watchdog.sh",
             "start_watchdog.bat",
@@ -387,8 +388,7 @@ DEFAULT_CONFIG = {
     },
     "crash_reporting": {
         "enabled": False,
-        "worker_url": "",
-        "api_key": "",
+        "repo": "zitlem/STT",
     },
 }
 
