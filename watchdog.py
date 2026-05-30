@@ -55,7 +55,13 @@ IS_WINDOWS = sys.platform == "win32"
 _CRASH_WORKER_URL = "https://stt-crash-reporter.zitlem-a.workers.dev"
 _CRASH_API_KEY    = "stt-crash-v1"  # matched in the Worker; rate limiting is server-side
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_FROZEN = getattr(sys, 'frozen', False)
+APP_DIR = (
+    os.path.join(os.path.expanduser("~"), ".stt") if _FROZEN
+    else os.path.dirname(os.path.abspath(__file__))
+)
+os.makedirs(APP_DIR, exist_ok=True)
+
 GITHUB_REPO = "zitlem/STT"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
 VERSION_FILE = os.path.join(APP_DIR, "VERSION")
