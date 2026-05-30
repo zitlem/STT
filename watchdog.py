@@ -33,10 +33,17 @@ import sys
 import tempfile
 import threading
 import time
+import ssl
 import urllib.error
 import urllib.request
 import webbrowser
 import zipfile
+
+try:
+    import certifi
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    _SSL_CTX = None
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -362,7 +369,7 @@ class AutoUpdater:
             "Accept": "application/vnd.github.v3+json",
         }
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as resp:
             return json.loads(resp.read().decode())
 
     def get_latest_release(self, channel):
@@ -426,7 +433,7 @@ class AutoUpdater:
             logging.info(f"[AU] Downloading {remote}...")
             headers = {"User-Agent": f"STT-Watchdog/{read_version()}"}
             req = urllib.request.Request(zipball_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=120, context=_SSL_CTX) as resp:
                 with open(zip_path, "wb") as f:
                     shutil.copyfileobj(resp, f)
 
@@ -829,7 +836,7 @@ class CrashReporter:
                 },
                 method='POST',
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=20, context=_SSL_CTX) as resp:
                 result = json.loads(resp.read().decode())
             logging.info(f'[CrashReport] Filed: {result.get("issue_url", "OK")}')
             self._mark_sent(fingerprint)
@@ -861,6 +868,52 @@ def detect_gui():
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _run_crash_report_test():
+    import datetime, platform
+    setup_logging()
+    print(f"[test] Worker URL : {_CRASH_WORKER_URL or '(not set)'}")
+    if not _CRASH_WORKER_URL:
+        print("[test] FAIL — _CRASH_WORKER_URL is empty. Deploy the Cloudflare Worker first.")
+        raise SystemExit(1)
+
+    fingerprint = "test-" + __import__("hashlib").sha256(b"test-crash-report").hexdigest()[:8]
+    payload = {
+        "version":             read_version(),
+        "platform":            f"{platform.system()} {platform.release()} {platform.machine()}",
+        "python_version":      platform.python_version(),
+        "timestamp":           datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "exit_code":           1,
+        "consecutive_crashes": 1,
+        "gpu_enabled":         False,
+        "whisper_model":       "test",
+        "audio_backend":       "test",
+        "fingerprint":         fingerprint,
+        "log_tail":            "RuntimeError: synthetic test crash — please ignore and close this issue",
+    }
+    data = __import__("json").dumps(payload).encode()
+    req  = urllib.request.Request(
+        _CRASH_WORKER_URL,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "X-Api-Key":    _CRASH_API_KEY,
+            "User-Agent":   f"STT-Watchdog/{read_version()}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=_SSL_CTX) as resp:
+            result = __import__("json").loads(resp.read().decode())
+        print(f"[test] OK — issue filed: {result.get('issue_url', result)}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:300]
+        print(f"[test] FAIL — HTTP {e.code}: {body}")
+        raise SystemExit(1)
+    except Exception as e:
+        print(f"[test] FAIL — {e}")
+        raise SystemExit(1)
+
+
 def main():
     setup_logging()
 
@@ -878,7 +931,16 @@ def main():
         choices=["stable", "beta"],
         help="Set update channel (saved to config.json)",
     )
+    parser.add_argument(
+        "--test-crash-report",
+        action="store_true",
+        help="Send a synthetic crash report and exit (tests the full pipeline)",
+    )
     args = parser.parse_args()
+
+    if args.test_crash_report:
+        _run_crash_report_test()
+        return
 
     _lock = acquire_lock()  # noqa: F841 — keep socket alive
 
