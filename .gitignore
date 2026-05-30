@@ -5,6 +5,7 @@ logs/
 server.log
 /_AUTOMATIC_BACKUP
 .crash_token
+config.json
 config.json.backup
 config.json.watchdog.tmp
 watchdog.lock
