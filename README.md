@@ -146,7 +146,7 @@ Edit `config.json` or use the web interface. Key settings include:
 - **Frontend:** Bootstrap, jQuery, Socket.IO
 - **Database:** SQLite (per-session)
 
-## Cross-Platform Support
+## Cross-Platform Support (Source Install)
 
 Installation scripts are provided for all platforms:
 
