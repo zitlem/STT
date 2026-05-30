@@ -85,6 +85,14 @@ BACKOFF = [5, 10, 30, 60]       # seconds between crash restarts; capped at last
 STABLE_RUN_THRESHOLD = 30        # seconds of uptime before resetting crash counter
 UPDATE_HOUR = 1                  # hour (24h) at which daily update check fires
 
+# Platform-specific binary installer asset name and install command.
+# None in the command list is replaced with the downloaded installer path.
+_PLATFORM_ASSET = {
+    'Darwin':  ('STT-macos.pkg',  ['installer', '-pkg', None, '-target', '/']),
+    'Linux':   ('STT-linux.deb',  ['dpkg', '-i', None]),
+    'Windows': ('STT-Setup.exe',  [None, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']),
+}
+
 # Files/dirs never overwritten during an update
 _UPDATE_PRESERVE = frozenset({
     "config.json",
@@ -387,19 +395,21 @@ class AutoUpdater:
             return json.loads(resp.read().decode())
 
     def get_latest_release(self, channel):
-        """Return (tag_name, zipball_url) or (None, None) if no releases exist."""
+        """Return (tag_name, zipball_url, assets) or (None, None, {}) if no releases exist."""
         try:
             if channel == "beta":
                 data = self._api_get(f"{GITHUB_API_BASE}/releases")
                 if not data:
-                    return None, None
+                    return None, None, {}
                 release = data[0]
             else:
                 release = self._api_get(f"{GITHUB_API_BASE}/releases/latest")
-            return release.get("tag_name"), release.get("zipball_url")
+            assets = {a["name"]: a["browser_download_url"]
+                      for a in release.get("assets", [])}
+            return release.get("tag_name"), release.get("zipball_url"), assets
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                return None, None   # no releases yet
+                return None, None, {}   # no releases yet
             raise
 
     # -- Check & update ------------------------------------------------------
@@ -412,7 +422,7 @@ class AutoUpdater:
         logging.info(f"[AU] Checking for updates (channel: {channel})...")
 
         try:
-            tag, zipball_url = self.get_latest_release(channel)
+            tag, zipball_url, assets = self.get_latest_release(channel)
         except Exception as e:
             result = f"Check failed: {e}"
             logging.warning(f"[AU] {result}")
@@ -435,7 +445,10 @@ class AutoUpdater:
             return
 
         logging.info(f"[AU] Update available: {current} → {remote}")
-        self._apply_update(remote, zipball_url)
+        if _FROZEN:
+            self._apply_binary_update(remote, assets)
+        else:
+            self._apply_update(remote, zipball_url)
 
     def _apply_update(self, remote, zipball_url):
         # Download BEFORE stopping the app so it keeps running during the transfer
@@ -502,6 +515,70 @@ class AutoUpdater:
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
             self.pm.start()   # clears _no_restart, starts fresh process
+
+    def _apply_binary_update(self, remote, assets):
+        """Download and run the platform-native installer for binary (frozen) builds.
+
+        The installer's pre-script stops this service; its post-script starts the
+        updated version.  This method blocks until the process is killed.
+        """
+        plat = platform.system()
+        if plat not in _PLATFORM_ASSET:
+            logging.warning(f"[AU] Binary update not supported on {plat}")
+            return
+
+        asset_name, cmd_template = _PLATFORM_ASSET[plat]
+        url = assets.get(asset_name)
+        if not url:
+            logging.warning(f"[AU] No {asset_name} asset in release {remote}; skipping")
+            return
+
+        tmpdir = tempfile.mkdtemp(prefix="stt-update-")
+        installer_path = os.path.join(tmpdir, asset_name)
+        try:
+            logging.info(f"[AU] Downloading {remote} installer ({asset_name})...")
+            headers = {"User-Agent": f"STT-Watchdog/{read_version()}"}
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=600, context=_SSL_CTX) as resp:
+                with open(installer_path, "wb") as f:
+                    shutil.copyfileobj(resp, f)
+        except Exception as e:
+            logging.error(f"[AU] Installer download failed: {e}")
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            self.state.set(last_update_result=f"Download failed: {e}")
+            return
+
+        # Stop STT first so the installer can overwrite files cleanly.
+        self.state.set(status="updating")
+        self.pm.stop(timeout=20)
+
+        cmd = [installer_path if c is None else c for c in cmd_template]
+        if plat != "Windows":
+            os.chmod(installer_path, 0o755)
+
+        logging.info(f"[AU] Launching installer for {remote}; "
+                     "service will be stopped and restarted by installer scripts")
+        try:
+            if IS_WINDOWS:
+                subprocess.Popen(
+                    cmd,
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+            else:
+                subprocess.Popen(cmd, start_new_session=True)
+        except Exception as e:
+            logging.error(f"[AU] Failed to launch installer: {e}")
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            self.state.set(last_update_result=f"Installer launch failed: {e}")
+            self.pm.start()
+            return
+
+        # Block here; the installer's pre-script (launchctl unload / systemctl stop /
+        # taskkill) will send SIGTERM / kill this process, at which point the shutdown
+        # signal handler exits cleanly and the updated binary takes over.
+        import time
+        while True:
+            time.sleep(30)
 
     # -- Scheduler -----------------------------------------------------------
 
