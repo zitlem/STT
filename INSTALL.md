@@ -281,12 +281,18 @@ pip install -r requirements.txt --force-reinstall
 ## Configuration
 
 ### Main Config File
-Edit `config.json` to customize:
-- Network settings (host, port)
-- Database paths
-- Audio backup settings
-- Model preferences
-- Timezone settings
+`config.json` is created automatically on first run by copying `config.default.json`.
+It is gitignored — edit it freely without worrying about committing passwords or personal settings.
+
+To start from scratch: delete `config.json` and restart the app.
+To update the default template for others: edit `config.default.json` and commit it.
+
+Key settings:
+- Network host, port, and IP whitelist
+- Audio device and capture backend
+- Database paths and filename format
+- Model selection and backend
+- Audio backup paths and formats
 
 ### Web Interface
 Most settings can be configured through the web UI:
