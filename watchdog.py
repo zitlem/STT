@@ -775,7 +775,7 @@ class CrashReporter:
         if not _CRASH_WORKER_URL:
             return
         cfg = load_config()
-        if not cfg.get('crash_reporting', {}).get('enabled', False):
+        if not cfg.get('crash_reporting', {}).get('enabled', True):
             return
         threading.Thread(
             target=self._send,

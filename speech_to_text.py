@@ -387,7 +387,7 @@ DEFAULT_CONFIG = {
         "update_channel": "stable",
     },
     "crash_reporting": {
-        "enabled": False,
+        "enabled": True,
     },
 }
 
