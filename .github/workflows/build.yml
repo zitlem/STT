@@ -70,10 +70,13 @@ jobs:
           uv pip install "git+https://github.com/openai/whisper.git"
           uv pip install faster-whisper silero-vad
           uv pip install SpeechRecognition pyaudio soundfile librosa pydub
-          uv pip install edge-tts piper-tts pytz smbprotocol
+          uv pip install edge-tts piper-tts pytz smbprotocol pillow
       - name: Set version
         shell: bash
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
+      - name: Generate icon
+        shell: bash
+        run: uv run python make_icon.py
       - name: Build
         shell: bash
         run: uv run pyinstaller watchdog.spec --noconfirm
@@ -113,9 +116,11 @@ jobs:
           uv pip install "git+https://github.com/openai/whisper.git"
           uv pip install faster-whisper silero-vad
           uv pip install SpeechRecognition pyaudio soundfile librosa pydub
-          uv pip install edge-tts piper-tts pytz smbprotocol
+          uv pip install edge-tts piper-tts pytz smbprotocol pillow
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
+      - name: Generate icon
+        run: uv run python make_icon.py
       - name: Build
         run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Sign (ad-hoc)
@@ -168,9 +173,11 @@ jobs:
           uv pip install "git+https://github.com/openai/whisper.git"
           uv pip install faster-whisper silero-vad
           uv pip install SpeechRecognition pyaudio soundfile librosa pydub
-          uv pip install edge-tts piper-tts pytz smbprotocol
+          uv pip install edge-tts piper-tts pytz smbprotocol pillow
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
+      - name: Generate icon
+        run: uv run python make_icon.py
       - name: Build
         run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Package installer

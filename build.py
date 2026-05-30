@@ -40,6 +40,9 @@ def main():
         if os.path.exists(d):
             shutil.rmtree(d)
 
+    # Generate application icon (requires Pillow)
+    run([sys.executable, "make_icon.py"])
+
     # Single build: watchdog bundles speech_to_text.py and all STT deps
     run([sys.executable, "-m", "PyInstaller", "watchdog.spec", "--noconfirm"])
 

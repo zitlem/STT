@@ -11,6 +11,7 @@ Compression=none
 SolidCompression=no
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=icon.ico
 
 [Files]
 Source: "dist\STT\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
