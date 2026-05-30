@@ -5,14 +5,17 @@ import sys
 import warnings
 
 # Determine application directory (works for both dev and PyInstaller bundle)
-# APP_DIR = where the exe lives (or script dir in dev) — for user files like config, models, DBs
-# BUNDLE_DIR = where bundled resources live (templates, static) — _MEIPASS in frozen mode
+# APP_DIR    = user data dir: config, models, logs (~/.stt when frozen, script dir in dev)
+# BUNDLE_DIR = bundled read-only assets: templates, static (_MEIPASS when frozen)
 if getattr(sys, 'frozen', False):
-    APP_DIR = os.path.dirname(sys.executable)
+    APP_DIR    = os.path.join(os.path.expanduser("~"), ".stt")
     BUNDLE_DIR = sys._MEIPASS
 else:
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    APP_DIR    = os.path.dirname(os.path.abspath(__file__))
     BUNDLE_DIR = APP_DIR
+
+os.makedirs(APP_DIR, exist_ok=True)
+MODELS_DIR = os.path.join(APP_DIR, "models")
 
 # Suppress NNPACK warnings from PyTorch (harmless but spammy)
 # These are C++ warnings so we need to disable at the PyTorch level
@@ -1060,7 +1063,7 @@ def load_translation_model(use_gpu=True, model_id=None):
 
     # Check ./models/ directory first for local copy
     local_dir_name = model_id.replace("/", "--")
-    local_model_path = os.path.join(os.getcwd(), "models", local_dir_name)
+    local_model_path = os.path.join(MODELS_DIR,local_dir_name)
 
     if os.path.exists(local_model_path):
         model_path = local_model_path
@@ -1818,7 +1821,7 @@ class ModelFactory:
         print(f"Loading Whisper model: {model_name}")
 
         # Check if model exists in ./models directory first
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         whisper_model_dir = os.path.join(models_dir, f"whisper-{model_name}")
 
         # Determine download_root based on where model is located
@@ -1898,7 +1901,7 @@ class ModelFactory:
         device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
 
         # Check for local model first
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         local_model_path = os.path.join(models_dir, f"faster-whisper-{model_name}")
 
         if os.path.exists(local_model_path):
@@ -1925,7 +1928,7 @@ class ModelFactory:
         use_flash_attention = hf_config.get("use_flash_attention", False)
 
         # Check if model exists locally in ./models directory
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         model_dir_name = model_id.replace("/", "--")
         local_model_path = os.path.join(models_dir, model_dir_name)
 
@@ -8436,7 +8439,7 @@ def get_model_info():
 
 
 # Download progress tracking
-DOWNLOAD_PROGRESS_FILE = os.path.join(os.getcwd(), "download_progress.json")
+DOWNLOAD_PROGRESS_FILE = os.path.join(APP_DIR, "download_progress.json")
 
 
 def load_download_progress():
@@ -8675,7 +8678,7 @@ def download_model():
             import whisper
 
             # Create custom download directory in ./models
-            models_dir = os.path.join(os.getcwd(), "models")
+            models_dir = MODELS_DIR
             os.makedirs(models_dir, exist_ok=True)
 
             whisper_dir = os.path.join(models_dir, f"whisper-{model_name}")
@@ -8864,7 +8867,7 @@ def download_model():
 
             # If no local_dir specified, download to ./models directory
             if not local_dir:
-                models_dir = os.path.join(os.getcwd(), "models")
+                models_dir = MODELS_DIR
                 os.makedirs(models_dir, exist_ok=True)
 
                 # Use model name as directory (replace / with --)
@@ -9084,7 +9087,7 @@ def cancel_download():
 
         # Clean up partial download directories/files so model shows as not downloaded
         import shutil
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
 
         # model_id already includes prefix (e.g., "whisper-small.en" or "faster-whisper-base.en")
         # For HuggingFace models like "facebook/nllb-200-distilled-600M", slashes become double dashes
@@ -10029,7 +10032,7 @@ def remove_whisper_model():
                             print(f"[ERROR] Failed to remove {filename}: {e}")
 
         # Check new ./models/whisper-* directory
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         whisper_model_dir = os.path.join(models_dir, f"whisper-{model_name}")
 
         if os.path.exists(whisper_model_dir):
@@ -10077,7 +10080,7 @@ def list_faster_whisper_models():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     try:
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         models_list = []
 
         # Use dynamic model list instead of hardcoded
@@ -10146,7 +10149,7 @@ def download_faster_whisper_model():
 
         from huggingface_hub import snapshot_download
 
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         os.makedirs(models_dir, exist_ok=True)
         local_dir = os.path.join(models_dir, f"faster-whisper-{model_name}")
 
@@ -10217,7 +10220,7 @@ def remove_faster_whisper_model():
         if not model_name:
             return jsonify({"success": False, "error": "model_name required"}), 400
 
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         model_path = os.path.join(models_dir, f"faster-whisper-{model_name}")
 
         if not os.path.exists(model_path):
@@ -10255,7 +10258,7 @@ def list_models():
 
         # Check both old Whisper cache directory and new ./models location
         whisper_cache_old = os.path.expanduser("~/.cache/whisper")
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
 
         # Check old cache location for backward compatibility
         if os.path.exists(whisper_cache_old):
@@ -10302,7 +10305,7 @@ def list_models():
 
         # Get downloaded/custom models (this would scan a models directory)
         downloaded_models = []
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         if os.path.exists(models_dir):
             for item in os.listdir(models_dir):
                 if os.path.isdir(os.path.join(models_dir, item)):
@@ -10379,7 +10382,7 @@ def remove_model():
 
         elif model_type == "huggingface":
             # Remove HuggingFace model directory
-            models_dir = os.path.join(os.getcwd(), "models")
+            models_dir = MODELS_DIR
             # Convert model ID (org/name) to directory name (org--name)
             model_dir_name = model_name.replace("/", "--")
             model_path = os.path.join(models_dir, model_dir_name)
@@ -10398,7 +10401,7 @@ def remove_model():
 
         elif model_type == "local":
             # Remove local model directory
-            models_dir = os.path.join(os.getcwd(), "models")
+            models_dir = MODELS_DIR
             model_path = os.path.join(models_dir, model_name)
 
             if os.path.exists(model_path):
@@ -10427,7 +10430,7 @@ def nllb_status():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     try:
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
 
         # Check ALL NLLB model directories, not just 600M
         if os.path.exists(models_dir):
@@ -10516,7 +10519,7 @@ def download_nllb():
         def download_nllb_model():
             global nllb_download_progress
             try:
-                models_dir = os.path.join(os.getcwd(), "models")
+                models_dir = MODELS_DIR
                 os.makedirs(models_dir, exist_ok=True)
                 nllb_dir_name = "facebook--nllb-200-distilled-600M"
                 nllb_path = os.path.join(models_dir, nllb_dir_name)
@@ -10651,7 +10654,7 @@ def list_nllb_models():
             models = get_default_nllb_models()
 
     # Check which models are downloaded
-    models_dir = os.path.join(os.getcwd(), "models")
+    models_dir = MODELS_DIR
     for model in models:
         dir_name = model["model_id"].replace("/", "--")
         model_path = os.path.join(models_dir, dir_name)
@@ -10775,7 +10778,7 @@ def download_translation_model():
             import logging
 
             # Set up detailed logging
-            log_file = os.path.join(os.getcwd(), "logs", "translation_download.log")
+            log_file = os.path.join(APP_DIR, "logs", "translation_download.log")
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
             # Configure file handler for this download
@@ -10793,7 +10796,7 @@ def download_translation_model():
             dl_logger.info(f"=" * 60)
 
             try:
-                models_dir = os.path.join(os.getcwd(), "models")
+                models_dir = MODELS_DIR
                 os.makedirs(models_dir, exist_ok=True)
                 model_dir_name = model_id.replace("/", "--")
                 model_path = os.path.join(models_dir, model_dir_name)
@@ -11022,7 +11025,7 @@ def remove_translation_model():
         if not model_id:
             return jsonify({"success": False, "error": "model_id is required"})
 
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         model_dir_name = model_id.replace("/", "--")
         model_path = os.path.join(models_dir, model_dir_name)
 
@@ -11057,7 +11060,7 @@ def upload_local_model():
             return jsonify({"success": False, "error": "No files selected"}), 400
 
         # Create models directory if it doesn't exist
-        models_dir = os.path.join(os.getcwd(), "models")
+        models_dir = MODELS_DIR
         os.makedirs(models_dir, exist_ok=True)
 
         # Create model directory
