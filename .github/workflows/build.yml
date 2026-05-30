@@ -56,28 +56,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.11"
       - name: Install dependencies
         shell: bash
         run: |
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install pyinstaller certifi "numpy<2.0.0"
-          pip install flask flask-socketio flask-cors python-socketio
-          pip install transformers huggingface_hub accelerate datasets
-          pip install "git+https://github.com/openai/whisper.git"
-          pip install faster-whisper silero-vad
-          pip install SpeechRecognition pyaudio soundfile librosa pydub
-          pip install edge-tts piper-tts pytz smbprotocol
+          uv venv
+          uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          uv pip install pyinstaller certifi "numpy<2.0.0"
+          uv pip install flask flask-socketio flask-cors python-socketio
+          uv pip install transformers huggingface_hub accelerate datasets
+          uv pip install "git+https://github.com/openai/whisper.git"
+          uv pip install faster-whisper silero-vad
+          uv pip install SpeechRecognition pyaudio soundfile librosa pydub
+          uv pip install edge-tts piper-tts pytz smbprotocol
       - name: Set version
         shell: bash
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Build
         shell: bash
         run: |
-          pyinstaller stt.spec --noconfirm
-          pyinstaller watchdog.spec --noconfirm
+          uv run pyinstaller stt.spec --noconfirm
+          uv run pyinstaller watchdog.spec --noconfirm
           cp dist/STT-Watchdog.exe dist/STT/
       - name: Package
         shell: pwsh
@@ -96,27 +97,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.11"
       - name: Install system deps
         run: brew install portaudio libsndfile
       - name: Install dependencies
         run: |
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install pyinstaller certifi "numpy<2.0.0"
-          pip install flask flask-socketio flask-cors python-socketio
-          pip install transformers huggingface_hub accelerate datasets
-          pip install "git+https://github.com/openai/whisper.git"
-          pip install faster-whisper silero-vad
-          pip install SpeechRecognition pyaudio soundfile librosa pydub
-          pip install edge-tts piper-tts pytz smbprotocol
+          uv venv
+          uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          uv pip install pyinstaller certifi "numpy<2.0.0"
+          uv pip install flask flask-socketio flask-cors python-socketio
+          uv pip install transformers huggingface_hub accelerate datasets
+          uv pip install "git+https://github.com/openai/whisper.git"
+          uv pip install faster-whisper silero-vad
+          uv pip install SpeechRecognition pyaudio soundfile librosa pydub
+          uv pip install edge-tts piper-tts pytz smbprotocol
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Build
         run: |
-          pyinstaller stt.spec --noconfirm
-          pyinstaller watchdog.spec --noconfirm
+          uv run pyinstaller stt.spec --noconfirm
+          uv run pyinstaller watchdog.spec --noconfirm
           cp dist/STT-Watchdog dist/STT/
       - name: Package
         run: tar -czf STT-macos.tar.gz -C dist STT
@@ -134,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.11"
       - name: Install system deps
@@ -143,20 +145,21 @@ jobs:
           sudo apt-get install -y portaudio19-dev python3-dev libasound2-dev libsndfile1
       - name: Install dependencies
         run: |
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install pyinstaller certifi "numpy<2.0.0"
-          pip install flask flask-socketio flask-cors python-socketio
-          pip install transformers huggingface_hub accelerate datasets
-          pip install "git+https://github.com/openai/whisper.git"
-          pip install faster-whisper silero-vad
-          pip install SpeechRecognition pyaudio soundfile librosa pydub
-          pip install edge-tts piper-tts pytz smbprotocol
+          uv venv
+          uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          uv pip install pyinstaller certifi "numpy<2.0.0"
+          uv pip install flask flask-socketio flask-cors python-socketio
+          uv pip install transformers huggingface_hub accelerate datasets
+          uv pip install "git+https://github.com/openai/whisper.git"
+          uv pip install faster-whisper silero-vad
+          uv pip install SpeechRecognition pyaudio soundfile librosa pydub
+          uv pip install edge-tts piper-tts pytz smbprotocol
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Build
         run: |
-          pyinstaller stt.spec --noconfirm
-          pyinstaller watchdog.spec --noconfirm
+          uv run pyinstaller stt.spec --noconfirm
+          uv run pyinstaller watchdog.spec --noconfirm
           cp dist/STT-Watchdog dist/STT/
       - name: Package
         run: tar -czf STT-linux.tar.gz -C dist STT

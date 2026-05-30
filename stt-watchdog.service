@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=YOUR_USER
+User=root
 
 # ── Compiled binary install ────────────────────────────────────────────────
 # ExecStart=/opt/STT/STT-Watchdog --headless
