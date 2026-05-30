@@ -1,32 +1,54 @@
 name: Build Executable
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       platform:
-        description: 'Platform to build for'
+        description: "Platform to build for"
         required: true
-        default: 'all'
+        default: all
         type: choice
-        options:
-          - all
-          - windows
-          - macos
-          - linux
-      publish_release:
-        description: 'Publish as GitHub Release'
+        options: [all, windows, macos, linux]
+      prerelease:
+        description: "Mark as pre-release"
         required: false
-        default: true
+        default: false
         type: boolean
-      release_tag:
-        description: 'Release tag (e.g. v1.0.0). Required if publishing.'
-        required: false
-        type: string
+
+permissions:
+  contents: write
+
+# Self-hosted runners are used because:
+#   - CUDA PyTorch requires a real GPU machine (can't run in GitHub-hosted CI)
+#   - Build output is ~2 GB — faster on local machines with cached packages
+# Register runners: Settings → Actions → Runners → New self-hosted runner
+# Label each runner with its OS: [self-hosted, Windows] / [self-hosted, macOS] / [self-hosted, Linux]
 
 jobs:
-  build-windows:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
-    runs-on: self-hosted
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: [self-hosted, Windows]
+            platform: windows
+            artifact: STT-windows
+          - os: [self-hosted, macOS]
+            platform: macos
+            artifact: STT-macos
+          - os: [self-hosted, Linux]
+            platform: linux
+            artifact: STT-linux
+
+    runs-on: ${{ matrix.os }}
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.platform == 'all' ||
+      github.event.inputs.platform == matrix.platform
+
     defaults:
       run:
         shell: bash
@@ -35,99 +57,79 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Python dependencies
+      # ── Dependencies ───────────────────────────────────────────────────────
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
         run: |
-          pip install pyinstaller
-          pip install flask flask-socketio flask-cors python-socketio
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-          pip install transformers huggingface_hub accelerate datasets
-          pip install openai-whisper faster-whisper silero-vad
-          pip install SpeechRecognition pyaudio soundfile librosa pydub numpy"<2.0.0"
-          pip install edge-tts piper-tts
-          pip install pytz smbprotocol eventlet
+          sudo apt-get update -qq
+          sudo apt-get install -y portaudio19-dev python3-dev libasound2-dev libsndfile1
 
-      - name: Build with PyInstaller
-        run: python build.py
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install portaudio libsndfile
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stt-windows
-          path: dist/stt-windows/
-          retention-days: 30
-
-  build-macos:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Install PyTorch (CUDA on Windows/Linux, MPS on macOS)
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            pip install torch torchaudio
+          else
+            pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+          fi
 
       - name: Install Python dependencies
         run: |
           pip install pyinstaller
           pip install flask flask-socketio flask-cors python-socketio
-          pip install torch torchaudio
+          pip install "numpy<2.0.0"
           pip install transformers huggingface_hub accelerate datasets
-          pip install openai-whisper faster-whisper silero-vad
-          pip install SpeechRecognition pyaudio soundfile librosa pydub numpy"<2.0.0"
+          pip install "git+https://github.com/openai/whisper.git"
+          pip install faster-whisper silero-vad
+          pip install SpeechRecognition pyaudio soundfile librosa pydub
           pip install edge-tts piper-tts
-          pip install pytz smbprotocol eventlet
+          pip install pytz smbprotocol certifi
+          pip install -r requirements.txt --no-deps
 
-      - name: Build with PyInstaller
-        run: python build.py
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build STT
+        run: pyinstaller stt.spec --noconfirm
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stt-macos
-          path: dist/stt-macos/
-          retention-days: 30
+      - name: Build Watchdog
+        run: pyinstaller watchdog.spec --noconfirm
 
-  build-linux:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Python dependencies
+      - name: Copy watchdog into STT dist dir
         run: |
-          pip install pyinstaller
-          pip install flask flask-socketio flask-cors python-socketio
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-          pip install transformers huggingface_hub accelerate datasets
-          pip install openai-whisper faster-whisper silero-vad
-          pip install SpeechRecognition pyaudio soundfile librosa pydub numpy"<2.0.0"
-          pip install edge-tts piper-tts
-          pip install pytz smbprotocol eventlet
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp dist/STT-Watchdog.exe dist/STT/
+          else
+            cp dist/STT-Watchdog dist/STT/
+          fi
 
-      - name: Build with PyInstaller
-        run: python build.py
+      # ── Package ───────────────────────────────────────────────────────────
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/STT -DestinationPath ${{ matrix.artifact }}.zip
 
+      - name: Package (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: tar -czf ${{ matrix.artifact }}.tar.gz -C dist STT
+
+      # ── Artifacts ─────────────────────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: stt-linux
-          path: dist/stt-linux/
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
           retention-days: 30
 
+  # ── Release (tag pushes only) ────────────────────────────────────────────
   release:
-    needs: [build-windows, build-macos, build-linux]
-    # Run even if some platform builds were skipped (not all platforms selected)
-    if: ${{ always() && github.event.inputs.publish_release == 'true' && github.event.inputs.release_tag != '' }}
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: bash
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [self-hosted, Linux]
 
     steps:
       - name: Download all artifacts
@@ -135,23 +137,11 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Zip artifacts
-        run: |
-          cd artifacts
-          for dir in */; do
-            name="${dir%/}"
-            zip -r "../${name}.zip" "$dir"
-          done
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          name: STT ${{ github.event.inputs.release_tag }}
+          name: STT ${{ github.ref_name }}
           draft: false
-          prerelease: false
-          files: |
-            stt-windows.zip
-            stt-macos.zip
-            stt-linux.zip
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          files: artifacts/**/*
           generate_release_notes: true
