@@ -499,6 +499,26 @@
                     ✓ <code>dont forget to subscribe</code> → filtered (apostrophe insensitive)<br>
                     ✗ <code>Thank you</code> → NOT filtered (partial phrase)
                 </div>
+
+                <h3 style="margin-top: 16px;">🚫 Profanity Filter</h3>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="profanity_filter_enabled" onchange="toggleProfanityFilter()">
+                    <label for="profanity_filter_enabled">Enable Profanity Filter</label>
+                </div>
+
+                <small>Replace broadcast-forbidden words with **** in all transcription output.</small>
+
+                <details id="profanity_words_details" style="margin-top: 10px;">
+                    <summary style="cursor: pointer; font-size: 0.85em; color: var(--text-secondary); user-select: none;">
+                        🔒 Show / Edit Word List
+                    </summary>
+                    <div class="form-group" style="margin-top: 8px;">
+                        <label for="profanity_words">Forbidden Words (one per line)</label>
+                        <textarea id="profanity_words" rows="6" placeholder="fuck&#10;shit&#10;..." onblur="saveProfanityWords()"></textarea>
+                        <small>Case-insensitive, word-boundary matched. Changes saved on blur.</small>
+                    </div>
+                </details>
             </div>
 
             <!-- Highlighting Panel -->
@@ -526,6 +546,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadHighlightedWords();
             loadHallucinationFilter();
+            loadProfanityFilter();
 
             // Sync color picker with hex text input
             document.getElementById('new_word_color').addEventListener('input', function() {
@@ -953,6 +974,55 @@
                 }
             } catch (error) {
                 showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function saveProfanityWords() {
+            const words = document.getElementById('profanity_words').value.split('\n')
+                .map(w => w.trim()).filter(w => w.length > 0);
+            try {
+                const response = await fetch('/api/profanity-filter/words', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ words })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('✅ Profanity word list saved', 'success');
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleProfanityFilter() {
+            try {
+                const response = await fetch('/api/profanity-filter/toggle', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showAlert(`✅ Profanity filter ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    showAlert('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function loadProfanityFilter() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                if (data.success) {
+                    const cfg = data.config.profanity_filter || {};
+                    document.getElementById('profanity_filter_enabled').checked = cfg.enabled === true;
+                    const words = cfg.words || [];
+                    document.getElementById('profanity_words').value = words.join('\n');
+                }
+            } catch (error) {
+                console.error('Error loading profanity filter:', error);
             }
         }
 
