@@ -1,0 +1,39 @@
+#!/bin/bash
+set -e
+
+PLIST=/Library/LaunchDaemons/com.stt.watchdog.plist
+
+cat > "$PLIST" << 'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stt.watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/STT/STT-Watchdog</string>
+        <string>--headless</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/var/log/stt-watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/stt-watchdog.log</string>
+</dict>
+</plist>
+PLIST_EOF
+
+chmod 644 "$PLIST"
+chown root:wheel "$PLIST"
+chmod +x /Applications/STT/STT-Watchdog
+launchctl load "$PLIST" 2>/dev/null || true
