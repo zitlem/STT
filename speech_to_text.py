@@ -276,6 +276,14 @@ DEFAULT_CONFIG = {
             "restart_server.sh",
             "restart_server.bat",
             "download_progress.json",
+            "watchdog.py",
+            "watchdog.lock",
+            "VERSION",
+            "start_watchdog.sh",
+            "start_watchdog.bat",
+            "start_watchdog.ps1",
+            "stt-watchdog.service",
+            "com.stt.watchdog.plist",
         ],
         "file_mover": {
             "move_on_transcription_stop": False,
@@ -373,6 +381,9 @@ DEFAULT_CONFIG = {
         "whisper_hotwords_enabled": True,
         "whisper_initial_prompt_enabled": True,
         "nllb_glossary_enabled": True,
+    },
+    "watchdog": {
+        "update_channel": "stable",
     },
 }
 
@@ -6688,7 +6699,7 @@ def restart_server():
 
             # Use systemctl restart if running as a systemd service
             # This is atomic - systemd handles stop+start without race conditions
-            for service_name in ["stt-server", "stt"]:
+            for service_name in ["stt-watchdog", "stt-server", "stt"]:
                 result = subprocess.run(
                     ["systemctl", "is-active", "--quiet", service_name],
                     capture_output=True,
@@ -14266,6 +14277,8 @@ def signal_handler(signum, frame):
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     signal.signal(signal.SIGINT, signal_handler)
+    if sys.platform != "win32":
+        signal.signal(signal.SIGTERM, signal_handler)
 
     transcription_process = multiprocessing.Process(
         target=thread1_function,

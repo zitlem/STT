@@ -104,6 +104,7 @@ install_system_deps() {
         PACKAGES=(
             "python3"
             "python3-dev"
+            "python3-tk"
             "build-essential"
             "git"
             "curl"
@@ -456,6 +457,111 @@ SYSEOF
 }
 
 
+# Function to set up the watchdog service (replaces the bare stt-server service)
+setup_watchdog_service() {
+    if [ "$OS" = "macos" ]; then
+        setup_watchdog_launchd
+    else
+        setup_watchdog_systemd
+    fi
+}
+
+setup_watchdog_launchd() {
+    local PLIST_LABEL="com.stt.watchdog"
+    local PLIST_SRC="$INSTALL_DIR/com.stt.watchdog.plist"
+    local PLIST_DST="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
+    local PYTHON_BIN="$INSTALL_DIR/.venv/bin/python3"
+
+    print_status "Would you like to set up the STT Watchdog as a LaunchAgent?"
+    print_status "(Watchdog provides crash recovery and daily auto-updates)"
+    read -p "Setup Watchdog LaunchAgent? (y/N): " -n 1 -r
+    echo
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    # Substitute INSTALL_DIR placeholder in the plist template
+    sed "s|INSTALL_DIR|$INSTALL_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
+
+    # Stop old bare server LaunchAgent if present
+    launchctl unload "$HOME/Library/LaunchAgents/com.stt.server.plist" 2>/dev/null || true
+
+    launchctl load "$PLIST_DST"
+
+    print_success "Watchdog LaunchAgent installed and loaded"
+    print_status "Service commands:"
+    print_status "  launchctl start $PLIST_LABEL   - Start watchdog + STT"
+    print_status "  launchctl stop $PLIST_LABEL    - Stop watchdog + STT"
+    print_status "  launchctl unload $PLIST_DST    - Remove watchdog service"
+    print_status "  tail -f $INSTALL_DIR/logs/watchdog.log  - Watchdog log"
+    print_status "  tail -f $INSTALL_DIR/logs/stt.log       - STT app log"
+}
+
+setup_watchdog_systemd() {
+    local WATCHDOG_SERVICE="stt-watchdog"
+    local SERVICE_FILE="/etc/systemd/system/$WATCHDOG_SERVICE.service"
+
+    print_status "Would you like to set up the STT Watchdog as a systemd service?"
+    print_status "(Watchdog provides crash recovery and daily auto-updates)"
+    read -p "Setup Watchdog systemd service? (y/N): " -n 1 -r
+    echo
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    print_status "Installing $WATCHDOG_SERVICE.service..."
+
+    sudo tee "$SERVICE_FILE" > /dev/null <<SYSEOF
+[Unit]
+Description=STT Watchdog (manages speech_to_text.py with crash recovery and auto-updates)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+Environment="PYTHONUNBUFFERED=1"
+Environment="HOME=$HOME"
+ExecStart=$INSTALL_DIR/.venv/bin/python3 $INSTALL_DIR/watchdog.py --headless
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$WATCHDOG_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+SYSEOF
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$WATCHDOG_SERVICE"
+
+    # Offer to disable the old bare server service to avoid conflict
+    if systemctl list-unit-files "stt-server.service" &>/dev/null; then
+        print_warning "Old stt-server.service detected."
+        read -p "Disable old stt-server service (recommended)? (Y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            sudo systemctl stop stt-server 2>/dev/null || true
+            sudo systemctl disable stt-server 2>/dev/null || true
+            print_success "stt-server disabled"
+        fi
+    fi
+
+    print_success "Watchdog systemd service installed and enabled"
+    print_status "Service commands:"
+    print_status "  sudo systemctl start $WATCHDOG_SERVICE   - Start watchdog + STT"
+    print_status "  sudo systemctl stop $WATCHDOG_SERVICE    - Stop watchdog + STT"
+    print_status "  sudo systemctl status $WATCHDOG_SERVICE  - Check status"
+    print_status "  sudo journalctl -u $WATCHDOG_SERVICE -f  - Watchdog log"
+    print_status "  tail -f $INSTALL_DIR/logs/stt.log        - STT app log"
+}
+
+
 # Function to display final instructions
 show_final_instructions() {
     echo
@@ -467,14 +573,16 @@ show_final_instructions() {
     echo
     echo "Quick Start:"
     if [ "$OS" = "macos" ]; then
-        echo "  1. Start the application: sudo $INSTALL_DIR/.venv/bin/python3 speech_to_text.py"
+        echo "  1. Start with watchdog:  sudo python3 watchdog.py --headless"
+        echo "     (or GUI mode:         python3 watchdog.py --gui)"
         echo "     (sudo needed for port 80; or change port to 8080 in config.json)"
         echo "  2. Grant microphone access if prompted by macOS"
         echo "  3. Open browser: http://localhost:80"
         echo "  4. Set microphone in config.json: default_microphone: ':0'"
         echo "     (run: ffmpeg -f avfoundation -list_devices true -i \"\" to find device index)"
     else
-        echo "  1. Start the application: sudo ./restart_server.sh"
+        echo "  1. Start with watchdog:  sudo ./start_watchdog.sh"
+        echo "     (or GUI mode:         python3 watchdog.py --gui)"
         echo "  2. Open browser: http://localhost:80"
     fi
     echo "  - Go to /model-manager to download models"
@@ -493,7 +601,14 @@ show_final_instructions() {
             echo
         fi
 
-        if [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
+        if [ -f "/etc/systemd/system/stt-watchdog.service" ]; then
+            echo "Watchdog service installed (crash recovery + auto-updates):"
+            echo "  sudo systemctl start stt-watchdog  - Start"
+            echo "  sudo systemctl stop stt-watchdog   - Stop"
+            echo "  sudo systemctl status stt-watchdog - Status"
+            echo "  tail -f $INSTALL_DIR/logs/stt.log  - STT log"
+            echo
+        elif [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
             echo "Systemd service installed:"
             echo "  sudo systemctl start $SERVICE_NAME  - Start"
             echo "  sudo systemctl stop $SERVICE_NAME   - Stop"
@@ -501,6 +616,12 @@ show_final_instructions() {
             echo
         fi
     fi
+
+    echo "Manual start (with watchdog):"
+    echo "  ./start_watchdog.sh          - Headless (server/production)"
+    echo "  python3 watchdog.py --gui    - Desktop GUI (start/stop + settings)"
+    echo "  python3 watchdog.py --check-update  - Check for updates now"
+    echo
 }
 
 # Main installation function
@@ -525,7 +646,7 @@ main() {
     # Optional setups
     list_audio_devices
     test_audio_capture
-    setup_systemd_service
+    setup_watchdog_service
 
     # Final instructions
     show_final_instructions
