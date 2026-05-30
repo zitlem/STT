@@ -7,5 +7,7 @@ server.log
 .crash_token
 config.json
 config.json.backup
+config.json.tmp
+.wrangler/
 config.json.watchdog.tmp
 watchdog.lock
