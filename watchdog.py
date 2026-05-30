@@ -736,7 +736,8 @@ def _crash_fingerprint(log_tail: str) -> str:
     sig_lines = []
     for line in lines[-60:]:
         s = line.strip()
-        if any(kw in s for kw in ('Error', 'Exception', 'Traceback', 'CRITICAL', 'File "')):
+        if any(kw in s for kw in ('Error', 'Exception', 'Traceback', 'CRITICAL', 'File "',
+                                   'dyld', 'library load', 'system policy')):
             # Strip line numbers so the same bug hashes identically across versions
             sig_lines.append(re.sub(r',\s*line\s+\d+', '', s))
     signature = '\n'.join(sig_lines) if sig_lines else log_tail[-300:]
