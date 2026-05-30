@@ -85,18 +85,16 @@ _UPDATE_PRESERVE = frozenset({
 # ---------------------------------------------------------------------------
 
 def setup_logging():
-    os.makedirs(LOG_DIR, exist_ok=True)
     fmt = "%(asctime)s [%(levelname)s] %(message)s"
-    logging.basicConfig(
-        level=logging.INFO,
-        format=fmt,
-        handlers=[
-            logging.FileHandler(
-                os.path.join(LOG_DIR, "watchdog.log"), encoding="utf-8"
-            ),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
+    handlers = [logging.StreamHandler(sys.stdout)]
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        handlers.insert(0, logging.FileHandler(
+            os.path.join(LOG_DIR, "watchdog.log"), encoding="utf-8"
+        ))
+    except OSError:
+        pass
+    logging.basicConfig(level=logging.INFO, format=fmt, handlers=handlers)
 
 
 # ---------------------------------------------------------------------------
