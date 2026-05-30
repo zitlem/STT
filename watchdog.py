@@ -19,9 +19,12 @@ Usage:
 
 import argparse
 import datetime
+import hashlib
 import json
 import logging
 import os
+import platform
+import re
 import shutil
 import signal
 import socket
@@ -276,11 +279,12 @@ class ProcessManager:
 # ---------------------------------------------------------------------------
 
 class CrashRecoveryThread(threading.Thread):
-    def __init__(self, state, pm, no_restart_event):
+    def __init__(self, state, pm, no_restart_event, crash_reporter=None):
         super().__init__(daemon=True, name="CrashRecovery")
         self.state = state
         self.pm = pm
         self._no_restart = no_restart_event
+        self._crash_reporter = crash_reporter
 
     def run(self):
         last_proc = None
@@ -321,6 +325,8 @@ class CrashRecoveryThread(threading.Thread):
                 f"restarting in {delay}s (crash #{n})"
             )
             self.state.set(status="crashed")
+            if self._crash_reporter:
+                self._crash_reporter.report(returncode, n)
 
             deadline = time.monotonic() + delay
             while time.monotonic() < deadline:
@@ -665,6 +671,166 @@ class GuiWindow:
 
 
 # ---------------------------------------------------------------------------
+# Crash reporting
+# ---------------------------------------------------------------------------
+
+# Ordered list of (compiled-regex, replacement) sanitization rules.
+# Applied in sequence — later rules can operate on already-substituted text.
+_SANITIZE_RULES = [
+    # Auto-generated password printed at startup: [AUTH] Password: <secret>
+    (re.compile(r'(?i)(\[AUTH\]\s*Password\s*:)\s*\S+'), r'\1 [REDACTED]'),
+    # Generic key=value credential patterns (config dumps, debug prints)
+    (re.compile(r'(?i)(password|passwd|secret|api[_-]?key|token)\s*[=:\'\"]\s*\S+'),
+     r'\1=[REDACTED]'),
+    # IPv4 addresses
+    (re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b'), '[IP]'),
+    # SMB/UNC paths: //host/share or \\host\share
+    (re.compile(r'(?://|\\\\)[^\s/\\\'\"]+[/\\][^\s/\\\'\"]+'), '//[HOST]/[SHARE]'),
+    # Unix home dirs: /home/username/ and /Users/username/
+    (re.compile(r'(?<=/home/)[^/\s\'"\\]+'), '[USER]'),
+    (re.compile(r'(?<=/Users/)[^/\s\'"\\]+'), '[USER]'),
+    # Windows user dirs: C:\Users\username
+    (re.compile(r'(?<=\\Users\\)[^\\]+'), '[USER]'),
+    # Email addresses
+    (re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'), '[EMAIL]'),
+]
+
+
+def sanitize_log(text: str) -> str:
+    """Strip PII and credentials from log text before sending in a crash report."""
+    for pattern, replacement in _SANITIZE_RULES:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _crash_fingerprint(log_tail: str) -> str:
+    """Stable 12-char hash of the crash signature (traceback, minus line numbers)."""
+    lines = log_tail.splitlines()
+    sig_lines = []
+    for line in lines[-60:]:
+        s = line.strip()
+        if any(kw in s for kw in ('Error', 'Exception', 'Traceback', 'CRITICAL', 'File "')):
+            # Strip line numbers so the same bug hashes identically across versions
+            sig_lines.append(re.sub(r',\s*line\s+\d+', '', s))
+    signature = '\n'.join(sig_lines) if sig_lines else log_tail[-300:]
+    return hashlib.sha256(signature.encode('utf-8', errors='replace')).hexdigest()[:12]
+
+
+class CrashReporter:
+    """Collects, sanitizes, and ships crash reports to a Cloudflare Worker."""
+
+    _STATE_FILE = os.path.join(LOG_DIR, 'crash_reporter.json')
+    _COOLDOWN = 600   # seconds between reports with the same fingerprint
+    _MAX_LOG_BYTES = 8_000
+    _LOG_LINES = 120
+
+    def __init__(self):
+        self._state = self._load_state()
+
+    # -- Persistence ---------------------------------------------------------
+
+    def _load_state(self):
+        try:
+            with open(self._STATE_FILE) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_state(self):
+        try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            with open(self._STATE_FILE, 'w') as f:
+                json.dump(self._state, f)
+        except Exception:
+            pass
+
+    # -- Rate limiting -------------------------------------------------------
+
+    def _is_rate_limited(self, fingerprint: str) -> bool:
+        last = self._state.get(fingerprint, 0)
+        return (time.time() - last) < self._COOLDOWN
+
+    def _mark_sent(self, fingerprint: str):
+        self._state[fingerprint] = time.time()
+        cutoff = time.time() - 86400
+        self._state = {k: v for k, v in self._state.items() if v > cutoff}
+        self._save_state()
+
+    # -- Public API ----------------------------------------------------------
+
+    def report(self, exit_code: int, consecutive_crashes: int):
+        """Non-blocking: spawns a daemon thread to collect and send the report."""
+        cfg = load_config()
+        cr = cfg.get('crash_reporting', {})
+        if not cr.get('enabled', False):
+            return
+        worker_url = cr.get('worker_url', '').strip()
+        if not worker_url:
+            return
+        api_key = cr.get('api_key', '').strip()
+        threading.Thread(
+            target=self._send,
+            args=(exit_code, consecutive_crashes, worker_url, api_key, cfg),
+            daemon=True,
+            name='CrashReport',
+        ).start()
+
+    # -- Internal ------------------------------------------------------------
+
+    def _collect_log(self) -> str:
+        log_path = os.path.join(LOG_DIR, 'stt.log')
+        try:
+            with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.readlines()
+            raw = ''.join(lines[-self._LOG_LINES:])
+        except Exception:
+            raw = '(stt.log unavailable)'
+        return sanitize_log(raw)
+
+    def _send(self, exit_code, consecutive_crashes, worker_url, api_key, cfg):
+        log_tail = self._collect_log()
+        fingerprint = _crash_fingerprint(log_tail)
+
+        if self._is_rate_limited(fingerprint):
+            logging.debug(f'[CrashReport] Skipped — rate limited (fingerprint {fingerprint})')
+            return
+
+        payload = {
+            'version':            read_version(),
+            'platform':           f'{platform.system()} {platform.release()} {platform.machine()}',
+            'python_version':     platform.python_version(),
+            'exit_code':          exit_code,
+            'consecutive_crashes': consecutive_crashes,
+            'timestamp':          datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'log_tail':           log_tail[-self._MAX_LOG_BYTES:],
+            'fingerprint':        fingerprint,
+            'gpu_enabled':        cfg.get('performance', {}).get('use_gpu', False),
+            'whisper_model':      cfg.get('model', {}).get('whisper', {}).get('model', 'unknown'),
+            'audio_backend':      cfg.get('audio', {}).get('backend', 'unknown'),
+        }
+
+        try:
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                worker_url,
+                data=data,
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-Api-Key':    api_key,
+                    'User-Agent':   f'STT-Watchdog/{read_version()}',
+                },
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode())
+            issue_url = result.get('issue_url', '')
+            logging.info(f'[CrashReport] Filed: {issue_url or "OK"}')
+            self._mark_sent(fingerprint)
+        except Exception as e:
+            logging.warning(f'[CrashReport] Failed to send: {e}')
+
+
+# ---------------------------------------------------------------------------
 # GUI availability detection
 # ---------------------------------------------------------------------------
 
@@ -718,7 +884,8 @@ def main():
     no_restart = threading.Event()
     state = WatchdogState()
     pm = ProcessManager(state, no_restart)
-    crash_thread = CrashRecoveryThread(state, pm, no_restart)
+    crash_reporter = CrashReporter()
+    crash_thread = CrashRecoveryThread(state, pm, no_restart, crash_reporter)
     updater = AutoUpdater(state, pm)
 
     if args.check_update:
