@@ -504,7 +504,7 @@ def load_config():
                     "backend": "ffmpeg",
                     "_backend_comment": "Audio capture backend: 'ffmpeg' (recommended, more reliable) or 'pyaudio' (legacy, may hang on some systems)",
                     "_backend_options": ["ffmpeg", "pyaudio"],
-                    "default_microphone": "plughw:1,0",
+                    "default_microphone": "default",
                     "_default_microphone_comment": "Audio device name. For ffmpeg: 'default', 'plughw:0,0', 'plughw:1,0', etc. Use plughw for better format compatibility.",
                     "energy_threshold": 100,
                     "_energy_threshold_comment": "Energy level for mic to detect speech. Lower = more sensitive, Higher = less sensitive",
@@ -554,7 +554,7 @@ def load_config():
                     "_port_comment": "Server port. Port 80 requires admin/root privileges. Use 8080 for non-privileged access",
                     "update_interval": 0.5,
                     "_update_interval_comment": "Seconds between web UI updates. Lower = more responsive, Higher = less network traffic",
-                    "settings_ip_whitelist": ["127.0.0.1", "::1", "10.1.10.0/24"],
+                    "settings_ip_whitelist": ["127.0.0.1", "::1"],
                     "_settings_ip_whitelist_comment": "IP addresses or CIDR ranges allowed to access settings. Empty array = allow all. Example: ['127.0.0.1', '192.168.1.0/24']",
                     "password_auth": {
                         "enabled": True,
@@ -796,6 +796,12 @@ def load_config():
                 json.dump(full_config, f, indent=2)
             print(f"[OK] Created '{CONFIG_FILE}' with full documentation.")
             print(f"[NOTE] You can edit this file to change default settings.")
+            default_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.default.json")
+            try:
+                with open(default_file, "w") as f:
+                    json.dump(full_config, f, indent=2)
+            except Exception:
+                pass
 
             # Return the config without comments for runtime use
             return DEFAULT_CONFIG
