@@ -1,0 +1,3 @@
+#!/bin/bash
+systemctl stop stt-watchdog || true
+systemctl disable stt-watchdog || true

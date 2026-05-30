@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+chmod +x /opt/STT/STT-Watchdog
+
+cat > /etc/systemd/system/stt-watchdog.service << 'EOF'
+[Unit]
+Description=STT Watchdog
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/STT/STT-Watchdog --headless
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stt-watchdog
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable stt-watchdog
+systemctl start stt-watchdog || true
