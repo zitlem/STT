@@ -4495,6 +4495,39 @@ def update_hallucination_phrases():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/profanity-filter/toggle", methods=["POST"])
+def toggle_profanity_filter():
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+    global config
+    try:
+        if "profanity_filter" not in config:
+            config["profanity_filter"] = {"enabled": False, "words": []}
+        current = config["profanity_filter"].get("enabled", False)
+        config["profanity_filter"]["enabled"] = not current
+        save_config(config)
+        return jsonify({"success": True, "enabled": config["profanity_filter"]["enabled"]})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/profanity-filter/words", methods=["POST"])
+def update_profanity_words():
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+    global config
+    try:
+        data = request.get_json()
+        words = data.get("words", [])
+        if "profanity_filter" not in config:
+            config["profanity_filter"] = {"enabled": False, "words": []}
+        config["profanity_filter"]["words"] = words
+        save_config(config)
+        return jsonify({"success": True, "words": words})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/url-builder/defaults", methods=["POST"])
 def save_url_builder_defaults():
     """API endpoint to save URL builder default settings"""
