@@ -92,25 +92,47 @@ python3 -c "import torch; print(f'MPS available: {torch.backends.mps.is_availabl
 
 ## Running the Application
 
-### Option 1: Systemd Service (Recommended)
+### Option 1: Watchdog — recommended for production
 
-The install script can set up a systemd service for auto-start on boot:
+The Watchdog process manages STT with automatic crash recovery and auto-updates.
+Run it headless (no GUI) so it keeps STT alive in the background.
+
+**Binary install (downloaded release):**
 
 ```bash
-# Service commands
-sudo systemctl start stt      # Start service
-sudo systemctl stop stt       # Stop service
-sudo systemctl restart stt    # Restart service
-sudo systemctl status stt     # Check status
-sudo systemctl enable stt     # Enable auto-start on boot
-sudo systemctl disable stt    # Disable auto-start
+# Linux / macOS
+./STT-Watchdog --headless
 
-# View logs
-sudo journalctl -u stt -f     # Follow live logs
-sudo journalctl -u stt -n 100 # Last 100 lines
+# Windows
+STT-Watchdog.exe --headless
 ```
 
-### Option 2: Manual Start
+The helper scripts handle logging automatically:
+
+```bash
+# Linux / macOS
+./start_watchdog.sh
+
+# Windows (cmd)
+start_watchdog.bat
+
+# Windows (PowerShell)
+.\start_watchdog.ps1
+```
+
+Logs go to `~/.stt/logs/watchdog.log` (binary) or `logs/watchdog.log` (source).
+
+**Source install:**
+
+```bash
+# Activate virtual environment first if you use one
+source .venv/bin/activate   # Linux / macOS
+.venv\Scripts\activate      # Windows
+
+python3 watchdog.py --headless
+```
+
+### Option 2: Direct start — for development / testing
 
 ```bash
 # If using virtual environment, activate it first:
@@ -132,6 +154,66 @@ Open your browser to:
 2. Go to `/server-settings` to configure paths and network
 3. Go to `/live-settings` to configure audio device and language
 4. Start transcribing on the home page!
+
+---
+
+## Service Setup (Auto-start on Boot)
+
+### Linux — systemd
+
+```bash
+sudo cp stt-watchdog.service /etc/systemd/system/
+```
+
+Open the file and set `User=` to your username. For a **source install** the `ExecStart`
+line is already uncommented; for a **binary install** swap it with the commented binary line.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now stt-watchdog
+
+# Useful commands
+sudo systemctl status stt-watchdog
+sudo journalctl -u stt-watchdog -f
+```
+
+### macOS — LaunchAgent
+
+```bash
+cp com.stt.watchdog.plist ~/Library/LaunchAgents/
+```
+
+Edit the file and replace every `INSTALL_DIR` placeholder with the full path to your
+STT directory. For a **binary install** follow the comment in the plist to switch
+`ProgramArguments` to the single binary path.
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.stt.watchdog.plist
+
+# Check it's running
+launchctl list | grep stt
+
+# View logs
+tail -f ~/.stt/logs/watchdog.log
+```
+
+To stop and remove:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.stt.watchdog.plist
+```
+
+### Windows — Task Scheduler
+
+1. Open **Task Scheduler** → *Create Basic Task*
+2. **Trigger:** At log on (or At startup for system-wide)
+3. **Action:** Start a program
+   - Binary install: `C:\path\to\STT-Watchdog.exe`, argument `--headless`
+   - Source install: `pythonw.exe`, argument `"C:\path\to\watchdog.py" --headless`
+4. **Settings:** Enable *Run whether user is logged on or not* for true headless operation
+
+Alternatively, run `start_watchdog.bat` or `start_watchdog.ps1` from the Startup folder
+(`shell:startup` in Run dialog) for a simpler per-user setup.
 
 ---
 
