@@ -76,13 +76,10 @@ jobs:
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Build
         shell: bash
-        run: |
-          uv run pyinstaller stt.spec --noconfirm
-          uv run pyinstaller watchdog.spec --noconfirm
-          cp dist/STT-Watchdog.exe dist/STT/
+        run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Package
         shell: pwsh
-        run: Compress-Archive -Path dist\STT -DestinationPath STT-windows.zip
+        run: Compress-Archive -Path dist\STT-Watchdog -DestinationPath STT-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: STT-windows
@@ -116,20 +113,16 @@ jobs:
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Build
-        run: |
-          uv run pyinstaller stt.spec --noconfirm
-          uv run pyinstaller watchdog.spec --noconfirm
-          cp dist/STT-Watchdog dist/STT/
+        run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Sign (ad-hoc)
         run: |
-          find dist/STT/_internal -type f \( -name "*.dylib" -o -name "*.so" \) \
+          find dist/STT-Watchdog/_internal -type f \( -name "*.dylib" -o -name "*.so" \) \
             -exec codesign --force --sign - {} \;
-          find dist/STT/_internal -maxdepth 1 -name "Python" -type f \
+          find dist/STT-Watchdog/_internal -maxdepth 1 -name "Python" -type f \
             -exec codesign --force --sign - {} \;
-          codesign --force --sign - dist/STT/STT
-          codesign --force --sign - dist/STT/STT-Watchdog
+          codesign --force --sign - dist/STT-Watchdog/STT-Watchdog
       - name: Package
-        run: tar -czf STT-macos.tar.gz -C dist STT
+        run: tar -czf STT-macos.tar.gz -C dist STT-Watchdog
       - uses: actions/upload-artifact@v4
         with:
           name: STT-macos
@@ -165,12 +158,9 @@ jobs:
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Build
-        run: |
-          uv run pyinstaller stt.spec --noconfirm
-          uv run pyinstaller watchdog.spec --noconfirm
-          cp dist/STT-Watchdog dist/STT/
+        run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Package
-        run: tar -czf STT-linux.tar.gz -C dist STT
+        run: tar -czf STT-linux.tar.gz -C dist STT-Watchdog
       - uses: actions/upload-artifact@v4
         with:
           name: STT-linux

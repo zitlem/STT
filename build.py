@@ -41,24 +41,15 @@ def main():
         if os.path.exists(d):
             shutil.rmtree(d)
 
-    # Build main app
-    run([sys.executable, "-m", "PyInstaller", "stt.spec", "--noconfirm"])
-
-    # Build watchdog
+    # Single build: watchdog bundles speech_to_text.py and all STT deps
     run([sys.executable, "-m", "PyInstaller", "watchdog.spec", "--noconfirm"])
-
-    # Copy watchdog into the STT dist dir so it ships together
-    watchdog_src = os.path.join("dist", "STT-Watchdog.exe" if sys.platform == "win32" else "STT-Watchdog")
-    watchdog_dst = os.path.join("dist", "STT", os.path.basename(watchdog_src))
-    shutil.copy2(watchdog_src, watchdog_dst)
-    print(f"Copied {watchdog_src} → {watchdog_dst}")
 
     # Clean intermediate build dir
     shutil.rmtree("build", ignore_errors=True)
 
-    out = os.path.abspath(os.path.join("dist", "STT"))
+    out = os.path.abspath(os.path.join("dist", "STT-Watchdog"))
     print(f"\nBuild complete: {out}")
-    exe = "STT.exe" if sys.platform == "win32" else "STT"
+    exe = "STT-Watchdog.exe" if sys.platform == "win32" else "STT-Watchdog"
     print(f"Run: {os.path.join(out, exe)}")
 
 

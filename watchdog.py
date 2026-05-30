@@ -70,11 +70,13 @@ LOG_DIR = os.path.join(APP_DIR, "logs")
 
 # When frozen the watchdog launches the bundled STT exe (same install dir).
 # In dev mode it launches the Python script via the venv.
-if _FROZEN:
-    _install_dir = os.path.dirname(sys.executable)
-    STT_SCRIPT = os.path.join(_install_dir, "STT.exe" if IS_WINDOWS else "STT")
-else:
-    STT_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "speech_to_text.py")
+# Frozen: relaunch self with --run-stt (speech_to_text.py is bundled in _internal).
+# Dev: launch speech_to_text.py directly via the venv Python.
+STT_SCRIPT = (
+    None
+    if _FROZEN else
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "speech_to_text.py")
+)
 
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
@@ -236,7 +238,7 @@ class ProcessManager:
                 except Exception:
                     pass
             self._log_fh = open(log_path, "a", encoding="utf-8")
-            cmd = [STT_SCRIPT] if _FROZEN else [self._python, STT_SCRIPT]
+            cmd = [sys.executable, '--run-stt'] if _FROZEN else [self._python, STT_SCRIPT]
             proc = subprocess.Popen(
                 cmd,
                 cwd=APP_DIR,
@@ -928,6 +930,16 @@ def _run_crash_report_test():
 
 
 def main():
+    if '--run-stt' in sys.argv:
+        import multiprocessing, runpy
+        multiprocessing.freeze_support()
+        _stt = os.path.join(
+            sys._MEIPASS if _FROZEN else os.path.dirname(os.path.abspath(__file__)),
+            'speech_to_text.py',
+        )
+        runpy.run_path(_stt, run_name='__main__')
+        sys.exit(0)
+
     setup_logging()
 
     parser = argparse.ArgumentParser(description="STT Watchdog")
