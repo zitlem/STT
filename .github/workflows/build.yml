@@ -6,125 +6,142 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      windows:
+        description: "Build Windows"
+        type: boolean
+        default: true
+      macos:
+        description: "Build macOS"
+        type: boolean
+        default: true
+      linux:
+        description: "Build Linux"
+        type: boolean
+        default: true
       prerelease:
         description: "Mark as pre-release"
-        required: false
-        default: false
         type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-            artifact: STT-windows
-          - os: macos-latest
-            platform: macos
-            artifact: STT-macos
-          - os: ubuntu-22.04
-            platform: linux
-            artifact: STT-linux
-
-    runs-on: ${{ matrix.os }}
-
+  # ── Per-platform build jobs ────────────────────────────────────────────────
+  build-windows:
+    if: github.event_name == 'push' || inputs.windows
+    runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      # ── System packages ────────────────────────────────────────────────────
-      - name: Install system deps (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y portaudio19-dev python3-dev libasound2-dev libsndfile1
-
-      - name: Install system deps (macOS)
-        if: runner.os == 'macOS'
-        run: brew install portaudio libsndfile
-
-      # ── Python packages ────────────────────────────────────────────────────
-      # CPU-only PyTorch keeps the build under GitHub-hosted runner limits.
-      # For CUDA support users should run from source or use self-hosted runners.
-      - name: Install PyTorch (CPU)
-        run: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-
       - name: Install dependencies
+        shell: bash
         run: |
-          pip install pyinstaller certifi
-          pip install "numpy<2.0.0"
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install pyinstaller certifi "numpy<2.0.0"
           pip install flask flask-socketio flask-cors python-socketio
           pip install transformers huggingface_hub accelerate datasets
           pip install "git+https://github.com/openai/whisper.git"
           pip install faster-whisper silero-vad
           pip install SpeechRecognition pyaudio soundfile librosa pydub
-          pip install edge-tts piper-tts
-          pip install pytz smbprotocol
-
-      # ── Build ──────────────────────────────────────────────────────────────
-      - name: Build STT
-        run: pyinstaller stt.spec --noconfirm
-
-      - name: Build Watchdog
-        run: pyinstaller watchdog.spec --noconfirm
-
-      - name: Copy watchdog into STT dist
+          pip install edge-tts piper-tts pytz smbprotocol
+      - name: Build
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cp dist/STT-Watchdog.exe dist/STT/
-          else
-            cp dist/STT-Watchdog dist/STT/
-          fi
-
-      # ── Package ───────────────────────────────────────────────────────────
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
+          pyinstaller stt.spec --noconfirm
+          pyinstaller watchdog.spec --noconfirm
+          cp dist/STT-Watchdog.exe dist/STT/
+      - name: Package
         shell: pwsh
-        run: Compress-Archive -Path dist\STT -DestinationPath ${{ matrix.artifact }}.zip
-
-      - name: Package (macOS / Linux)
-        if: runner.os != 'Windows'
-        run: tar -czf ${{ matrix.artifact }}.tar.gz -C dist STT
-
-      # ── Upload ────────────────────────────────────────────────────────────
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        run: Compress-Archive -Path dist\STT -DestinationPath STT-windows.zip
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: |
-            ${{ matrix.artifact }}.zip
-            ${{ matrix.artifact }}.tar.gz
-          if-no-files-found: error
+          name: STT-windows
+          path: STT-windows.zip
           retention-days: 30
 
-  # ── GitHub Release (tag pushes only) ──────────────────────────────────────
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
-
+  build-macos:
+    if: github.event_name == 'push' || inputs.macos
+    runs-on: macos-latest
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install system deps
+        run: brew install portaudio libsndfile
+      - name: Install dependencies
+        run: |
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install pyinstaller certifi "numpy<2.0.0"
+          pip install flask flask-socketio flask-cors python-socketio
+          pip install transformers huggingface_hub accelerate datasets
+          pip install "git+https://github.com/openai/whisper.git"
+          pip install faster-whisper silero-vad
+          pip install SpeechRecognition pyaudio soundfile librosa pydub
+          pip install edge-tts piper-tts pytz smbprotocol
+      - name: Build
+        run: |
+          pyinstaller stt.spec --noconfirm
+          pyinstaller watchdog.spec --noconfirm
+          cp dist/STT-Watchdog dist/STT/
+      - name: Package
+        run: tar -czf STT-macos.tar.gz -C dist STT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STT-macos
+          path: STT-macos.tar.gz
+          retention-days: 30
+
+  build-linux:
+    if: github.event_name == 'push' || inputs.linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y portaudio19-dev python3-dev libasound2-dev libsndfile1
+      - name: Install dependencies
+        run: |
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install pyinstaller certifi "numpy<2.0.0"
+          pip install flask flask-socketio flask-cors python-socketio
+          pip install transformers huggingface_hub accelerate datasets
+          pip install "git+https://github.com/openai/whisper.git"
+          pip install faster-whisper silero-vad
+          pip install SpeechRecognition pyaudio soundfile librosa pydub
+          pip install edge-tts piper-tts pytz smbprotocol
+      - name: Build
+        run: |
+          pyinstaller stt.spec --noconfirm
+          pyinstaller watchdog.spec --noconfirm
+          cp dist/STT-Watchdog dist/STT/
+      - name: Package
+        run: tar -czf STT-linux.tar.gz -C dist STT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STT-linux
+          path: STT-linux.tar.gz
+          retention-days: 30
+
+  # ── Release (tag pushes only) ──────────────────────────────────────────────
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    if: always() && startsWith(github.ref, 'refs/tags/') && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           name: STT ${{ github.ref_name }}
-          draft: false
-          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          prerelease: ${{ inputs.prerelease == true }}
           files: artifacts/**/*
           generate_release_notes: true
