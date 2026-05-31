@@ -266,6 +266,7 @@ class ProcessManager:
                 stdout=self._log_fh,
                 stderr=self._log_fh,
                 close_fds=not IS_WINDOWS,
+                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
             )
             self.state.set(process=proc, status="running", consecutive_crashes=0)
             logging.info(f"[PM] STT started (PID {proc.pid})")
