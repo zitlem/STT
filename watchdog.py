@@ -625,6 +625,7 @@ class GuiWindow:
         self.pm = pm
         self.updater = updater
         self.root = tk.Tk()
+        self._transcription_running = False
         self._build_ui()
         self.root.after(500, self._poll)
 
@@ -633,26 +634,36 @@ class GuiWindow:
         root = self.root
         root.title(f"STT Watchdog v{read_version()}")
         root.resizable(False, False)
-        root.geometry("330x320")
+        root.geometry("330x360")
 
         pad = {"padx": 12, "pady": 4}
 
-        # ── Status row ──────────────────────────────────────────────────────
+        # ── Web UI row ───────────────────────────────────────────────────────
         sf = tk.Frame(root)
         sf.pack(fill="x", **pad)
-        tk.Label(sf, text="Status:", width=9, anchor="w").pack(side="left")
+        tk.Label(sf, text="Web UI:", width=13, anchor="w").pack(side="left")
         self._status_lbl = tk.Label(
             sf, text="● Stopped", fg="red", font=("", 10, "bold")
         )
-        self._status_lbl.pack(side="left")
-
-        # ── Start / Stop ────────────────────────────────────────────────────
-        bf = tk.Frame(root)
-        bf.pack(**pad)
+        self._status_lbl.pack(side="left", expand=True, anchor="w")
         self._toggle_btn = tk.Button(
-            bf, text="Start", width=12, command=self._on_toggle
+            sf, text="Start", width=10, command=self._on_toggle
         )
-        self._toggle_btn.pack()
+        self._toggle_btn.pack(side="right")
+
+        # ── Transcription row ────────────────────────────────────────────────
+        tf = tk.Frame(root)
+        tf.pack(fill="x", **pad)
+        tk.Label(tf, text="Transcription:", width=13, anchor="w").pack(side="left")
+        self._transcription_lbl = tk.Label(
+            tf, text="● Stopped", fg="red", font=("", 10, "bold")
+        )
+        self._transcription_lbl.pack(side="left", expand=True, anchor="w")
+        self._transcription_btn = tk.Button(
+            tf, text="Start", width=10, command=self._on_toggle_transcription,
+            state="disabled"
+        )
+        self._transcription_btn.pack(side="right")
 
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
@@ -728,6 +739,33 @@ class GuiWindow:
             text="Stop" if status == "running" else "Start"
         )
 
+        # ── Transcription button ─────────────────────────────────────────────
+        if status == "running":
+            self._transcription_btn.config(state="normal")
+            try:
+                import urllib.request, json as _json
+                cfg = load_config()
+                port = cfg.get("web_server", {}).get("port", 8080)
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/api/transcription/status", timeout=1
+                ) as r:
+                    data = _json.loads(r.read())
+                running = data.get("state", {}).get("running", False)
+                self._transcription_lbl.config(
+                    text="● Active" if running else "● Stopped",
+                    fg="green" if running else "red",
+                )
+                self._transcription_btn.config(
+                    text="Stop" if running else "Start"
+                )
+                self._transcription_running = running
+            except Exception:
+                self._transcription_lbl.config(text="● Unknown", fg="gray")
+        else:
+            self._transcription_btn.config(state="disabled", text="Start")
+            self._transcription_lbl.config(text="● Stopped", fg="red")
+            self._transcription_running = False
+
         chk = self.state.get("last_update_check")
         res = self.state.get("last_update_result")
         if chk:
@@ -742,6 +780,22 @@ class GuiWindow:
             threading.Thread(target=self.pm.stop, daemon=True).start()
         else:
             threading.Thread(target=self.pm.start, daemon=True).start()
+
+    def _on_toggle_transcription(self):
+        import urllib.request, urllib.error
+        cfg = load_config()
+        port = cfg.get("web_server", {}).get("port", 8080)
+        action = "stop" if self._transcription_running else "start"
+        def _call():
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/transcription/{action}",
+                    data=b"", method="POST"
+                )
+                urllib.request.urlopen(req, timeout=5)
+            except Exception as e:
+                logging.warning(f"[GUI] Transcription {action} failed: {e}")
+        threading.Thread(target=_call, daemon=True).start()
 
     def _on_save(self):
         try:
