@@ -1022,7 +1022,8 @@ class CrashReporter:
 
 def detect_gui():
     """Return True if a functional tkinter display is available."""
-    if not IS_WINDOWS:
+    # Linux requires an X11 or Wayland display; macOS and Windows use native APIs.
+    if sys.platform.startswith("linux"):
         if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
             return False
     try:
@@ -1144,7 +1145,8 @@ def main():
         _run_crash_report_test()
         return
 
-    _lock = acquire_lock(open_browser_if_taken=args.gui)  # noqa: F841 — keep socket alive
+    _will_be_gui = args.gui or (not args.headless and detect_gui())
+    _lock = acquire_lock(open_browser_if_taken=_will_be_gui)  # noqa: F841 — keep socket alive
 
     if args.channel:
         cfg = load_config()
