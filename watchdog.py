@@ -1085,9 +1085,13 @@ def _run_crash_report_test():
 
 
 def main():
+    # Must be first: intercepts multiprocessing child re-invocations
+    # (--multiprocessing-fork, -c ...) before argparse ever sees them.
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     if '--run-stt' in sys.argv:
-        import multiprocessing, runpy, io
-        multiprocessing.freeze_support()
+        import runpy, io
         # On Windows GUI builds sys.stdout/stderr are None; reconnect to the
         # file handles that the watchdog's Popen set so logging actually works.
         if sys.stdout is None:
