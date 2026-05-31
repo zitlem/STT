@@ -1091,7 +1091,7 @@ def main():
     multiprocessing.freeze_support()
 
     if '--run-stt' in sys.argv:
-        import runpy, io
+        import importlib.util, io
         # On Windows GUI builds sys.stdout/stderr are None; reconnect to the
         # file handles that the watchdog's Popen set so logging actually works.
         if sys.stdout is None:
@@ -1108,7 +1108,13 @@ def main():
             sys._MEIPASS if _FROZEN else os.path.dirname(os.path.abspath(__file__)),
             'speech_to_text.py',
         )
-        runpy.run_path(_stt, run_name='__main__')
+        # Replace sys.modules['__main__'] with the speech_to_text module so
+        # that multiprocessing can pickle functions (e.g. thread1_function)
+        # defined there when spawning worker processes on Windows.
+        _spec = importlib.util.spec_from_file_location('__main__', _stt)
+        _mod  = importlib.util.module_from_spec(_spec)
+        sys.modules['__main__'] = _mod
+        _spec.loader.exec_module(_mod)
         sys.exit(0)
 
     setup_logging()
