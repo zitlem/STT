@@ -1,5 +1,5 @@
 [Setup]
-AppName=STT Watchdog
+AppName=STT
 AppVersion={#AppVersion}
 AppPublisher=zitlem
 AppPublisherURL=https://github.com/zitlem/STT
@@ -17,9 +17,9 @@ SetupIconFile=..\..\icon.ico
 Source: "..\..\dist\STT\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\STT Watchdog"; Filename: "{app}\STT.exe"; Parameters: "--gui"
+Name: "{group}\STT"; Filename: "{app}\STT.exe"; Parameters: "--gui"
 Name: "{group}\Uninstall STT"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\STT Watchdog"; Filename: "{app}\STT.exe"; Parameters: "--gui"; Tasks: desktopicon
+Name: "{commondesktop}\STT"; Filename: "{app}\STT.exe"; Parameters: "--gui"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
@@ -30,7 +30,7 @@ Filename: "schtasks.exe"; Parameters: "/Create /TN ""STT"" /TR ""{app}\STT.exe -
 ; After a silent auto-update, immediately start the new binary via the scheduled task
 Filename: "schtasks.exe"; Parameters: "/Run /TN ""STT"""; Flags: runhidden nowait; Tasks: autostart
 ; After an interactive install, offer to launch the GUI
-Filename: "{app}\STT.exe"; Parameters: "--gui"; Description: "Launch STT Watchdog now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\STT.exe"; Parameters: "--gui"; Description: "Launch STT now"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "schtasks.exe"; Parameters: "/Delete /TN ""STT"" /F"; Flags: runhidden; RunOnceId: "RemoveTask"
