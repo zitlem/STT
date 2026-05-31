@@ -19,6 +19,9 @@ block_cipher = None
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS   = sys.platform == "darwin"
 
+_icon_file = "icon.icns" if IS_MACOS else "icon.ico"
+_icon = _icon_file if os.path.exists(_icon_file) else None
+
 # Heavy packages needed by speech_to_text.py
 _torch_d, _torch_b, _torch_h                     = collect_all("torch")
 _torchaudio_d, _torchaudio_b, _torchaudio_h      = collect_all("torchaudio")
@@ -94,9 +97,6 @@ a = Analysis(
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-_icon_file = "icon.icns" if IS_MACOS else "icon.ico"
-_icon = _icon_file if os.path.exists(_icon_file) else None
 
 exe = EXE(
     pyz,
