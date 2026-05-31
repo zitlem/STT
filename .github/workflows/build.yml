@@ -66,10 +66,10 @@ jobs:
           uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           uv pip install pyinstaller certifi "numpy<2.0.0"
           uv pip install flask flask-socketio flask-cors python-socketio
-          uv pip install transformers huggingface_hub accelerate datasets
+          uv pip install transformers huggingface_hub
           uv pip install "git+https://github.com/openai/whisper.git"
           uv pip install faster-whisper silero-vad
-          uv pip install SpeechRecognition pyaudio soundfile librosa pydub
+          uv pip install SpeechRecognition soundfile librosa pydub
           uv pip install edge-tts piper-tts pytz smbprotocol pillow
       - name: Set version
         shell: bash
@@ -110,10 +110,10 @@ jobs:
           uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           uv pip install pyinstaller certifi "numpy<2.0.0"
           uv pip install flask flask-socketio flask-cors python-socketio
-          uv pip install transformers huggingface_hub accelerate datasets
+          uv pip install transformers huggingface_hub
           uv pip install "git+https://github.com/openai/whisper.git"
           uv pip install faster-whisper silero-vad
-          uv pip install SpeechRecognition pyaudio soundfile librosa pydub
+          uv pip install SpeechRecognition soundfile librosa pydub
           uv pip install edge-tts piper-tts pytz smbprotocol pillow
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
@@ -169,10 +169,10 @@ jobs:
           uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           uv pip install pyinstaller certifi "numpy<2.0.0"
           uv pip install flask flask-socketio flask-cors python-socketio
-          uv pip install transformers huggingface_hub accelerate datasets
+          uv pip install transformers huggingface_hub
           uv pip install "git+https://github.com/openai/whisper.git"
           uv pip install faster-whisper silero-vad
-          uv pip install SpeechRecognition pyaudio soundfile librosa pydub
+          uv pip install SpeechRecognition soundfile librosa pydub
           uv pip install edge-tts piper-tts pytz smbprotocol pillow
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
