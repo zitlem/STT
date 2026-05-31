@@ -5,7 +5,7 @@ AppPublisher=zitlem
 AppPublisherURL=https://github.com/zitlem/STT
 DefaultDirName={autopf}\STT
 DefaultGroupName=STT
-OutputDir=Output
+OutputDir=..\..\Output
 OutputBaseFilename=STT-Setup
 Compression=none
 SolidCompression=no
@@ -14,7 +14,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=..\..\icon.ico
 
 [Files]
-Source: "dist\STT\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "..\..\dist\STT\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\STT Watchdog"; Filename: "{app}\STT.exe"; Parameters: "--gui"
