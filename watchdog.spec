@@ -126,3 +126,20 @@ coll = COLLECT(
     upx_exclude=[],
     name="STT",
 )
+
+if IS_MACOS:
+    app = BUNDLE(
+        coll,
+        name="STT.app",
+        icon=_icon,
+        bundle_identifier="com.stt.watchdog",
+        info_plist={
+            "CFBundleName": "STT",
+            "CFBundleDisplayName": "STT",
+            "CFBundleExecutable": "STT",
+            "NSHighResolutionCapable": True,
+            "NSMicrophoneUsageDescription":
+                "STT needs microphone access for speech recognition.",
+            "LSUIElement": False,
+        },
+    )
