@@ -200,10 +200,7 @@ def acquire_lock(open_browser_if_taken=False):
         sock.bind(("127.0.0.1", _LOCK_PORT))
     except OSError:
         if open_browser_if_taken:
-            cfg = load_config()
-            port = cfg.get("web_server", {}).get("port", 8080)
-            webbrowser.open(f"http://127.0.0.1:{port}")
-            sys.exit(0)
+            return None  # caller will open monitoring GUI
         print("[ERROR] Another watchdog instance is already running.", file=sys.stderr)
         sys.exit(1)
     return sock  # keep reference alive; OS releases on process exit
@@ -630,7 +627,7 @@ class AutoUpdater:
 # ---------------------------------------------------------------------------
 
 class GuiWindow:
-    def __init__(self, state, pm, updater):
+    def __init__(self, state, pm, updater, monitoring=False):
         import tkinter as tk
         from tkinter import messagebox
         self._tk = tk
@@ -638,6 +635,7 @@ class GuiWindow:
         self.state = state
         self.pm = pm
         self.updater = updater
+        self._monitoring = monitoring
         self.root = tk.Tk()
         self._transcription_running = False
         self._set_icon()
@@ -671,10 +669,14 @@ class GuiWindow:
             sf, text="● Stopped", fg="red", font=("", 10, "bold")
         )
         self._status_lbl.pack(side="left", expand=True, anchor="w")
-        self._toggle_btn = tk.Button(
-            sf, text="Start", width=10, command=self._on_toggle
-        )
-        self._toggle_btn.pack(side="right")
+        if self._monitoring:
+            tk.Label(sf, text="Daemon managed", fg="gray", font=("", 8)).pack(side="right")
+            self._toggle_btn = None
+        else:
+            self._toggle_btn = tk.Button(
+                sf, text="Start", width=10, command=self._on_toggle
+            )
+            self._toggle_btn.pack(side="right")
 
         # ── Transcription row ────────────────────────────────────────────────
         tf = tk.Frame(root)
@@ -749,7 +751,17 @@ class GuiWindow:
         self._chan_var.set("Beta" if ch == "beta" else "Stable")
 
     def _poll(self):
-        status = self.state.get("status")
+        if self._monitoring:
+            import urllib.request as _ur
+            cfg = load_config()
+            port = cfg.get("web_server", {}).get("port", 8080)
+            try:
+                _ur.urlopen(f"http://127.0.0.1:{port}/api/transcription/status", timeout=1)
+                status = "running"
+            except Exception:
+                status = "stopped"
+        else:
+            status = self.state.get("status")
         colors = {
             "running": "green",
             "stopped": "red",
@@ -760,9 +772,10 @@ class GuiWindow:
         self._status_lbl.config(
             text=f"● {status.capitalize()}", fg=colors.get(status, "gray")
         )
-        self._toggle_btn.config(
-            text="Stop" if status == "running" else "Start"
-        )
+        if self._toggle_btn:
+            self._toggle_btn.config(
+                text="Stop" if status == "running" else "Start"
+            )
 
         # ── Transcription button ─────────────────────────────────────────────
         if status == "running":
@@ -791,12 +804,13 @@ class GuiWindow:
             self._transcription_lbl.config(text="● Stopped", fg="red")
             self._transcription_running = False
 
-        chk = self.state.get("last_update_check")
-        res = self.state.get("last_update_result")
-        if chk:
-            self._check_lbl.config(text=f"Last check: {chk}")
-        if res:
-            self._result_lbl.config(text=res)
+        if not self._monitoring:
+            chk = self.state.get("last_update_check")
+            res = self.state.get("last_update_result")
+            if chk:
+                self._check_lbl.config(text=f"Last check: {chk}")
+            if res:
+                self._result_lbl.config(text=res)
 
         self.root.after(1000, self._poll)
 
@@ -1148,6 +1162,17 @@ def main():
 
     _will_be_gui = args.gui or (not args.headless and detect_gui())
     _lock = acquire_lock(open_browser_if_taken=_will_be_gui)  # noqa: F841 — keep socket alive
+
+    if _lock is None:
+        # Headless daemon is already running — open a monitoring-only GUI.
+        try:
+            gui = GuiWindow(state=None, pm=None, updater=None, monitoring=True)
+            gui.mainloop()
+        except Exception:
+            cfg = load_config()
+            port = cfg.get("web_server", {}).get("port", 8080)
+            webbrowser.open(f"http://127.0.0.1:{port}")
+        return
 
     if args.channel:
         cfg = load_config()
