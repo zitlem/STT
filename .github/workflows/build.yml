@@ -140,12 +140,12 @@ jobs:
             --identifier com.stt.watchdog \
             --version "$VERSION" \
             stt-component.pkg
-          productbuild --package stt-component.pkg --version "$VERSION" STT-macos.pkg
+          productbuild --package stt-component.pkg --version "$VERSION" STT-macos-arm64.pkg
           rm stt-component.pkg
       - uses: actions/upload-artifact@v6
         with:
-          name: STT-macos
-          path: STT-macos.pkg
+          name: STT-macos-arm64
+          path: STT-macos-arm64.pkg
           retention-days: 30
 
   build-linux:
