@@ -831,8 +831,8 @@ class GuiWindow:
 
     def _on_open_browser(self):
         cfg = load_config()
-        port = cfg.get("web_server", {}).get("port", 80)
-        webbrowser.open(f"http://localhost:{port}")
+        port = cfg.get("web_server", {}).get("port", 8080)
+        webbrowser.open(f"http://127.0.0.1:{port}")
 
     def mainloop(self):
         self.root.mainloop()
