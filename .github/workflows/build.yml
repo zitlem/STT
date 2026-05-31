@@ -123,17 +123,19 @@ jobs:
         run: uv run pyinstaller watchdog.spec --noconfirm
       - name: Sign (ad-hoc)
         run: |
-          find dist/STT/_internal -type f \( -name "*.dylib" -o -name "*.so" \) \
+          find dist/STT.app -type f \( -name "*.dylib" -o -name "*.so" \) \
             -exec codesign --force --sign - {} \;
-          find dist/STT/_internal -maxdepth 1 -name "Python" -type f \
+          find dist/STT.app/Contents/MacOS -maxdepth 2 -name "Python" -type f \
             -exec codesign --force --sign - {} \;
-          codesign --force --sign - dist/STT/STT
+          codesign --force --sign - dist/STT.app
       - name: Package installer
         run: |
           VERSION="${{ needs.version.outputs.tag }}"
+          mkdir -p pkg_root
+          cp -r dist/STT.app pkg_root/
           pkgbuild \
-            --root dist/STT \
-            --install-location /Applications/STT \
+            --root pkg_root \
+            --install-location /Applications \
             --scripts installer/macos/scripts \
             --identifier com.stt.watchdog \
             --version "$VERSION" \

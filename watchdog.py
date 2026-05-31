@@ -192,13 +192,18 @@ def parse_version(v):
     return tuple(result)
 
 
-def acquire_lock():
+def acquire_lock(open_browser_if_taken=False):
     """Single-instance guard: bind a local socket. Released automatically on exit."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
     try:
         sock.bind(("127.0.0.1", _LOCK_PORT))
     except OSError:
+        if open_browser_if_taken:
+            cfg = load_config()
+            port = cfg.get("web_server", {}).get("port", 8080)
+            webbrowser.open(f"http://127.0.0.1:{port}")
+            sys.exit(0)
         print("[ERROR] Another watchdog instance is already running.", file=sys.stderr)
         sys.exit(1)
     return sock  # keep reference alive; OS releases on process exit
@@ -1129,7 +1134,7 @@ def main():
         _run_crash_report_test()
         return
 
-    _lock = acquire_lock()  # noqa: F841 — keep socket alive
+    _lock = acquire_lock(open_browser_if_taken=args.gui)  # noqa: F841 — keep socket alive
 
     if args.channel:
         cfg = load_config()

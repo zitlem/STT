@@ -13,7 +13,7 @@ cat > "$PLIST" << 'PLIST_EOF'
     <string>com.stt.watchdog</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/STT/STT</string>
+        <string>/Applications/STT.app/Contents/MacOS/STT</string>
         <string>--headless</string>
     </array>
     <key>RunAtLoad</key>
@@ -35,5 +35,5 @@ PLIST_EOF
 
 chmod 644 "$PLIST"
 chown root:wheel "$PLIST"
-chmod +x /Applications/STT/STT
+chmod +x /Applications/STT.app/Contents/MacOS/STT
 launchctl load "$PLIST" 2>/dev/null || true
