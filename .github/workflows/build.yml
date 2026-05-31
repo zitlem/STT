@@ -33,7 +33,7 @@ jobs:
     outputs:
       tag: ${{ steps.v.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - id: v
@@ -53,10 +53,10 @@ jobs:
     if: github.event_name == 'push' || inputs.windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v8
         with:
           python-version: "3.11"
       - name: Install dependencies
@@ -85,7 +85,7 @@ jobs:
         run: |
           $VERSION = "${{ needs.version.outputs.tag }}"
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$VERSION" "installer\windows\setup.iss"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: STT-windows
           path: Output/STT-Setup.exe
@@ -96,10 +96,10 @@ jobs:
     if: github.event_name == 'push' || inputs.macos
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v8
         with:
           python-version: "3.11"
       - name: Install system deps
@@ -140,7 +140,7 @@ jobs:
             stt-component.pkg
           productbuild --package stt-component.pkg --version "$VERSION" STT-macos.pkg
           rm stt-component.pkg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: STT-macos
           path: STT-macos.pkg
@@ -151,10 +151,10 @@ jobs:
     if: github.event_name == 'push' || inputs.linux
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v8
         with:
           python-version: "3.11"
       - name: Install system deps
@@ -188,7 +188,7 @@ jobs:
           sed -i "s/VERSION_PLACEHOLDER/$VERSION/" "$PKGDIR/DEBIAN/control"
           chmod 755 "$PKGDIR/DEBIAN/postinst" "$PKGDIR/DEBIAN/prerm"
           dpkg-deb --build --root-owner-group "$PKGDIR" STT-linux.deb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: STT-linux
           path: STT-linux.deb
@@ -200,15 +200,15 @@ jobs:
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts/
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: STT ${{ needs.version.outputs.tag }}
