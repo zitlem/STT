@@ -23,7 +23,7 @@ Name: "{commondesktop}\STT Watchdog"; Filename: "{app}\STT.exe"; Parameters: "--
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
-Name: "autostart"; Description: "Start STT automatically at &login"; GroupDescription: "Auto-start:"; Checked: yes
+Name: "autostart"; Description: "Start STT automatically at &login"; GroupDescription: "Auto-start:"
 
 [Run]
 Filename: "schtasks.exe"; Parameters: "/Create /TN ""STT"" /TR ""{app}\STT.exe --headless"" /SC ONLOGON /RL HIGHEST /F"; Flags: runhidden; Tasks: autostart
