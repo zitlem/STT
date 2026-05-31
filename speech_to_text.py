@@ -5,9 +5,8 @@ import sys
 import warnings
 
 # Determine application directory (works for both dev and PyInstaller bundle)
-# APP_DIR    = user data dir: config and logs (script dir in dev, ~/.stt when frozen)
+# APP_DIR    = user data dir: config, models, logs (script dir in dev, ~/.stt when frozen)
 # BUNDLE_DIR = bundled read-only assets: templates, static (_MEIPASS when frozen)
-# MODELS_DIR = always ~/.stt/models so dev and binary share the same model cache
 if getattr(sys, 'frozen', False):
     APP_DIR    = os.path.join(os.path.expanduser("~"), ".stt")
     BUNDLE_DIR = sys._MEIPASS
@@ -16,7 +15,7 @@ else:
     BUNDLE_DIR = APP_DIR
 
 os.makedirs(APP_DIR, exist_ok=True)
-MODELS_DIR = os.path.join(os.path.expanduser("~"), ".stt", "models")
+MODELS_DIR = os.path.join(APP_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 # Suppress NNPACK warnings from PyTorch (harmless but spammy)
@@ -28,7 +27,7 @@ os.environ['PYTORCH_NNPACK_WARN'] = '0'
 os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
 warnings.filterwarnings('ignore', message='.*NNPACK.*')
 
-# Set HuggingFace cache to MODELS_DIR BEFORE any HF imports
+# Set HuggingFace cache to local models directory BEFORE any HF imports
 # This prevents models from being downloaded to ~/.cache/huggingface/hub
 _models_cache_dir = os.path.join(MODELS_DIR, ".hf_cache")
 os.makedirs(_models_cache_dir, exist_ok=True)
