@@ -201,7 +201,7 @@ DEFAULT_CONFIG = {
     },
     "web_server": {
         "host": "0.0.0.0",
-        "port": 80,
+        "port": 8080,
         "update_interval": 0.5,
         "settings_ip_whitelist": ["127.0.0.1", "::1", "10.1.10.0/24"],
         "password_auth": {
