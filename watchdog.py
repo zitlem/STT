@@ -158,11 +158,19 @@ def save_config(cfg):
 
 
 def read_version():
-    try:
-        with open(VERSION_FILE) as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        return "0.0.0"
+    # Check user dir first (written by auto-updater), then fall back to bundle.
+    candidates = [VERSION_FILE]
+    if _FROZEN:
+        candidates.append(os.path.join(sys._MEIPASS, "VERSION"))
+    for path in candidates:
+        try:
+            with open(path) as f:
+                v = f.read().strip()
+            if v:
+                return v
+        except (FileNotFoundError, OSError):
+            pass
+    return "0.0.0"
 
 
 def write_version(version):
