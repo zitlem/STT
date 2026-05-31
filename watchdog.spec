@@ -33,6 +33,7 @@ a = Analysis(
     datas=[
         # Watchdog assets
         ("VERSION", "."),
+] + ([(_icon_file, ".")] if os.path.exists(_icon_file) else []) + [
         # STT server script and local modules (launched via --run-stt self-relaunch)
         ("speech_to_text.py",          "."),
         ("file_mover.py",              "."),

@@ -634,8 +634,19 @@ class GuiWindow:
         self.updater = updater
         self.root = tk.Tk()
         self._transcription_running = False
+        self._set_icon()
         self._build_ui()
         self.root.after(500, self._poll)
+
+    def _set_icon(self):
+        try:
+            icon_path = os.path.join(sys._MEIPASS if _FROZEN else
+                                     os.path.dirname(os.path.abspath(__file__)),
+                                     "icon.ico")
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+        except Exception:
+            pass
 
     def _build_ui(self):
         tk = self._tk
