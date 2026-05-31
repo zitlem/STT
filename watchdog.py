@@ -1008,8 +1008,20 @@ def _run_crash_report_test():
 
 def main():
     if '--run-stt' in sys.argv:
-        import multiprocessing, runpy
+        import multiprocessing, runpy, io
         multiprocessing.freeze_support()
+        # On Windows GUI builds sys.stdout/stderr are None; reconnect to the
+        # file handles that the watchdog's Popen set so logging actually works.
+        if sys.stdout is None:
+            try:
+                sys.stdout = io.TextIOWrapper(os.fdopen(1, 'wb'), errors='replace', line_buffering=True)
+            except Exception:
+                pass
+        if sys.stderr is None:
+            try:
+                sys.stderr = io.TextIOWrapper(os.fdopen(2, 'wb'), errors='replace', line_buffering=True)
+            except Exception:
+                pass
         _stt = os.path.join(
             sys._MEIPASS if _FROZEN else os.path.dirname(os.path.abspath(__file__)),
             'speech_to_text.py',
