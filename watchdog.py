@@ -640,7 +640,7 @@ class GuiWindow:
     def _build_ui(self):
         tk = self._tk
         root = self.root
-        root.title(f"STT Watchdog v{read_version()}")
+        root.title(f"STT v{read_version()}")
         root.resizable(False, False)
         root.geometry("330x360")
 
