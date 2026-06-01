@@ -707,7 +707,7 @@ def load_translation_model(use_gpu=True, model_id=None):
 
     # Check ./models/ directory first for local copy
     local_dir_name = model_id.replace("/", "--")
-    local_model_path = os.path.join(MODELS_DIR,local_dir_name)
+    local_model_path = os.path.join(MODELS_DIR, local_dir_name)
 
     if os.path.exists(local_model_path):
         model_path = local_model_path
@@ -717,7 +717,16 @@ def load_translation_model(use_gpu=True, model_id=None):
         print(f"[INFO] Loading translation model from HuggingFace: {model_path}")
 
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
+
+    bin_path = os.path.join(model_path, "pytorch_model.bin") if os.path.isdir(model_path) else None
+    if bin_path and os.path.exists(bin_path) and not os.path.exists(os.path.join(model_path, "model.safetensors")):
+        from transformers import AutoConfig
+        cfg = AutoConfig.from_pretrained(model_path)
+        model = AutoModelForSeq2SeqLM.from_config(cfg)
+        state_dict = torch.load(bin_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(state_dict)
+    else:
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
 
     if use_gpu and torch.cuda.is_available():
         model = model.to("cuda")
@@ -10210,7 +10219,7 @@ def download_nllb():
                 snapshot_download(
                     repo_id=model_id,
                     local_dir=nllb_path,
-                    local_dir_use_symlinks=False
+                    local_dir_use_symlinks=False,
                 )
 
                 nllb_download_progress = {"status": "complete", "progress": 100, "message": "Download complete!"}
