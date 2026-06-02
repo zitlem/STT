@@ -393,6 +393,7 @@ class AutoUpdater:
     def __init__(self, state, pm):
         self.state = state
         self.pm = pm
+        self._pending_update = None  # (remote_version, assets) when update detected but not yet applied
 
     # -- GitHub API ----------------------------------------------------------
 
@@ -425,7 +426,8 @@ class AutoUpdater:
 
     # -- Check & update ------------------------------------------------------
 
-    def check_and_update(self):
+    def check_for_update(self):
+        """Fetch latest release and store it as pending if newer. Does not download or apply."""
         cfg = load_config()
         channel = cfg.get("watchdog", {}).get("update_channel", "stable")
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -441,25 +443,38 @@ class AutoUpdater:
             return
 
         if tag is None:
-            result = "No releases yet"
-            logging.info(f"[AU] {result}")
-            self.state.set(last_update_result=result)
+            self.state.set(last_update_result="No releases yet")
             return
 
         current = read_version()
         remote = tag.lstrip("v")
 
         if parse_version(current) >= parse_version(remote):
+            self._pending_update = None
             result = f"Up to date ({current})"
             logging.info(f"[AU] {result}")
             self.state.set(last_update_result=result)
             return
 
         logging.info(f"[AU] Update available: {current} → {remote}")
+        self._pending_update = (remote, zipball_url, assets)
+        self.state.set(last_update_result=f"Update available: {remote}")
+
+    def apply_pending_update(self):
+        """Download and apply the pending update (if any)."""
+        if not self._pending_update:
+            return
+        remote, zipball_url, assets = self._pending_update
+        self._pending_update = None
         if _FROZEN:
             self._apply_binary_update(remote, assets)
         else:
             self._apply_update(remote, zipball_url)
+
+    def check_and_update(self):
+        """Check for update and immediately apply if one is found (manual update / 1am)."""
+        self.check_for_update()
+        self.apply_pending_update()
 
     def _apply_update(self, remote, zipball_url):
         # Download BEFORE stopping the app so it keeps running during the transfer
@@ -601,25 +616,15 @@ class AutoUpdater:
 
     def _scheduler_loop(self):
         while not self.state.get("stop_requested"):
-            wait = self._seconds_until_next_update()
-            logging.info(f"[AU] Next update check in {wait / 3600:.1f}h")
-            deadline = time.monotonic() + wait
-            while time.monotonic() < deadline:
+            self.check_for_update()
+            if datetime.datetime.now().hour == UPDATE_HOUR and self._pending_update:
+                logging.info("[AU] 1am auto-apply triggered")
+                self.apply_pending_update()
+            # Sleep one hour in 60s increments so stop_requested is checked promptly
+            for _ in range(60):
                 if self.state.get("stop_requested"):
                     return
                 time.sleep(60)
-            if not self.state.get("stop_requested"):
-                self.check_and_update()
-
-    @staticmethod
-    def _seconds_until_next_update():
-        now = datetime.datetime.now()
-        target = now.replace(
-            hour=UPDATE_HOUR, minute=0, second=0, microsecond=0
-        )
-        if now >= target:
-            target += datetime.timedelta(days=1)
-        return max((target - now).total_seconds(), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -657,7 +662,7 @@ class GuiWindow:
         root = self.root
         root.title(f"STT v{read_version()}")
         root.resizable(False, False)
-        root.geometry("330x360")
+        root.geometry("330x390")
 
         pad = {"padx": 12, "pady": 4}
 
@@ -729,6 +734,10 @@ class GuiWindow:
         tk.Button(
             root, text="Open Web Interface", command=self._on_open_browser
         ).pack(pady=2)
+        self._update_btn = tk.Button(
+            root, text="Check for Updates", command=self._on_update
+        )
+        self._update_btn.pack(pady=2)
 
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
@@ -811,6 +820,13 @@ class GuiWindow:
                 self._check_lbl.config(text=f"Last check: {chk}")
             if res:
                 self._result_lbl.config(text=res)
+            pending = self.updater._pending_update
+            if pending:
+                self._update_btn.config(
+                    text=f"Update to {pending[0]}", state="normal"
+                )
+            elif self._update_btn.cget("text") not in ("Checking…", "Updating…"):
+                self._update_btn.config(text="Check for Updates", state="normal")
 
         self.root.after(1000, self._poll)
 
@@ -835,6 +851,12 @@ class GuiWindow:
             except Exception as e:
                 logging.warning(f"[GUI] Transcription {action} failed: {e}")
         threading.Thread(target=_call, daemon=True).start()
+
+    def _on_update(self):
+        self._update_btn.config(state="disabled", text="Checking…")
+        def _run():
+            self.updater.check_and_update()
+        threading.Thread(target=_run, daemon=True).start()
 
     def _on_save(self):
         try:
