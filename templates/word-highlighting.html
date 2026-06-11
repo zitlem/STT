@@ -82,7 +82,7 @@
             margin-right: 8px;
             margin-bottom: 8px;
             border: 2px solid var(--border);
-            transition: all 0.3s ease;
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
             color: var(--text-primary);
             font-size: 0.85em;
             max-width: 100%;
@@ -234,7 +234,7 @@
             border-radius: 4px;
             font-size: 0.7em;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
         }
 
         .btn-toggle-group:hover {
@@ -296,7 +296,7 @@
             color: var(--text-primary);
             cursor: pointer;
             border: 1px solid var(--border);
-            transition: all 0.2s;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
             position: relative;
         }
 
@@ -359,7 +359,7 @@
             font-size: 0.7em;
             cursor: pointer;
             margin-left: 4px;
-            transition: all 0.2s;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
         }
 
         .btn-matches-toggle:hover {
@@ -711,10 +711,10 @@
                     Jump to pattern for "${matchedWord}":
                 </div>
                 ${items.map(item => `
-                    <div class="duplicate-dropdown-item" onclick="jumpToWordAndClose(${item.originalIndex})">
+                    <button type="button" class="duplicate-dropdown-item" onclick="jumpToWordAndClose(${item.originalIndex})">
                         <span class="pattern-color" style="background: ${item.color};"></span>
                         ${item.word.length > 35 ? item.word.substring(0, 35) + '...' : item.word}
-                    </div>
+                    </button>
                 `).join('')}
             `;
 
@@ -833,9 +833,9 @@
                     // Show the actual matched word and how many patterns match it
                     const displayWord = matchedWord.length > 20 ? matchedWord.substring(0, 20) + '...' : matchedWord;
                     html += `
-                        <div class="duplicate-item" onclick="showDuplicateDropdown(event, ${idx}, '${matchedWord.replace(/'/g, "\\'")}')">
+                        <button type="button" class="duplicate-item" onclick="showDuplicateDropdown(event, ${idx}, '${matchedWord.replace(/'/g, "\\'")}')">
                             ${displayWord}<span class="count">(${items.length} patterns)</span>
-                        </div>
+                        </button>
                     `;
                 });
                 html += `
@@ -854,7 +854,7 @@
                 html += `
                     <div class="color-group${isDisabled ? ' disabled' : ''}">
                         <div class="color-group-header">
-                            <div class="word-color-box" style="background: ${color};" onclick="showBulkColorPicker(event, '${color}', [${wordIndices}])" title="Click to change color for all ${groupWords.length} word(s)"></div>
+                            <button type="button" class="word-color-box" style="background: ${color}; border: none; cursor: pointer; padding: 0;" onclick="showBulkColorPicker(event, '${color}', [${wordIndices}])" aria-label="Change color ${color} for all ${groupWords.length} word(s)" title="Click to change color for all ${groupWords.length} word(s)"></button>
                             <span>${color.toUpperCase()} (${groupWords.length} word${groupWords.length !== 1 ? 's' : ''})</span>
                             <button class="btn-toggle-group${isDisabled ? ' disabled' : ''}" onclick="toggleColorGroup('${color}')" title="${isDisabled ? 'Enable' : 'Disable'} this color group">${isDisabled ? 'Disabled' : 'Enabled'}</button>
                             <button class="btn btn-danger" onclick="bulkDeleteColor([${wordIndices}])" style="font-size: 0.7em;" title="Delete all words in this group">Delete All</button>
@@ -1260,11 +1260,11 @@
                         <div style="color: #888; font-size: 0.75em; margin-bottom: 6px;">Quick select:</div>
                         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                             ${existingColors.map(color => `
-                                <div class="quick-color-box" onclick="selectMoveColor('${color}')"
-                                     style="width: 28px; height: 28px; background: ${color}; border-radius: 4px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;"
+                                <button type="button" class="quick-color-box" onclick="selectMoveColor('${color}')"
+                                     style="width: 28px; height: 28px; background: ${color}; border-radius: 4px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.2s, box-shadow 0.2s; padding: 0;"
                                      onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 0 8px ${color}';"
                                      onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';"
-                                     title="${color.toUpperCase()}"></div>
+                                     aria-label="${color.toUpperCase()}" title="${color.toUpperCase()}"></button>
                             `).join('')}
                         </div>
                     </div>
@@ -1386,11 +1386,11 @@
                         <div style="color: #888; font-size: 0.75em; margin-bottom: 6px;">Quick select:</div>
                         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                             ${existingColors.map(color => `
-                                <div class="quick-color-box" onclick="selectBulkColor('${color}')"
-                                     style="width: 28px; height: 28px; background: ${color}; border-radius: 4px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;"
+                                <button type="button" class="quick-color-box" onclick="selectBulkColor('${color}')"
+                                     style="width: 28px; height: 28px; background: ${color}; border-radius: 4px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.2s, box-shadow 0.2s; padding: 0;"
                                      onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 0 8px ${color}';"
                                      onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';"
-                                     title="${color.toUpperCase()}"></div>
+                                     aria-label="${color.toUpperCase()}" title="${color.toUpperCase()}"></button>
                             `).join('')}
                         </div>
                     </div>

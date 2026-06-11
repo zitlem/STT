@@ -87,7 +87,7 @@
             font-weight: 500;
             cursor: pointer;
             font-size: 0.85em;
-            transition: all 0.3s;
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -149,7 +149,7 @@
             cursor: pointer;
             font-weight: 500;
             color: var(--text-secondary);
-            transition: all 0.3s;
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
         }
 
         .model-tab.active {
@@ -213,7 +213,7 @@
             font-size: 0.8em;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
         }
 
         .model-btn.download {
@@ -678,8 +678,8 @@
                     <input type="text" id="upload_model_name" placeholder="e.g., my-custom-whisper">
                     <small>Enter a name for this model (will create a folder with this name)</small>
                 </div>
-                <div class="form-group">
-                    <label>Upload Method</label>
+                <fieldset class="form-group" style="border: none; padding: 0; margin: 0;">
+                    <legend style="font-size: 1em; font-weight: normal; color: var(--text-primary); padding: 0; margin-bottom: 8px;">Upload Method</legend>
                     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                             <input type="radio" name="upload_method" value="files" checked onchange="updateUploadMethod()">
@@ -690,7 +690,7 @@
                             <span>Select Folder</span>
                         </label>
                     </div>
-                </div>
+                </fieldset>
                 <div class="form-group">
                     <label for="upload_model_files">Model Files</label>
                     <input type="file" id="upload_model_files" multiple style="padding: 8px; border: 2px dashed var(--accent); cursor: pointer;">
