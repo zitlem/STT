@@ -43,40 +43,30 @@ def copy_file_to_smb_direct(local_file, smb_dest_path, username, password, domai
     Returns:
         (success: bool, error: str or None)
     """
-    print(f"DEBUG: copy_file_to_smb_direct CALLED - file={local_file}, dest={smb_dest_path}", flush=True)
-
     if not SMB_AVAILABLE:
         return False, "smbprotocol library not installed"
 
     try:
         # Normalize path separators to forward slashes
         normalized = smb_dest_path.replace('\\', '/')
-        print(f"DEBUG: normalized={normalized}", flush=True)
 
         # Parse SMB path to get server
         parts = normalized.replace('//', '').split('/')
-        print(f"DEBUG: parts={parts}", flush=True)
         if len(parts) < 2:
             return False, f"Invalid SMB path format: {smb_dest_path}"
 
         server = parts[0]
-        print(f"DEBUG: server={server}, username={username}, password={'***' if password else 'EMPTY'}", flush=True)
+        logger.info(f"SMB direct copy: {local_file} -> {smb_dest_path} (server={server}, user={username})")
 
         # Register SMB session with credentials
-        print(f"DEBUG: About to register_session", flush=True)
         register_session(server, username=username, password=password, auth_protocol='ntlm')
-        print(f"DEBUG: register_session completed", flush=True)
 
         # Ensure parent directory exists
         dest_dir = '/'.join(normalized.split('/')[:-1])  # Remove filename
-        print(f"DEBUG: dest_dir={dest_dir}", flush=True)
-        print(f"DEBUG: About to check smb_exists(dest_dir)", flush=True)
         if dest_dir and not smb_exists(dest_dir):
-            print(f"DEBUG: dest_dir does not exist, will create", flush=True)
             # Create directory recursively
             # Start from //server/share (need at least 2 parts)
             parts_list = dest_dir.replace('//', '').split('/')
-            print(f"DEBUG: parts_list={parts_list}", flush=True)
 
             for i, part in enumerate(parts_list):
                 # Build path incrementally
@@ -92,13 +82,9 @@ def copy_file_to_smb_direct(local_file, smb_dest_path, username, password, domai
 
                 # Skip server-only paths (need at least server + share)
                 if i == 0:
-                    print(f"DEBUG: Skipping server-only path: {current_path}", flush=True)
                     continue
 
-                print(f"DEBUG: Loop iteration - current_path={current_path}", flush=True)
-                print(f"DEBUG: About to call smb_exists({current_path})", flush=True)
                 if not smb_exists(current_path):
-                    print(f"DEBUG: Path does not exist, will create", flush=True)
                     try:
                         logger.info(f"SMB creating dir: {current_path}")
                         mkdir(current_path)
