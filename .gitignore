@@ -9,6 +9,7 @@ config.json
 config.json.backup
 config.json.tmp
 config.json.before-restore
+download_progress.json
 *.wav
 *.log
 .wrangler/

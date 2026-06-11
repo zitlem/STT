@@ -8221,8 +8221,178 @@ active_downloads = load_download_progress()
 active_downloads_lock = threading.Lock()
 cancelled_downloads = set()  # Track cancelled download IDs to prevent re-adding
 
+# A "downloading" entry loaded from disk means the server died mid-download:
+# the download thread is gone, so mark it failed instead of showing it for 24h
+for _key, _info in active_downloads.items():
+    if _info.get("status") == "downloading":
+        _info["status"] = "failed"
+        _info["error"] = "Interrupted by server restart"
+        _info["last_update"] = time.time()
+        print(f"[DOWNLOAD] Marked interrupted download as failed: {_key}")
+save_download_progress()
+
 # Clean up stale downloads on startup
 cleanup_stale_downloads()
+
+
+def try_register_download(key, total=None):
+    """Atomically register a download in active_downloads.
+
+    Returns False if a download for this key is already in progress."""
+    with active_downloads_lock:
+        existing = active_downloads.get(key)
+        if existing and existing.get("status") == "downloading":
+            return False
+        cancelled_downloads.discard(key)
+        active_downloads[key] = {
+            "downloaded": 0,
+            "total": total,
+            "percentage": 0 if total else None,
+            "start_time": time.time(),
+            "last_update": time.time(),
+            "status": "downloading",
+        }
+    save_download_progress()
+    return True
+
+
+def finish_download(key, error=None, cancelled=False):
+    """Mark a download completed/failed and drop it from the cancelled set."""
+    with active_downloads_lock:
+        cancelled_downloads.discard(key)
+        if not cancelled and key in active_downloads:
+            entry = active_downloads[key]
+            entry["last_update"] = time.time()
+            if error is not None:
+                entry["status"] = "failed"
+                entry["error"] = str(error)
+            else:
+                entry["status"] = "completed"
+                entry["percentage"] = 100
+                entry["completion_time"] = time.time()
+    save_download_progress()
+
+
+def _path_size(path):
+    """Size in bytes of a file, or recursive size of a directory."""
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def monitor_download_progress(key, path, total=None, interval=2):
+    """Poll the size of `path` (file or directory) and update active_downloads[key].
+
+    Runs until the entry leaves "downloading" state, disappears, or is cancelled.
+    Percentage is capped at 99 — the download code sets 100 on completion."""
+    import time as _time
+
+    while True:
+        with active_downloads_lock:
+            entry = active_downloads.get(key)
+            if entry is None or entry.get("status") != "downloading" or key in cancelled_downloads:
+                return
+        if os.path.exists(path):
+            size = _path_size(path)
+            with active_downloads_lock:
+                entry = active_downloads.get(key)
+                if entry is None or entry.get("status") != "downloading":
+                    return
+                entry["downloaded"] = size
+                entry["last_update"] = _time.time()
+                entry_total = entry.get("total") or total
+                if entry_total and entry_total > 0:
+                    entry["percentage"] = min(int((size / entry_total) * 100), 99)
+            save_download_progress()
+        _time.sleep(interval)
+
+
+def start_download_monitor(key, path, total=None, interval=2):
+    """Spawn the directory-size progress monitor as a daemon thread."""
+    threading.Thread(
+        target=monitor_download_progress,
+        args=(key, path, total, interval),
+        daemon=True,
+        name=f"dl-monitor-{key}",
+    ).start()
+
+
+def download_url_to_file(url, dest_path, cancel_check=None, max_attempts=5, log=print):
+    """Download a URL to a file with resume + retry, preferring wget/curl.
+
+    Falls back to a pure-Python streaming download when neither tool exists
+    (e.g. minimal Windows installs). `cancel_check` is polled during the
+    download; returning True aborts it. Returns "ok" or "cancelled"; raises
+    after all attempts fail."""
+    import subprocess
+    import tempfile as _tempfile
+    import time as _time
+    import urllib.request
+
+    if shutil.which("wget"):
+        dl_cmd = ['wget', '-c', '-t', '3', '-T', '120', '--retry-connrefused',
+                  '--waitretry', '5', '-O', dest_path, url]
+    elif shutil.which("curl"):
+        dl_cmd = ['curl', '-L', '-C', '-', '--retry', '3', '--retry-delay', '5',
+                  '--retry-connrefused', '--connect-timeout', '30',
+                  '--max-time', '600', '-o', dest_path, url]
+    else:
+        dl_cmd = None  # pure-Python fallback below
+
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
+        if dl_cmd:
+            # Output goes to a temp file: a PIPE would fill up with progress
+            # noise and block the process, since nothing drains it while we poll
+            with _tempfile.TemporaryFile(mode="w+", errors="replace") as outf:
+                proc = subprocess.Popen(dl_cmd, stdout=outf, stderr=subprocess.STDOUT)
+                while proc.poll() is None:
+                    if cancel_check and cancel_check():
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        return "cancelled"
+                    _time.sleep(0.5)
+                if proc.returncode == 0:
+                    return "ok"
+                outf.seek(0)
+                last_error = outf.read()[-500:]
+            returncode = proc.returncode
+        else:
+            try:
+                with urllib.request.urlopen(url, timeout=120) as src, open(dest_path, "wb") as out:
+                    while True:
+                        if cancel_check and cancel_check():
+                            return "cancelled"
+                        chunk = src.read(65536)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                return "ok"
+            except Exception as e:
+                last_error = str(e)
+                returncode = 1
+
+        log(f"[WARNING] Download attempt {attempt}/{max_attempts} failed for "
+            f"{os.path.basename(dest_path)} (exit code {returncode})")
+        if attempt < max_attempts:
+            if os.path.exists(dest_path):
+                partial_size = os.path.getsize(dest_path)
+                log(f"[INFO] Partial file exists ({partial_size / (1024*1024):.1f} MB), will resume")
+            _time.sleep(5 * attempt)
+
+    raise Exception(
+        f"Failed to download {os.path.basename(dest_path)} after {max_attempts} attempts: {last_error[:300]}"
+    )
 
 # Start periodic cleanup thread
 def periodic_cleanup():
@@ -8234,88 +8404,6 @@ def periodic_cleanup():
 
 cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
 cleanup_thread.start()
-
-
-class DownloadProgressTracker:
-    """Custom progress tracker for HuggingFace downloads"""
-
-    def __init__(self, model_name):
-        self.model_name = model_name
-        self.total = 0
-        self.n = 0
-        self.downloaded = 0
-        self.iterable = None
-
-    def __call__(self, iterable=None, **kwargs):
-        """Make the class callable to work with tqdm_class parameter"""
-        self.iterable = iterable
-        self.total = kwargs.get("total", 0)
-        return self
-
-    def __iter__(self):
-        """Make the tracker iterable - wrap the underlying iterable"""
-        if self.iterable is not None:
-            for item in self.iterable:
-                yield item
-                self.update(1)
-        return self
-
-    def __len__(self):
-        """Return length if available"""
-        if hasattr(self.iterable, '__len__'):
-            return len(self.iterable)
-        return 0
-
-    def update(self, n=1):
-        """Update progress"""
-        import time
-
-        # Check if download was cancelled
-        if self.model_name in cancelled_downloads:
-            return  # Skip update if cancelled
-
-        self.n += n
-        self.downloaded = self.n
-
-        # Update global progress tracking
-        with active_downloads_lock:
-            # Double-check cancelled status inside lock
-            if self.model_name in cancelled_downloads:
-                return
-
-            if self.model_name in active_downloads:
-                active_downloads[self.model_name]["downloaded"] = self.downloaded
-                active_downloads[self.model_name]["total"] = self.total
-                active_downloads[self.model_name]["last_update"] = time.time()
-                if self.total > 0:
-                    active_downloads[self.model_name]["percentage"] = int(
-                        (self.downloaded / self.total) * 100
-                    )
-
-        # Save to file periodically (every 10 updates to reduce I/O)
-        if self.n % 10 == 0:
-            save_download_progress()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
-
-    def close(self):
-        """Close the progress tracker"""
-        pass
-
-    @staticmethod
-    def get_lock():
-        """Return a lock for thread-safe progress updates (required by huggingface_hub)"""
-        import threading
-        return threading.Lock()
-
-    @staticmethod
-    def set_lock(lock):
-        """Set lock for thread-safe progress updates (required by huggingface_hub)"""
-        pass
 
 
 @app.route("/api/models/download", methods=["POST"])
@@ -8355,77 +8443,16 @@ def download_model():
             # Set environment variable to use custom download directory
             os.environ["WHISPER_CACHE"] = whisper_dir
 
-            # Register download in active_downloads
             import time
 
             model_key = f"whisper-{model_name}"
-
-            with active_downloads_lock:
-                # Clear from cancelled set so this download can proceed
-                cancelled_downloads.discard(model_key)
-
-                model_size = WHISPER_MODEL_SIZES.get(model_name)
-                active_downloads[model_key] = {
-                    "downloaded": 0,
-                    "total": model_size,
-                    "percentage": 0 if model_size else None,
-                    "start_time": time.time(),
-                    "last_update": time.time(),
-                    "status": "downloading",
-                }
-
-            save_download_progress()
-
-            def update_whisper_progress(model_name, whisper_dir):
-                """Periodically update file size for Whisper downloads"""
-                import time
-                import os
-
-                # Expected download file path
-                download_file = os.path.join(whisper_dir, f"{model_name}.pt")
-                model_key = f"whisper-{model_name}"
-
-                while model_key in active_downloads:
-                    # Check if cancelled
-                    if model_key in cancelled_downloads:
-                        return  # Stop the progress update thread
-
-                    time.sleep(2)  # Poll every 2 seconds
-
-                    # Check if file exists and get its size
-                    if os.path.exists(download_file):
-                        file_size = os.path.getsize(download_file)
-
-                        with active_downloads_lock:
-                            # Check cancelled again inside lock
-                            if model_key in cancelled_downloads:
-                                return
-
-                            if model_key in active_downloads:
-                                active_downloads[model_key]["downloaded"] = file_size
-                                active_downloads[model_key]["last_update"] = time.time()
-
-                                # Calculate percentage if we have total size
-                                total = active_downloads[model_key].get("total")
-                                if total and total > 0:
-                                    percentage = int((file_size / total) * 100)
-                                    # Cap at 99% until completion (download may include verification)
-                                    active_downloads[model_key]["percentage"] = min(percentage, 99)
-
-                        save_download_progress()
-
-                    time.sleep(0.5)  # Brief pause before next iteration
+            if not try_register_download(model_key, total=WHISPER_MODEL_SIZES.get(model_name)):
+                return jsonify({"success": False, "error": "Download already in progress"}), 409
 
             try:
-                # Start background thread to update timestamps
-                import threading
-
-                update_thread = threading.Thread(
-                    target=update_whisper_progress,
-                    args=(model_name, whisper_dir),
-                    daemon=True,
+                start_download_monitor(
+                    model_key, os.path.join(whisper_dir, f"{model_name}.pt")
                 )
-                update_thread.start()
 
                 # Download the model file without loading it into GPU memory
                 # Using custom download function that computes SHA256 during download
@@ -8464,16 +8491,29 @@ def download_model():
                     print(f"[INFO] Downloading Whisper model to {download_target}")
                     sha256_hash = hashlib.sha256()
 
+                    download_cancelled = False
                     with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
                         total_size = int(source.info().get("Content-Length", 0))
                         with tqdm(total=total_size, ncols=80, unit="iB", unit_scale=True, unit_divisor=1024) as pbar:
                             while True:
+                                if model_key in cancelled_downloads:
+                                    download_cancelled = True
+                                    break
                                 buffer = source.read(8192)
                                 if not buffer:
                                     break
                                 output.write(buffer)
                                 sha256_hash.update(buffer)  # Compute SHA256 during download
                                 pbar.update(len(buffer))
+
+                    if download_cancelled:
+                        print(f"[CANCELLED] Whisper download cancelled: {model_name}")
+                        try:
+                            os.remove(download_target)
+                        except OSError:
+                            pass
+                        finish_download(model_key, cancelled=True)
+                        return jsonify({"success": False, "message": "Download cancelled"})
 
                     # Verify checksum computed during download
                     computed_sha256 = sha256_hash.hexdigest()
@@ -8490,25 +8530,12 @@ def download_model():
 
                 print(f"[OK] {message}")
 
-                # Mark as completed instead of deleting
-                with active_downloads_lock:
-                    if f"whisper-{model_name}" in active_downloads:
-                        active_downloads[f"whisper-{model_name}"]["status"] = "completed"
-                        active_downloads[f"whisper-{model_name}"]["percentage"] = 100
-                        active_downloads[f"whisper-{model_name}"]["last_update"] = time.time()
-                        active_downloads[f"whisper-{model_name}"]["completion_time"] = time.time()
-                save_download_progress()
+                finish_download(model_key)
             except Exception as e:
-                # Mark as failed on error
                 print(f"[ERROR] Whisper model download failed: {type(e).__name__}: {e}")
                 import traceback
                 traceback.print_exc()
-                with active_downloads_lock:
-                    if f"whisper-{model_name}" in active_downloads:
-                        active_downloads[f"whisper-{model_name}"]["status"] = "failed"
-                        active_downloads[f"whisper-{model_name}"]["error"] = str(e)
-                        active_downloads[f"whisper-{model_name}"]["last_update"] = time.time()
-                save_download_progress()
+                finish_download(model_key, error=e)
                 raise
 
             return jsonify(
@@ -8542,28 +8569,14 @@ def download_model():
                 model_dir_name = model_id.replace("/", "--")
                 local_dir = os.path.join(models_dir, model_dir_name)
 
-            # Register download in active_downloads
             import time
 
-            with active_downloads_lock:
-                # Clear from cancelled set so this download can proceed
-                cancelled_downloads.discard(model_id)
-
-                active_downloads[model_id] = {
-                    "downloaded": 0,
-                    "total": None,
-                    "percentage": None,
-                    "start_time": time.time(),
-                    "last_update": time.time(),
-                    "status": "downloading",
-                }
-
-            save_download_progress()
+            if not try_register_download(model_id):
+                return jsonify({"success": False, "error": "Download already in progress"}), 409
 
             try:
                 # Use wget for reliable download (huggingface_hub hangs on large files)
                 from huggingface_hub import list_repo_files, hf_hub_url
-                import subprocess
 
                 os.makedirs(local_dir, exist_ok=True)
 
@@ -8576,6 +8589,7 @@ def download_model():
                     # Check if cancelled before each file
                     if model_id in cancelled_downloads:
                         print(f"[CANCELLED] Download cancelled for {model_id}")
+                        finish_download(model_id, cancelled=True)
                         return jsonify({"success": False, "message": "Download cancelled"})
 
                     dest_path = os.path.join(local_dir, filename)
@@ -8593,6 +8607,7 @@ def download_model():
                         # Check cancelled inside lock
                         if model_id in cancelled_downloads:
                             print(f"[CANCELLED] Download cancelled for {model_id}")
+                            cancelled_downloads.discard(model_id)
                             return jsonify({"success": False, "message": "Download cancelled"})
 
                         if model_id in active_downloads:
@@ -8603,38 +8618,15 @@ def download_model():
                     # Get download URL from HuggingFace
                     url = hf_hub_url(repo_id=model_id, filename=filename)
 
-                    # Use wget or curl for reliable download with resume capability
-                    # Retry loop: re-run with resume (-c / -C -) on transient failures
-                    import shutil as _shutil
-                    max_attempts = 5
-                    for attempt in range(1, max_attempts + 1):
-                        if _shutil.which('wget'):
-                            dl_cmd = ['wget', '-c', '-t', '3', '-T', '120', '--retry-connrefused',
-                                      '--waitretry', '5', '-O', dest_path, url]
-                        elif _shutil.which('curl'):
-                            dl_cmd = ['curl', '-L', '-C', '-', '--retry', '3', '--retry-delay', '5',
-                                      '--retry-connrefused', '--connect-timeout', '30',
-                                      '--max-time', '600', '-o', dest_path, url]
-                        else:
-                            raise Exception("Neither wget nor curl found — install one to download models")
-
-                        result = subprocess.run(dl_cmd, capture_output=True, text=True)
-
-                        if result.returncode == 0:
-                            break  # Success
-
-                        print(f"[WARNING] Download attempt {attempt}/{max_attempts} failed for {filename} "
-                              f"(exit code {result.returncode})")
-
-                        if attempt < max_attempts:
-                            if os.path.exists(dest_path):
-                                partial_size = os.path.getsize(dest_path)
-                                print(f"[INFO] Partial file exists ({partial_size / (1024*1024):.1f} MB), will resume")
-                            import time as _time
-                            _time.sleep(5 * attempt)
-                        else:
-                            print(f"[ERROR] All {max_attempts} attempts failed for {filename}: {result.stderr}")
-                            raise Exception(f"Failed to download {filename} after {max_attempts} attempts (last exit code: {result.returncode})")
+                    # Download with resume + retry, checking cancellation mid-file
+                    outcome = download_url_to_file(
+                        url, dest_path,
+                        cancel_check=lambda: model_id in cancelled_downloads,
+                    )
+                    if outcome == "cancelled":
+                        print(f"[CANCELLED] Download cancelled mid-file for {model_id}")
+                        finish_download(model_id, cancelled=True)
+                        return jsonify({"success": False, "message": "Download cancelled"})
 
                     print(f"[OK] Downloaded: {filename}")
 
@@ -8643,22 +8635,9 @@ def download_model():
 
                 print(f"[OK] {message}")
 
-                # Mark as completed instead of deleting
-                with active_downloads_lock:
-                    if model_id in active_downloads:
-                        active_downloads[model_id]["status"] = "completed"
-                        active_downloads[model_id]["percentage"] = 100
-                        active_downloads[model_id]["last_update"] = time.time()
-                        active_downloads[model_id]["completion_time"] = time.time()
-                save_download_progress()
+                finish_download(model_id)
             except Exception as e:
-                # Mark as failed on error
-                with active_downloads_lock:
-                    if model_id in active_downloads:
-                        active_downloads[model_id]["status"] = "failed"
-                        active_downloads[model_id]["error"] = str(e)
-                        active_downloads[model_id]["last_update"] = time.time()
-                save_download_progress()
+                finish_download(model_id, error=e)
                 raise
 
             return jsonify(
@@ -9826,20 +9805,22 @@ def download_faster_whisper_model():
         os.makedirs(models_dir, exist_ok=True)
         local_dir = os.path.join(models_dir, f"faster-whisper-{model_name}")
 
-        # Register download in active_downloads
+        # Best-effort total size so the UI can show a real percentage
+        total_size = None
+        try:
+            from huggingface_hub import HfApi
+            repo_info = HfApi().model_info(repo_id, files_metadata=True)
+            total_size = sum(f.size or 0 for f in repo_info.siblings) or None
+        except Exception as e:
+            print(f"[WARNING] Could not get size of {repo_id}: {e}")
+
         download_key = f"faster-whisper-{model_name}"
-        with active_downloads_lock:
-            active_downloads[download_key] = {
-                "downloaded": 0,
-                "total": None,
-                "percentage": None,
-                "start_time": time.time(),
-                "last_update": time.time(),
-                "status": "downloading",
-            }
-        save_download_progress()
+        if not try_register_download(download_key, total=total_size):
+            return jsonify({"success": False, "error": "Download already in progress"}), 409
 
         try:
+            start_download_monitor(download_key, local_dir, total=total_size)
+
             # Download model (progress shown in server console via tqdm)
             path = snapshot_download(
                 repo_id=repo_id,
@@ -9849,23 +9830,10 @@ def download_faster_whisper_model():
             message = f"faster-whisper {model_name} downloaded to: {path}"
             print(f"[OK] {message}")
 
-            # Mark as completed
-            with active_downloads_lock:
-                if download_key in active_downloads:
-                    active_downloads[download_key]["status"] = "completed"
-                    active_downloads[download_key]["percentage"] = 100
-                    active_downloads[download_key]["last_update"] = time.time()
-                    active_downloads[download_key]["completion_time"] = time.time()
-            save_download_progress()
+            finish_download(download_key)
 
         except Exception as e:
-            # Mark as failed
-            with active_downloads_lock:
-                if download_key in active_downloads:
-                    active_downloads[download_key]["status"] = "failed"
-                    active_downloads[download_key]["error"] = str(e)
-                    active_downloads[download_key]["last_update"] = time.time()
-            save_download_progress()
+            finish_download(download_key, error=e)
             raise
 
         return jsonify({
@@ -10177,58 +10145,6 @@ def nllb_status():
 nllb_download_progress = {"status": "idle", "progress": 0, "message": ""}
 
 
-@app.route("/api/models/download-nllb", methods=["POST"])
-def download_nllb():
-    """Download NLLB translation model to ./models/ directory"""
-    if not check_ip_whitelist():
-        return jsonify({"success": False, "error": "Access Denied"}), 403
-
-    global nllb_download_progress
-
-    try:
-        import threading
-        from huggingface_hub import snapshot_download
-
-        def download_nllb_model():
-            global nllb_download_progress
-            try:
-                models_dir = MODELS_DIR
-                os.makedirs(models_dir, exist_ok=True)
-                nllb_dir_name = "facebook--nllb-200-distilled-600M"
-                nllb_path = os.path.join(models_dir, nllb_dir_name)
-
-                model_id = "facebook/nllb-200-distilled-600M"
-
-                nllb_download_progress = {"status": "downloading", "progress": 20, "message": "Downloading NLLB model (~2.5GB)..."}
-
-                # Download directly using snapshot_download (same as faster-whisper)
-                snapshot_download(
-                    repo_id=model_id,
-                    local_dir=nllb_path,
-                    local_dir_use_symlinks=False,
-                )
-
-                nllb_download_progress = {"status": "complete", "progress": 100, "message": "Download complete!"}
-
-            except Exception as e:
-                nllb_download_progress = {"status": "error", "progress": 0, "message": str(e)}
-
-        # Check if already downloading
-        if nllb_download_progress.get("status") in ["downloading", "starting"]:
-            return jsonify({"success": False, "error": "Download already in progress"})
-
-        # Start download in background thread
-        nllb_download_progress = {"status": "starting", "progress": 0, "message": "Starting download..."}
-        thread = threading.Thread(target=download_nllb_model)
-        thread.daemon = True
-        thread.start()
-
-        return jsonify({"success": True, "message": "Download started"})
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
-
 @app.route("/api/models/nllb-download-progress", methods=["GET"])
 def nllb_download_progress_endpoint():
     """Get NLLB download progress"""
@@ -10445,6 +10361,24 @@ def download_translation_model():
         data = request.get_json()
         model_id = data.get("model_id", "facebook/nllb-200-distilled-600M")
 
+        # The status shim below is a single global, so only one translation
+        # download can run at a time
+        if nllb_download_progress.get("status") in ["downloading", "starting"]:
+            return jsonify({"success": False, "error": "Download already in progress"})
+
+        # Best-effort total size so progress can be a real percentage
+        expected_total = None
+        try:
+            from huggingface_hub import HfApi
+            repo_info = HfApi().model_info(model_id, files_metadata=True)
+            expected_total = sum(f.size or 0 for f in repo_info.siblings) or None
+        except Exception as e:
+            print(f"[WARNING] Could not get size of {model_id}: {e}")
+
+        # Atomic per-model registration in the shared download tracker
+        if not try_register_download(model_id, total=expected_total):
+            return jsonify({"success": False, "error": "Download already in progress"}), 409
+
         def download_model():
             global nllb_download_progress
             import time
@@ -10484,6 +10418,10 @@ def download_translation_model():
 
                 def monitor_progress():
                     """Monitor download progress by checking file sizes"""
+                    # Without this, the assignment below creates a local var and
+                    # the UI never sees these updates (global doesn't inherit
+                    # from the enclosing function's declaration)
+                    global nllb_download_progress
                     last_size = 0
                     stall_count = 0
                     while not stop_monitor.is_set():
@@ -10512,14 +10450,26 @@ def download_translation_model():
 
                             dl_logger.info(f"Progress: {size_mb:.1f} MB downloaded, speed: {speed:.2f} MB/s")
 
-                            # Update progress for UI (estimate based on expected ~2.5GB for NLLB)
-                            expected_size = 2500  # MB
-                            progress = min(85, int(10 + (size_mb / expected_size) * 75))
+                            # Update progress for UI
+                            if expected_total:
+                                progress = min(99, int((total_size / expected_total) * 100))
+                            else:
+                                # No known total: estimate against ~2.5GB (typical NLLB)
+                                progress = min(85, int(10 + (size_mb / 2500) * 75))
                             nllb_download_progress = {
                                 "status": "downloading",
                                 "progress": progress,
                                 "message": f"Downloading: {size_mb:.0f} MB ({speed:.1f} MB/s)"
                             }
+
+                            # Mirror into the shared download tracker (main status endpoint)
+                            with active_downloads_lock:
+                                entry = active_downloads.get(model_id)
+                                if entry and entry.get("status") == "downloading":
+                                    entry["downloaded"] = total_size
+                                    entry["last_update"] = time.time()
+                                    if expected_total:
+                                        entry["percentage"] = min(int((total_size / expected_total) * 100), 99)
 
                             # Detect stalls
                             if total_size == last_size and total_size > 0:
@@ -10543,7 +10493,6 @@ def download_translation_model():
                 dl_logger.info("Fetching file list from HuggingFace...")
                 try:
                     from huggingface_hub import list_repo_files, hf_hub_url
-                    import subprocess
 
                     # Get list of files in the repo
                     files = list_repo_files(repo_id=model_id)
@@ -10570,41 +10519,17 @@ def download_translation_model():
                         url = hf_hub_url(repo_id=model_id, filename=filename)
                         dl_logger.info(f"URL: {url}")
 
-                        # Use wget or curl for reliable download with resume capability
-                        # Retry loop: re-run with resume (-c / -C -) on transient failures
-                        import shutil as _shutil
-                        max_attempts = 5
-                        for attempt in range(1, max_attempts + 1):
-                            if _shutil.which('wget'):
-                                dl_cmd = ['wget', '-c', '-t', '3', '-T', '120', '--retry-connrefused',
-                                          '--waitretry', '5', '-O', dest_path, url]
-                            elif _shutil.which('curl'):
-                                dl_cmd = ['curl', '-L', '-C', '-', '--retry', '3', '--retry-delay', '5',
-                                          '--retry-connrefused', '--connect-timeout', '30',
-                                          '--max-time', '600', '-o', dest_path, url]
-                            else:
-                                raise Exception("Neither wget nor curl found — install one to download models")
-
-                            result = subprocess.run(dl_cmd, capture_output=True, text=True)
-
-                            if result.returncode == 0:
-                                break  # Success
-
-                            dl_logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {filename} "
-                                            f"(exit code {result.returncode}): {result.stderr[:200] if result.stderr else 'no stderr'}")
-
-                            if attempt < max_attempts:
-                                # Check if partial file exists (resume will pick up from there)
-                                if os.path.exists(dest_path):
-                                    partial_size = os.path.getsize(dest_path)
-                                    dl_logger.info(f"Partial file exists ({partial_size / (1024*1024):.1f} MB), will resume on next attempt")
-                                import time as _time
-                                _time.sleep(5 * attempt)  # Increasing backoff: 5s, 10s, 15s, 20s
-                            else:
-                                dl_logger.error(f"All {max_attempts} download attempts failed for {filename}")
-                                if result.stdout:
-                                    dl_logger.error(f"Downloader stdout: {result.stdout}")
-                                raise Exception(f"Failed to download {filename} after {max_attempts} attempts (last exit code: {result.returncode})")
+                        # Download with resume + retry, checking cancellation mid-file
+                        outcome = download_url_to_file(
+                            url, dest_path,
+                            cancel_check=lambda: model_id in cancelled_downloads,
+                            log=dl_logger.info,
+                        )
+                        if outcome == "cancelled":
+                            dl_logger.info(f"Download cancelled for {model_id}")
+                            nllb_download_progress = {"status": "error", "progress": 0, "message": "Download cancelled"}
+                            finish_download(model_id, cancelled=True)
+                            return
 
                         dl_logger.info(f"Successfully downloaded: {filename}")
 
@@ -10660,18 +10585,17 @@ def download_translation_model():
                 dl_logger.info(f"=" * 60)
 
                 nllb_download_progress = {"status": "complete", "progress": 100, "message": "Download complete!"}
+                finish_download(model_id)
 
             except Exception as e:
                 import traceback
                 dl_logger.error(f"Download failed: {type(e).__name__}: {e}")
                 dl_logger.error(traceback.format_exc())
                 nllb_download_progress = {"status": "error", "progress": 0, "message": str(e)}
+                finish_download(model_id, error=e)
             finally:
                 dl_logger.removeHandler(file_handler)
                 file_handler.close()
-
-        if nllb_download_progress.get("status") in ["downloading", "starting"]:
-            return jsonify({"success": False, "error": "Download already in progress"})
 
         nllb_download_progress = {"status": "starting", "progress": 0, "message": "Starting download..."}
         thread = threading.Thread(target=download_model)
