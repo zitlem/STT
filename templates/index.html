@@ -1500,10 +1500,14 @@
 
          const segments = data.segments || [];
          const inProgress = window.displayConfig?.hideTranslateInProgress ? null : data.in_progress;
+         // In translate mode, suppress in-progress text that hasn't been translated yet
+         // (is_translated=false means it's still in the source language — would flicker).
+         const effectiveInProgress = (mode === 'translate' && inProgress && !inProgress.is_translated)
+             ? null : inProgress;
 
          // Handle empty state
          const hasSegments = segments && segments.length > 0;
-         const hasInProgress = inProgress && inProgress.translated_text && inProgress.translated_text.trim();
+         const hasInProgress = effectiveInProgress && effectiveInProgress.translated_text && effectiveInProgress.translated_text.trim();
 
          if (!hasSegments && !hasInProgress) {
            allTranslatedSegments = [];
@@ -1551,7 +1555,7 @@
          // Sort by ID
          allTranslatedSegments.sort((a, b) => a.id - b.id);
 
-         const inProgressText = hasInProgress ? inProgress.translated_text : '';
+         const inProgressText = hasInProgress ? effectiveInProgress.translated_text : '';
 
          // Check if anything changed
          if (!segmentsChanged && inProgressText === lastTranslatedInProgressText &&
@@ -1561,7 +1565,7 @@
 
          lastTranslatedInProgressText = inProgressText;
          lastTranslatedSegmentCount = allTranslatedSegments.length;
-         lastTranslationInProgress = hasInProgress ? inProgress : null;
+         lastTranslationInProgress = hasInProgress ? effectiveInProgress : null;
 
          const tableBody = $("#transcription-table-body");
          const table = document.getElementById('transcription-table');
@@ -1604,7 +1608,7 @@
 
            // Always update in-progress text
            if (hasInProgress) {
-             const highlightedInProgress = applyWordHighlighting(inProgress.translated_text);
+             const highlightedInProgress = applyWordHighlighting(effectiveInProgress.translated_text);
              const styleClass = (window.displayConfig?.inProgressStyle === 'normal') ? 'in-progress-text normal-style' : 'in-progress-text';
              const opacity = window.displayConfig?.inProgressOpacity || 0.7;
              _translationInProgressEl.className = styleClass;

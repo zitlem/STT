@@ -11722,7 +11722,8 @@ def emit_translated_entries():
                     seg_data["alternatives"] = extras.get("alternatives", [])
                 translated_segments.append(seg_data)
 
-            # Always send in-progress text; only translate it if translate_in_progress is enabled
+            # Always send in-progress text; is_translated tells the frontend whether
+            # it's in the target language (so it can suppress source-language flash).
             in_progress_translation = None
             in_progress = transcription_state.get("live_text", "")
             if in_progress and in_progress.strip():
@@ -11730,11 +11731,12 @@ def emit_translated_entries():
                 if should_translate_ip:
                     translated_in_progress = translate_live_text(in_progress, source_lang, target_lang)
                 else:
-                    translated_in_progress = in_progress  # Show original (untranslated)
+                    translated_in_progress = in_progress  # untranslated; frontend filters by is_translated
                 if not is_whisper_hallucination(translated_in_progress):
                     in_progress_translation = {
                         "original_text": in_progress,
                         "translated_text": translated_in_progress,
+                        "is_translated": should_translate_ip,
                         "start": transcription_state.get("live_start", 0),
                         "end": transcription_state.get("live_end", 0),
                         "completed": False
