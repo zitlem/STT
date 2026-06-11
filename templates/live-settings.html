@@ -1801,8 +1801,19 @@
 
                 // Poll for progress (two-step calibration)
                 const progressInterval = setInterval(async () => {
-                    const statusResponse = await fetch('/api/calibration/status');
-                    const statusData = await statusResponse.json();
+                    // The outer try/catch doesn't cover this async callback:
+                    // an unhandled fetch error would leave the interval
+                    // polling forever with the modal stuck
+                    let statusData;
+                    try {
+                        const statusResponse = await fetch('/api/calibration/status');
+                        statusData = await statusResponse.json();
+                    } catch (pollError) {
+                        clearInterval(progressInterval);
+                        showAlert('Calibration aborted — lost contact with server: ' + pollError.message, 'error');
+                        closeCalibrationModal();
+                        return;
+                    }
 
                     if (statusData.calibrating) {
                         const progress = Math.round(statusData.progress);
@@ -1836,13 +1847,18 @@
                         clearInterval(progressInterval);
 
                         // Get results
-                        const resultsResponse = await fetch('/api/calibration/results');
-                        const resultsData = await resultsResponse.json();
+                        try {
+                            const resultsResponse = await fetch('/api/calibration/results');
+                            const resultsData = await resultsResponse.json();
 
-                        if (resultsData.success) {
-                            displayCalibrationResults(resultsData);
-                        } else {
-                            showAlert('Calibration failed: ' + resultsData.error, 'error');
+                            if (resultsData.success) {
+                                displayCalibrationResults(resultsData);
+                            } else {
+                                showAlert('Calibration failed: ' + resultsData.error, 'error');
+                                closeCalibrationModal();
+                            }
+                        } catch (resultsError) {
+                            showAlert('Failed to fetch calibration results: ' + resultsError.message, 'error');
                             closeCalibrationModal();
                         }
                     }

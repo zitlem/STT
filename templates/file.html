@@ -1100,6 +1100,17 @@
                     body: formData
                 });
 
+                // Error responses may be HTML (e.g. 413 from the upload size
+                // cap), which would otherwise surface as a JSON SyntaxError
+                if (response.status === 413) {
+                    showError('File too large — the upload limit is 4GB.');
+                    return;
+                }
+                if (!response.ok && !(response.headers.get('content-type') || '').includes('json')) {
+                    showError('Upload failed: ' + response.status + ' ' + response.statusText);
+                    return;
+                }
+
                 const data = await response.json();
 
                 if (data.success) {

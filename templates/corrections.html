@@ -239,6 +239,28 @@
             }
         });
 
+        // Surface failed corrections — the backend emits these on validation
+        // or DB errors, and silently losing an edit is worse than a banner
+        socket.on("correction_error", function(data) {
+            showErrorToast('Correction failed: ' + ((data && data.error) || 'unknown error'));
+        });
+
+        function showErrorToast(msg) {
+            let el = document.getElementById('error-toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'error-toast';
+                el.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);' +
+                    'background:var(--danger,#e53e3e);color:#fff;padding:10px 18px;border-radius:6px;' +
+                    'z-index:1000;font-size:0.9em;box-shadow:0 2px 8px rgba(0,0,0,0.4);';
+                document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.style.display = 'block';
+            clearTimeout(el._hideTimer);
+            el._hideTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
+        }
+
         // === Socket: Translation ===
         socket.on("translation_update", function(data) {
             transEnabled = data.enabled || false;

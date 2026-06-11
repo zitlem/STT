@@ -1756,6 +1756,16 @@
           lastEndTime = 0;
           lastSegmentCount = 0;
           lastInProgressText = '';
+          // Also clear translation state: segments merge by id, and a new
+          // session restarts ids at 1 — stale rows would collide with new ones
+          allTranslatedSegments = [];
+          lastTranslationInProgress = null;
+          lastTranslatedSegmentCount = 0;
+          lastTranslatedInProgressText = '';
+          _lastTranslationFinalizedHTML = '';
+          _translationStructureBuilt = false;
+          _translationFinalizedEl = null;
+          _translationInProgressEl = null;
           // Re-join audio streaming rooms after reconnect (e.g. server restart)
           if (window.displayConfig.audioStream) {
             socket.emit('join_audio_stream');
