@@ -2294,6 +2294,9 @@ if multiprocessing.current_process().name == 'MainProcess':
             "audio_db": -60,  # Audio level in decibels
             "audio_energy": 0,  # Raw audio energy (RMS)
             "live_text": "",  # Live preview text (not yet saved to DB)
+            "live_start": 0,  # Start time of the live preview within the session
+            "live_end": 0,  # End time of the live preview within the session
+            "live_word_confidences": [],  # Word-level confidence for the live preview
             "loaded_model": "",  # Name of the actual model that was loaded
             "audio_stream_enabled": False,  # Whether to stream audio to web clients
         }
@@ -2357,6 +2360,7 @@ _db_cache = {
 _db_lock = threading.Lock()
 _cache_lock = threading.Lock()
 _transcription_state_lock = threading.Lock()
+_transcription_start_lock = threading.Lock()  # Guards worker-process creation in the start route
 _audio_queue_lock = threading.Lock()
 # Generate the current date and time as a string
 current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M_%A")
@@ -7200,34 +7204,44 @@ def start_transcription():
 
     global transcription_process, transcription_state
     try:
-        if transcription_state["running"]:
-            return jsonify(
-                {"success": False, "error": "Transcription is already running"}
-            ), 400
+        with _transcription_start_lock:
+            worker_dead = transcription_process is None or not transcription_process.is_alive()
 
-        # Don't start if still stopping
-        if transcription_state["status"] == "stopping":
-            return jsonify(
-                {"success": False, "error": "Transcription is still stopping, please wait"}
-            ), 400
+            if transcription_state["running"]:
+                if worker_dead:
+                    # Worker crashed mid-run and never reset the state — recover
+                    # instead of telling the user "already running" forever
+                    print("[START] State says running but worker is dead — resetting state")
+                    transcription_state["running"] = False
+                    transcription_state["status"] = "stopped"
+                else:
+                    return jsonify(
+                        {"success": False, "error": "Transcription is already running"}
+                    ), 400
 
-        # Ensure we have a valid worker process
-        # Worker stays alive between Start/Stop cycles, so we usually just reuse it
-        if transcription_process is None or not transcription_process.is_alive():
-            # Worker doesn't exist or crashed - create a new one
-            # This should only happen on first start or if worker unexpectedly died
-            print("[START] Worker process not running, creating new worker...")
-            transcription_process = multiprocessing.Process(
-                target=thread1_function,
-                args=(transcription_state, control_queue, config_queue,
-                      calibration_state, calibration_data_shared, calibration_step1_data,
-                      audio_stream_queue)
-            )
-            transcription_process.start()
-            globals()["thread1"] = transcription_process
-        else:
-            # Worker is alive, just reuse it (it's waiting in idle loop)
-            print(f"[START] Reusing existing worker process PID={transcription_process.pid}")
+            # Don't start if still stopping (unless the worker is gone)
+            if transcription_state["status"] == "stopping" and not worker_dead:
+                return jsonify(
+                    {"success": False, "error": "Transcription is still stopping, please wait"}
+                ), 400
+
+            # Ensure we have a valid worker process
+            # Worker stays alive between Start/Stop cycles, so we usually just reuse it
+            if worker_dead:
+                # Worker doesn't exist or crashed - create a new one
+                # This should only happen on first start or if worker unexpectedly died
+                print("[START] Worker process not running, creating new worker...")
+                transcription_process = multiprocessing.Process(
+                    target=thread1_function,
+                    args=(transcription_state, control_queue, config_queue,
+                          calibration_state, calibration_data_shared, calibration_step1_data,
+                          audio_stream_queue)
+                )
+                transcription_process.start()
+                globals()["thread1"] = transcription_process
+            else:
+                # Worker is alive, just reuse it (it's waiting in idle loop)
+                print(f"[START] Reusing existing worker process PID={transcription_process.pid}")
 
         # Send start command through queue
         control_queue.put({"command": "start"})
@@ -11011,107 +11025,29 @@ def handle_leave_tts_audio():
 # =============================================================================
 
 
-class StagingBuffer:
-    """Buffer that holds finalized segments before publishing to DB.
-
-    When output delay is enabled, segments are held here for a configurable
-    duration before being committed to the database, giving the user time
-    to review and correct them.
-    """
-
-    def __init__(self):
-        self._buffer = []  # List of {segment_data, finalized_at, id}
-        self._lock = threading.Lock()
-        self._next_id = 1
-
-    def add(self, segment_data):
-        """Add a segment to the staging buffer. Returns the staging ID."""
-        with self._lock:
-            staging_id = self._next_id
-            self._next_id += 1
-            self._buffer.append({
-                "segment": segment_data,
-                "finalized_at": time.time(),
-                "staging_id": staging_id,
-            })
-            return staging_id
-
-    def get_ready(self, delay_seconds):
-        """Get segments that have been in the buffer longer than delay_seconds."""
-        now = time.time()
-        with self._lock:
-            ready = [item for item in self._buffer if now - item["finalized_at"] >= delay_seconds]
-            self._buffer = [item for item in self._buffer if now - item["finalized_at"] < delay_seconds]
-            return ready
-
-    def get_staged(self):
-        """Get all currently staged segments with their remaining time."""
-        now = time.time()
-        with self._lock:
-            return [
-                {
-                    "staging_id": item["staging_id"],
-                    "segment": item["segment"],
-                    "elapsed": now - item["finalized_at"],
-                    "finalized_at": item["finalized_at"],
-                }
-                for item in self._buffer
-            ]
-
-    def approve(self, staging_id):
-        """Immediately approve a staged segment (remove from buffer and return it)."""
-        with self._lock:
-            for i, item in enumerate(self._buffer):
-                if item["staging_id"] == staging_id:
-                    return self._buffer.pop(i)
-            return None
-
-    def approve_all(self):
-        """Approve all staged segments."""
-        with self._lock:
-            items = list(self._buffer)
-            self._buffer.clear()
-            return items
-
-    def edit(self, staging_id, new_text):
-        """Edit a staged segment's text before it's published."""
-        with self._lock:
-            for item in self._buffer:
-                if item["staging_id"] == staging_id:
-                    item["segment"]["text"] = new_text
-                    return True
-            return False
-
-    def discard(self, staging_id):
-        """Discard a staged segment (don't publish it)."""
-        with self._lock:
-            self._buffer = [item for item in self._buffer if item["staging_id"] != staging_id]
-
-    def is_empty(self):
-        """Check if buffer has any staged segments."""
-        with self._lock:
-            return len(self._buffer) == 0
+# "Staged" segments are ordinary DB rows whose timestamp is younger than the
+# configured delay — emit_new_entries tags them and withholds them from the
+# live view. Approve/discard therefore operate on the DB rows directly.
 
 
-# Global staging buffer instance
-_staging_buffer = StagingBuffer()
+def _invalidate_entries_cache():
+    """Force the next emit cycle to re-read the DB."""
+    with _cache_lock:
+        _db_cache["last_entries"] = []
+        _db_cache["last_fetch_time"] = 0
 
 
 @socketio.on("toggle_delay")
 def handle_toggle_delay(data):
-    """Toggle the output delay buffer on/off"""
+    """Toggle the output delay on/off"""
     if not data:
         return
     enabled = data.get("enabled", False)
     config.setdefault("corrections", {}).setdefault("output_delay", {})["enabled"] = enabled
     save_config(config)
 
-    # If disabling, flush all staged segments
-    if not enabled:
-        items = _staging_buffer.approve_all()
-        if items:
-            _flush_staged_to_db(items)
-
+    # Disabling needs no flush: rows are already in the DB, and the next
+    # emit cycle publishes everything once the gate is off
     socketio.emit("delay_status", {"enabled": enabled})
 
 
@@ -11125,77 +11061,59 @@ def handle_set_delay_seconds(data):
     save_config(config)
 
 
+def _backdate_staged_rows(seg_id=None):
+    """Publish staged row(s) immediately by backdating their timestamp past
+    the delay window. seg_id None = all rows still inside the window."""
+    current_db_name = transcription_state.get("db_name")
+    if not current_db_name or not os.path.exists(current_db_name):
+        return
+    delay_seconds = config.get("corrections", {}).get("output_delay", {}).get("delay_seconds", 7)
+    # Match the emit-time age check, which compares against datetime.now()
+    backdated = (datetime.now() - timedelta(seconds=delay_seconds + 1)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with sqlite3.connect(current_db_name) as conn:
+            if seg_id is not None:
+                conn.execute("UPDATE transcriptions SET timestamp = ? WHERE id = ?", (backdated, int(seg_id)))
+            else:
+                cutoff = (datetime.now() - timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+                conn.execute("UPDATE transcriptions SET timestamp = ? WHERE timestamp > ?", (backdated, cutoff))
+            conn.commit()
+        _invalidate_entries_cache()
+    except Exception as e:
+        print(f"[STAGING] Approve failed: {e}")
+
+
 @socketio.on("approve_staged")
 def handle_approve_staged(data):
     """Approve one or all staged segments for immediate publishing"""
     if not data:
         return
-
     if data.get("all", False):
-        items = _staging_buffer.approve_all()
-        if items:
-            _flush_staged_to_db(items)
+        _backdate_staged_rows()
     else:
         staging_id = data.get("staging_id")
         if staging_id is not None:
-            item = _staging_buffer.approve(staging_id)
-            if item:
-                _flush_staged_to_db([item])
-
-
-@socketio.on("edit_staged")
-def handle_edit_staged(data):
-    """Edit a staged segment's text before publishing"""
-    if not data:
-        return
-    staging_id = data.get("staging_id")
-    new_text = data.get("new_text", "").strip()
-    if staging_id is not None and new_text:
-        _staging_buffer.edit(staging_id, new_text)
+            _backdate_staged_rows(staging_id)
 
 
 @socketio.on("discard_staged")
 def handle_discard_staged(data):
-    """Discard a staged segment"""
+    """Discard a staged segment (delete the row before it publishes)"""
     if not data:
         return
     staging_id = data.get("staging_id")
-    if staging_id is not None:
-        _staging_buffer.discard(staging_id)
-
-
-def _flush_staged_to_db(items):
-    """Write approved/expired staged segments to the database"""
+    if staging_id is None:
+        return
     current_db_name = transcription_state.get("db_name")
     if not current_db_name or not os.path.exists(current_db_name):
         return
-
     try:
         with sqlite3.connect(current_db_name) as conn:
-            cursor = conn.cursor()
-            for item in items:
-                seg = item["segment"]
-                timestamp = seg.get("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
-                text = seg.get("text", "").strip()
-                if not text:
-                    continue
-                text = apply_profanity_filter(text)
-                confidence = seg.get("confidence")
-                confidence_threshold = config.get("corrections", {}).get("confidence_threshold", 0.7)
-                needs_review = 1 if (confidence is not None and confidence < confidence_threshold) else 0
-                cursor.execute(
-                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
-                    (timestamp, text, seg.get("start", 0), seg.get("end", 0), confidence, needs_review),
-                )
+            conn.execute("DELETE FROM transcriptions WHERE id = ?", (int(staging_id),))
             conn.commit()
-
-        # Invalidate cache
-        with _cache_lock:
-            _db_cache["last_entries"] = []
-            _db_cache["last_fetch_time"] = 0
-
+        _invalidate_entries_cache()
     except Exception as e:
-        print(f"[STAGING FLUSH ERROR] {e}")
+        print(f"[STAGING] Discard failed: {e}")
 
 
 def get_new_entries(limit_override=None):
@@ -11524,7 +11442,7 @@ def emit_translated_entries():
             want_confidence = corrections_cfg.get("enabled", True) and corrections_cfg.get("confidence_highlighting", True)
             n_alternatives = corrections_cfg.get("n_best_alternatives", {}).get("translation_count", 0) if corrections_cfg.get("enabled", True) else 0
 
-            context_window = trans_config.get("context_window", 1)
+            context_window = max(1, min(10, int(trans_config.get("context_window", 1) or 1)))
 
             max_translations_per_cycle = 3  # Limit new translations per cycle so cached segments emit fast
             translations_this_cycle = 0
@@ -11644,8 +11562,10 @@ def emit_translated_entries():
                                     (translated_text, target_lang, seg_id),
                                 )
                                 _tconn.commit()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Translation still shows from cache, but won't survive a
+                        # page reload — surface the reason instead of hiding it
+                        print(f"[TRANSLATION] DB save failed for segment {seg_id}: {e}", flush=True)
 
                     # Limit new translations per cycle so cached segments emit quickly on page load
                     translations_this_cycle += 1
@@ -12148,7 +12068,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             sp.run(["taskkill", "/F", "/IM", "ffmpeg.exe"],
                                                    capture_output=True, timeout=2)
                                         else:
-                                            sp.run(["pkill", "-9", "-f", f"ffmpeg.*{source.device_name}"],
+                                            sp.run(["pkill", "-9", "-f", f"ffmpeg.*{re.escape(source.device_name)}"],
                                                    capture_output=True, timeout=2)
                                         print(f"[STOP] OK: Sent kill for ffmpeg using {source.device_name}")
                                     except Exception as pkill_err:
@@ -13069,6 +12989,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             phrase_timeout = new_config["audio"].get(
                                                 "phrase_timeout", phrase_timeout
                                             )
+                                            if "pending_buffer" in new_config["audio"]:
+                                                _pb_cfg = new_config["audio"]["pending_buffer"]
+                                                pending_buffer_enabled = _pb_cfg.get("enabled", pending_buffer_enabled)
+                                                pending_max_words = _pb_cfg.get("max_words", pending_max_words)
+                                                pending_max_age = _pb_cfg.get("max_age_seconds", pending_max_age)
 
                                         if "vad" in new_config:
                                             vad_threshold = new_config["vad"].get(
@@ -13722,10 +13647,13 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                                                 # print(f"[PHRASE_COMPLETE] Finalized: '{segment_text[:40]}...'")
 
-                                        # Clear live preview
-                                        transcription_state["live_text"] = ""
-                                        transcription_state["live_start"] = 0
-                                        transcription_state["live_end"] = 0
+                                        # Clear live preview (single update: readers in the
+                                        # Flask process never see a half-written generation)
+                                        transcription_state.update({
+                                            "live_text": "",
+                                            "live_start": 0,
+                                            "live_end": 0,
+                                        })
                                         # Reset phrase_time so next silence doesn't immediately re-trigger
                                         phrase_time = None
 
@@ -13736,14 +13664,16 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     if pending_remainder:
                                         current_text = (pending_remainder + " " + current_text).strip()
                                     if current_text:
-                                        old_live_text = transcription_state.get("live_text", "")
-                                        transcription_state["live_text"] = current_text
-                                        # Track timing for in-progress segment
-                                        transcription_state["live_start"] = live_transcriber.timestamp_offset
-                                        transcription_state["live_end"] = live_transcriber.timestamp_offset + chunk_duration
-                                        # Store word-level confidence for in-progress display
+                                        # Single update so text/timing/confidence stay consistent
+                                        # for readers in the Flask process
+                                        _live_update = {
+                                            "live_text": current_text,
+                                            "live_start": live_transcriber.timestamp_offset,
+                                            "live_end": live_transcriber.timestamp_offset + chunk_duration,
+                                        }
                                         if hasattr(live_transcriber, '_last_seg_confidence'):
-                                            transcription_state["live_word_confidences"] = live_transcriber._last_seg_confidence.get('words', [])
+                                            _live_update["live_word_confidences"] = live_transcriber._last_seg_confidence.get('words', [])
+                                        transcription_state.update(_live_update)
 
                                 except Exception as transcribe_error:
                                     print(f"[ERROR] Transcription failed: {transcribe_error}")
