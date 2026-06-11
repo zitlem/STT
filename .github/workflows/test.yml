@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The test suite extracts functions from speech_to_text.py via AST and
+      # imports only watchdog.py directly, so the heavy runtime requirements
+      # (torch, whisper, ...) are not needed here.
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (hard errors only)
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest tests/ -v

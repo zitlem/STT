@@ -4,13 +4,9 @@ Hugging Face Model Management Script
 Handles downloading and uploading models
 """
 
-import os
-import json
 from huggingface_hub import HfApi, snapshot_download
 from pathlib import Path
 import argparse
-import zipfile
-import shutil
 
 class HuggingFaceManager:
     def __init__(self):
