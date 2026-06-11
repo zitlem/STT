@@ -383,8 +383,6 @@ DEFAULT_CONFIG = {
     },
     "custom_dictionary": {
         "file": "custom_dictionary.json",
-        "whisper_hotwords_enabled": True,
-        "whisper_initial_prompt_enabled": True,
         "nllb_glossary_enabled": True,
     },
     "watchdog": {
@@ -1757,22 +1755,29 @@ class ModelFactory:
             elif model_type == "faster_whisper":
                 # faster-whisper model (CTranslate2-based)
                 # Build params dict with language and whisper_params
-                params = {"vad_filter": True}  # Enable VAD by default for live transcription
+                params = {
+                    "vad_filter": False,  # External VAD already screens; internal VAD over-chunks long buffers
+                }
                 if language != "auto":
                     params["language"] = language
 
                 # faster-whisper supported parameters (different from standard whisper)
+                # NOTE: initial_prompt and hotwords are intentionally excluded.
+                # Both are tokenized into the decoder prefix and consume decoder positions
+                # (max 448 total). The full Bible-book hotwords list is ~227 tokens alone,
+                # leaving only ~220 positions for actual transcription — not enough for
+                # dense speech. Whisper's language setting is sufficient for recognition.
                 faster_whisper_params = {
                     "beam_size", "best_of", "patience", "length_penalty",
                     "repetition_penalty", "no_repeat_ngram_size",
                     "temperature", "compression_ratio_threshold",
                     "log_prob_threshold", "no_speech_threshold",
-                    "condition_on_previous_text", "initial_prompt",
+                    "condition_on_previous_text",
                     "prefix", "suppress_blank", "suppress_tokens",
                     "without_timestamps", "max_initial_timestamp",
                     "word_timestamps", "prepend_punctuations",
                     "append_punctuations", "vad_filter", "vad_parameters",
-                    "hotwords", "task",
+                    "task",
                 }
 
                 # Parameter name mapping (whisper -> faster-whisper)
@@ -7627,7 +7632,7 @@ def load_custom_dictionary():
                 return _dictionary_cache
         else:
             # Create default dictionary file if it doesn't exist
-            default_dict = {"hotwords": [], "glossary": {}}
+            default_dict = {"glossary": {}}
             import json as _json
             with open(dict_file, "w", encoding="utf-8") as f:
                 _json.dump(default_dict, f, indent=2, ensure_ascii=False)
@@ -7638,7 +7643,7 @@ def load_custom_dictionary():
     except Exception as e:
         print(f"[DICTIONARY] Error loading dictionary: {e}")
 
-    return {"hotwords": [], "glossary": {}}
+    return {"glossary": {}}
 
 
 def save_custom_dictionary(data):
@@ -7683,46 +7688,6 @@ def update_dictionary():
     if save_custom_dictionary(dictionary):
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "Failed to save dictionary"}), 500
-
-
-@app.route("/api/dictionary/hotword", methods=["POST"])
-def add_hotword():
-    """Add a hotword to the dictionary"""
-    if not check_ip_whitelist():
-        return jsonify({"success": False, "error": "Access Denied"}), 403
-
-    data = request.get_json()
-    word = data.get("word", "").strip() if data else ""
-    if not word:
-        return jsonify({"success": False, "error": "word is required"}), 400
-
-    dictionary = load_custom_dictionary()
-    if word not in dictionary.get("hotwords", []):
-        dictionary.setdefault("hotwords", []).append(word)
-        save_custom_dictionary(dictionary)
-
-    return jsonify({"success": True, "hotwords": dictionary["hotwords"]})
-
-
-@app.route("/api/dictionary/hotword", methods=["DELETE"])
-def remove_hotword():
-    """Remove a hotword from the dictionary"""
-    if not check_ip_whitelist():
-        return jsonify({"success": False, "error": "Access Denied"}), 403
-
-    data = request.get_json()
-    word = data.get("word", "").strip() if data else ""
-    if not word:
-        return jsonify({"success": False, "error": "word is required"}), 400
-
-    dictionary = load_custom_dictionary()
-    hotwords = dictionary.get("hotwords", [])
-    if word in hotwords:
-        hotwords.remove(word)
-        dictionary["hotwords"] = hotwords
-        save_custom_dictionary(dictionary)
-
-    return jsonify({"success": True, "hotwords": dictionary.get("hotwords", [])})
 
 
 @app.route("/api/dictionary/glossary", methods=["POST"])
@@ -7838,6 +7803,16 @@ def get_audio_devices():
                     }
                 )
             devices = normalized_devices
+
+            # Prepend aaa.wav as a selectable test source if present in the app directory
+            test_wav = os.path.join(APP_DIR, "aaa.wav")
+            if os.path.isfile(test_wav):
+                devices.insert(0, {
+                    "index": -1,
+                    "name": "aaa.wav — Test Audio File",
+                    "device_id": test_wav,
+                    "is_default": False,
+                })
 
         except Exception as e:
             app_logger.error(f"Error listing devices: {e}")
@@ -11441,6 +11416,7 @@ def emit_new_entries():
             # Keep backward compatibility with old format
             "entries": [(e[1], e[2]) for e in entries],  # [(timestamp, text), ...]
             "in_progress": in_progress,  # Current incomplete text or ""
+            "is_running": is_running,
         }
         if staged_segments:
             emit_data["staged_segments"] = staged_segments
@@ -11965,6 +11941,7 @@ def normalize_for_hallucination_check(text):
 
 def apply_profanity_filter(text):
     """Replace broadcast-forbidden words with **** (or configured replacement)."""
+    import re
     if not text:
         return text
     cfg = config.get("profanity_filter", {})
@@ -13400,28 +13377,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     if corrections_config.get("confidence_highlighting", True) and corrections_config.get("enabled", True):
                                         whisper_params = dict(whisper_params)  # Copy to avoid mutating config
                                         whisper_params["word_timestamps"] = True
-
-                                    # Inject custom dictionary hotwords if configured
-                                    dict_config = process_config.get("custom_dictionary", {})
-                                    if dict_config.get("whisper_hotwords_enabled", False) or dict_config.get("whisper_initial_prompt_enabled", False):
-                                        dict_file = dict_config.get("file", "custom_dictionary.json")
-                                        if not os.path.isabs(dict_file):
-                                            dict_file = os.path.join(APP_DIR, dict_file)
-                                        if os.path.exists(dict_file):
-                                            try:
-                                                import json as _json
-                                                with open(dict_file, "r", encoding="utf-8") as _f:
-                                                    _dict_data = _json.load(_f)
-                                                hotwords_list = _dict_data.get("hotwords", [])
-                                                if hotwords_list:
-                                                    if isinstance(whisper_params, dict) is False:
-                                                        whisper_params = dict(whisper_params)
-                                                    if dict_config.get("whisper_hotwords_enabled", False):
-                                                        whisper_params["hotwords"] = " ".join(hotwords_list)
-                                                    if dict_config.get("whisper_initial_prompt_enabled", False) and "initial_prompt" not in whisper_params:
-                                                        whisper_params["initial_prompt"] = ", ".join(hotwords_list)
-                                            except Exception as dict_err:
-                                                print(f"[DICTIONARY] Error loading hotwords: {dict_err}", flush=True)
 
                                     # Transcribe the audio chunk and get segments with timestamps
                                     # This is key to avoiding overlaps - Whisper knows segment boundaries

@@ -637,28 +637,12 @@
                     <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Custom Dictionary</h3>
 
                     <div class="checkbox-group">
-                        <input type="checkbox" id="whisper_hotwords_enabled" checked>
-                        <label for="whisper_hotwords_enabled">Whisper hotwords biasing</label>
-                    </div>
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Boosts recognition of specific words during transcription</div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="whisper_initial_prompt_enabled" checked>
-                        <label for="whisper_initial_prompt_enabled">Use as initial prompt</label>
-                    </div>
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Feeds hotwords as context to Whisper before transcription starts</div>
-                    <div class="checkbox-group">
                         <input type="checkbox" id="nllb_glossary_enabled" checked>
                         <label for="nllb_glossary_enabled">NLLB glossary post-processing</label>
                     </div>
                     <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Replaces translated terms using glossary mappings after translation</div>
 
                     <div class="form-group" style="margin-top: 12px;">
-                        <label style="font-size: 0.85em;">Hotwords (one per line)</label>
-                        <textarea id="hotwords_list" rows="4" placeholder="Add words the model often gets wrong...&#10;e.g. Kubernetes&#10;PyTorch&#10;NLLB"
-                                  style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid #333; color: var(--text-primary); border-radius: 4px; font-size: 0.85em; resize: vertical;"></textarea>
-                    </div>
-
-                    <div class="form-group" style="margin-top: 8px;">
                         <label style="font-size: 0.85em;">Glossary (source=target, one per line)</label>
                         <textarea id="glossary_list" rows="4" placeholder="Add translation term mappings...&#10;e.g. neural network=red neuronal&#10;machine learning=aprendizaje automatico"
                                   style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid #333; color: var(--text-primary); border-radius: 4px; font-size: 0.85em; resize: vertical;"></textarea>
@@ -880,8 +864,6 @@
 
             // Load custom dictionary settings
             const dict = config.custom_dictionary || {};
-            document.getElementById('whisper_hotwords_enabled').checked = dict.whisper_hotwords_enabled !== false;
-            document.getElementById('whisper_initial_prompt_enabled').checked = dict.whisper_initial_prompt_enabled !== false;
             document.getElementById('nllb_glossary_enabled').checked = dict.nllb_glossary_enabled !== false;
 
             // Load dictionary content
@@ -893,7 +875,6 @@
                 const resp = await fetch('/api/dictionary');
                 const data = await resp.json();
                 if (data.success && data.dictionary) {
-                    document.getElementById('hotwords_list').value = (data.dictionary.hotwords || []).join('\n');
                     // Format glossary as source=target lines
                     const glossary = data.dictionary.glossary || {};
                     const lines = [];
@@ -911,9 +892,6 @@
 
         async function saveDictionary() {
             try {
-                const hotwords = document.getElementById('hotwords_list').value
-                    .split('\n').map(s => s.trim()).filter(Boolean);
-
                 // Parse glossary lines (source=target format)
                 const glossaryLines = document.getElementById('glossary_list').value
                     .split('\n').map(s => s.trim()).filter(Boolean);
@@ -941,7 +919,7 @@
                 const resp = await fetch('/api/dictionary', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dictionary: { hotwords, glossary } })
+                    body: JSON.stringify({ dictionary: { glossary } })
                 });
                 const data = await resp.json();
                 if (data.success) {
@@ -1057,8 +1035,6 @@
                     },
                     custom_dictionary: {
                         file: "custom_dictionary.json",
-                        whisper_hotwords_enabled: document.getElementById('whisper_hotwords_enabled').checked,
-                        whisper_initial_prompt_enabled: document.getElementById('whisper_initial_prompt_enabled').checked,
                         nllb_glossary_enabled: document.getElementById('nllb_glossary_enabled').checked
                     }
                 };
