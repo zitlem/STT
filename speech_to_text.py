@@ -189,6 +189,15 @@ DEFAULT_CONFIG = {
         "same_output_threshold": 7,  # Number of repeated outputs before finalizing text
         "fuzzy_duplicate_threshold": 0.85,
         "min_words": 0,
+        "pending_buffer": {
+            "enabled": True,  # Hold incomplete sentence fragments until the sentence completes
+            "max_words": 30,  # Flush a fragment that grows beyond this many words (run-on speech)
+            "max_age_seconds": 10,  # Flush a fragment older than this many seconds
+        },
+        "context_prompt": {
+            "enabled": True,  # Feed tail of finalized transcript as initial_prompt for cross-capture context
+            "max_chars": 200,  # How much trailing transcript to include (Whisper prompt budget is 224 tokens)
+        },
     },
     "vad": {"enabled": True, "threshold": 0.5},
     "database": {
@@ -353,7 +362,7 @@ DEFAULT_CONFIG = {
             "no_repeat_ngram_size": 0,
             "repetition_penalty": 1.0,
         },
-        "context_window": 1,
+        "context_window": 2,
         "remote": {
             "enabled": False,
             "endpoint": "",
@@ -889,28 +898,18 @@ def translate_segments(segments, source_lang, target_lang, model, tokenizer, pro
     context_window = max(1, context_window)
 
     for i, seg in enumerate(segments):
-        if context_window > 1 and total > 1:
-            # Build context by combining adjacent segments
+        translated_text = None
+        if context_window > 1 and i > 0:
+            # Translate (context + target) in one call, then extract the target's
+            # portion by sentence-count alignment
             start_idx = max(0, i - (context_window - 1))
-            context_texts = [segments[j]["text"] for j in range(start_idx, min(i + 1, total))]
-            combined_text = " ".join(context_texts)
-            # Translate combined text, then extract only the last segment's translation
-            combined_translated = translate_text(combined_text, source_lang, target_lang, model, tokenizer, generation_params=generation_params)
-            # If we added context, try to extract just the target segment portion
-            if len(context_texts) > 1:
-                # Translate the target segment alone to get its approximate length
-                # Use the combined translation but trim prefix from context-only translation
-                context_only = " ".join(context_texts[:-1])
-                context_only_translated = translate_text(context_only, source_lang, target_lang, model, tokenizer, generation_params=generation_params)
-                # Remove the context prefix from the combined translation
-                if combined_translated.startswith(context_only_translated):
-                    translated_text = combined_translated[len(context_only_translated):].strip()
-                else:
-                    # Fallback: use combined translation as-is for this segment
-                    translated_text = translate_text(seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
-            else:
-                translated_text = combined_translated
-        else:
+            context_text = " ".join(segments[j]["text"] for j in range(start_idx, i)).strip()
+            if context_text:
+                num_ctx_sentences = count_sentence_units(context_text)
+                combined_translated = translate_text(context_text + " " + seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
+                translated_text = extract_context_translation(combined_translated, num_ctx_sentences)
+        if not translated_text:
+            # No context, or alignment failed - translate the segment alone
             translated_text = translate_text(seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
         translated_segments.append({
             "text": translated_text,
@@ -11637,15 +11636,20 @@ def emit_translated_entries():
                         if not is_whisper_hallucination(translated_text):
                             translated_segments.append(seg_data)
                         continue
-                    # Build context from preceding segments if context_window > 1
+                    # Build context from preceding segments if context_window > 1.
+                    # The combined (context + target) text is translated in one call, then the
+                    # target's portion is extracted by sentence-count alignment. If alignment
+                    # fails (translator merged sentences), fall back to translating the target
+                    # alone - never emit the combined translation.
                     text_to_translate = original_text
-                    context_prefix = ""
+                    num_ctx_sentences = 0
                     if context_window > 1 and idx > 0:
                         ctx_start = max(0, idx - (context_window - 1))
                         context_texts = [entries[j][2] for j in range(ctx_start, idx)]
                         if context_texts:
-                            context_prefix = " ".join(context_texts) + " "
-                            text_to_translate = context_prefix + original_text
+                            context_prefix = " ".join(context_texts)
+                            num_ctx_sentences = count_sentence_units(context_prefix)
+                            text_to_translate = context_prefix + " " + original_text
 
                     # Translate with confidence/alternatives if corrections enabled
                     if want_confidence or n_alternatives > 0:
@@ -11653,26 +11657,31 @@ def emit_translated_entries():
                             text_to_translate, source_lang, target_lang,
                             return_extras=True, num_alternatives=n_alternatives,
                         )
-                        # If we used context, strip the context portion from the translation
-                        if context_prefix:
-                            ctx_result = translate_live_text(context_prefix.strip(), source_lang, target_lang)
-                            if isinstance(ctx_result, str) and result["text"].startswith(ctx_result):
-                                result["text"] = result["text"][len(ctx_result):].strip()
+                        if num_ctx_sentences:
+                            extracted = extract_context_translation(result.get("text", ""), num_ctx_sentences)
+                            if extracted:
+                                result["text"] = extracted
                                 result["alternatives"] = [
-                                    a[len(ctx_result):].strip() if a.startswith(ctx_result) else a
-                                    for a in result.get("alternatives", [])
+                                    alt_extracted for alt_extracted in (
+                                        extract_context_translation(a, num_ctx_sentences)
+                                        for a in result.get("alternatives", [])
+                                    ) if alt_extracted
                                 ]
+                            else:
+                                # Alignment failed - retranslate without context
+                                result = translate_live_text(
+                                    original_text, source_lang, target_lang,
+                                    return_extras=True, num_alternatives=n_alternatives,
+                                )
                         translated_text = result["text"]
                         extras = {"confidence": result.get("confidence"), "alternatives": result.get("alternatives", [])}
                         cache.set_with_extras(seg_id, original_text, translated_text, target_lang,
                                               confidence=extras["confidence"], alternatives=extras["alternatives"])
                     else:
                         translated_text = translate_live_text(text_to_translate, source_lang, target_lang)
-                        # Strip context prefix from translation
-                        if context_prefix and isinstance(translated_text, str):
-                            ctx_result = translate_live_text(context_prefix.strip(), source_lang, target_lang)
-                            if isinstance(ctx_result, str) and translated_text.startswith(ctx_result):
-                                translated_text = translated_text[len(ctx_result):].strip()
+                        if num_ctx_sentences and isinstance(translated_text, str):
+                            extracted = extract_context_translation(translated_text, num_ctx_sentences)
+                            translated_text = extracted if extracted else translate_live_text(original_text, source_lang, target_lang)
                         extras = None
                         cache.set(seg_id, original_text, translated_text, target_lang)
 
@@ -12002,6 +12011,33 @@ def split_into_sentences(text):
     return sentences, remainder
 
 
+def count_sentence_units(text):
+    """Count sentence units in text (a trailing incomplete fragment counts as one)."""
+    sentences, remainder = split_into_sentences(text)
+    return len(sentences) + (1 if remainder else 0)
+
+
+def extract_context_translation(combined_translated, num_context_sentences):
+    """
+    Extract the target portion from a translation of (context + target) text.
+
+    Splits the combined translation into sentences and drops the first
+    num_context_sentences. Returns None when the sentence counts don't align
+    (e.g. the translator merged sentences) so the caller can fall back to
+    translating the target in isolation.
+    """
+    if num_context_sentences <= 0:
+        return combined_translated
+    if not combined_translated:
+        return None
+    out_sentences, out_remainder = split_into_sentences(combined_translated)
+    if out_remainder:
+        out_sentences = out_sentences + [out_remainder]
+    if len(out_sentences) <= num_context_sentences:
+        return None
+    return " ".join(out_sentences[num_context_sentences:]).strip() or None
+
+
 def is_fuzzy_duplicate(new_sentence, saved_sentences, threshold=0.85):
     """
     Check if new_sentence is a fuzzy duplicate of any saved sentence.
@@ -12328,6 +12364,16 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     saved_sentences = []        # Sentences already saved to DB (for fuzzy duplicate detection)
                     fuzzy_threshold = audio_config.get("fuzzy_duplicate_threshold", 0.85)  # Similarity threshold for dedup
                     min_words_threshold = audio_config.get("min_words", 0)  # Minimum word count to save segment
+
+                    # Pending-remainder buffer: hold incomplete sentence fragments across captures
+                    # so only complete sentences become DB rows (= translation units)
+                    pending_buffer_cfg = audio_config.get("pending_buffer", {})
+                    pending_buffer_enabled = pending_buffer_cfg.get("enabled", True)
+                    pending_max_words = pending_buffer_cfg.get("max_words", 30)
+                    pending_max_age = pending_buffer_cfg.get("max_age_seconds", 10)
+                    pending_remainder = ""       # Incomplete sentence fragment held back from DB
+                    pending_remainder_since = None  # When the current fragment was first buffered
+                    pending_remainder_meta = None   # (start_time, end_time, confidence) of fragment
 
                     # Full session audio file path (append mode)
                     session_audio_file = None
@@ -13378,6 +13424,28 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         whisper_params = dict(whisper_params)  # Copy to avoid mutating config
                                         whisper_params["word_timestamps"] = True
 
+                                    # Cross-capture context: feed the tail of the finalized transcript
+                                    # as initial_prompt so each capture knows what came before.
+                                    # Never include pending_remainder — that audio is still being
+                                    # re-transcribed from the rolling buffer and would get echoed.
+                                    _ctx_prompt_added = False
+                                    ctx_prompt_cfg = process_config.get("audio", {}).get("context_prompt", {})
+                                    if ctx_prompt_cfg.get("enabled", True) and saved_sentences:
+                                        ctx_max_chars = ctx_prompt_cfg.get("max_chars", 200)
+                                        if ctx_max_chars > 0:
+                                            prompt_tail = " ".join(saved_sentences[-5:])
+                                            if len(prompt_tail) > ctx_max_chars:
+                                                prompt_tail = prompt_tail[-ctx_max_chars:]
+                                                _cut = prompt_tail.find(" ")
+                                                if _cut > 0:
+                                                    prompt_tail = prompt_tail[_cut + 1:]
+                                            if prompt_tail:
+                                                whisper_params = dict(whisper_params)
+                                                existing = whisper_params.get("initial_prompt")
+                                                whisper_params["initial_prompt"] = (existing + " " + prompt_tail) if existing else prompt_tail
+                                                _ctx_prompt_added = True
+
+
                                     # Transcribe the audio chunk and get segments with timestamps
                                     # This is key to avoiding overlaps - Whisper knows segment boundaries
                                     segments = ModelFactory.transcribe(
@@ -13400,6 +13468,13 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         try:
                                             _target_lang = _trans_cfg.get("target_language", "en")
                                             _pass2_params = dict(whisper_params)  # Copy pass 1 params
+                                            # Drop the source-language context tail for the translation
+                                            # pass - it would bias output toward the source language
+                                            if _ctx_prompt_added:
+                                                if _prompt_before_ctx:
+                                                    _pass2_params["initial_prompt"] = _prompt_before_ctx
+                                                else:
+                                                    _pass2_params.pop("initial_prompt", None)
                                             _pass2_language = live_language
 
                                             if _trans_method == "whisper_translate" and _target_lang == "en":
@@ -13436,108 +13511,160 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     # Handle completed segments (save to DB)
                                     if result['completed_segments']:
                                         confidence_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
+                                        # Collect the batch of completed segments into one text so
+                                        # sentences spanning Whisper's segment boundaries stay intact
+                                        batch_parts = []
+                                        batch_start = None
+                                        batch_end = 0
+                                        batch_confidences = []
                                         for segment in result['completed_segments']:
                                             segment_text = segment.get('text', '').strip()
-                                            segment_start = segment.get('start', 0)
-                                            segment_end = segment.get('end', 0)
                                             # Compute average word confidence for this segment
-                                            segment_confidence = None
                                             word_confidences = segment.get('words', [])
                                             if word_confidences:
                                                 probs = [w.get('probability') for w in word_confidences if w.get('probability') is not None]
                                                 if probs:
-                                                    segment_confidence = sum(probs) / len(probs)
-                                            if segment_text:
-                                                # Remove overlapping prefix from previous saved text
-                                                original_segment_text = segment_text
-                                                if saved_sentences:
-                                                    segment_text = remove_overlapping_prefix(segment_text, saved_sentences[-1])
-                                                    if segment_text != original_segment_text:
-                                                        pass  # Overlap was removed
-                                                    if not segment_text:
-                                                        continue  # Skip if entire segment was overlap
+                                                    batch_confidences.append(sum(probs) / len(probs))
+                                            if not segment_text:
+                                                continue
+                                            # Remove overlapping prefix from previous saved text
+                                            if saved_sentences:
+                                                segment_text = remove_overlapping_prefix(segment_text, saved_sentences[-1])
+                                            # The rolling buffer can re-transcribe words already held in
+                                            # the pending fragment - strip those too
+                                            if segment_text and pending_remainder:
+                                                segment_text = remove_overlapping_prefix(segment_text, pending_remainder)
+                                            if not segment_text:
+                                                continue  # Entire segment was overlap
+                                            batch_parts.append(segment_text)
+                                            if batch_start is None:
+                                                batch_start = segment.get('start', 0)
+                                            batch_end = segment.get('end', 0)
 
-                                                # Split into sentences
-                                                sentences, remainder = split_into_sentences(segment_text)
-                                                # Debug logging commented out for production
-                                                # if not sentences:
+                                        if batch_parts:
+                                            batch_text = " ".join(batch_parts)
+                                            segment_start = batch_start if batch_start is not None else 0
+                                            segment_end = batch_end
+                                            segment_confidence = sum(batch_confidences) / len(batch_confidences) if batch_confidences else None
+                                            # Prepend the fragment held from the previous capture so it
+                                            # can complete its sentence
+                                            if pending_remainder:
+                                                batch_text = pending_remainder + " " + batch_text
+                                                if pending_remainder_meta:
+                                                    segment_start = pending_remainder_meta[0]
+                                                    if segment_confidence is None:
+                                                        segment_confidence = pending_remainder_meta[2]
 
-                                                # Save substantial sentences to DB
-                                                MIN_WORDS = min_words_threshold
-                                                _newly_inserted_ids = []  # Track IDs for Whisper translation caching
-                                                with _db_lock:
-                                                    try:
-                                                        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-                                                        for sentence in sentences:
-                                                            # Skip known Whisper hallucinations
-                                                            if is_whisper_hallucination(sentence):
-                                                                print(f"[SKIP HALLUCINATION] '{sentence[:40]}'", flush=True)
-                                                                continue
-                                                            sentence = apply_profanity_filter(sentence)
-                                                            word_count = len(sentence.split())
-                                                            is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
-                                                            if word_count >= MIN_WORDS and not is_dup:
-                                                                needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
-                                                                persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
-                                                                    (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review),
-                                                                )
-                                                                _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                                saved_sentences.append(sentence)
-                                                                conf_str = f", conf={segment_confidence:.2f}" if segment_confidence is not None else ""
-                                                                print(f"[DB INSERT] '{sentence[:50]}...'{conf_str}" if len(sentence) > 50 else f"[DB INSERT] '{sentence}'{conf_str}", flush=True)
-                                                            elif word_count < MIN_WORDS:
-                                                                print(f"[SKIP SHORT] '{sentence}' ({word_count} words, min={MIN_WORDS})", flush=True)
-                                                            elif is_dup:
-                                                                # Find which saved sentence it matched
-                                                                from difflib import SequenceMatcher
-                                                                for saved in saved_sentences[-5:]:  # Check last 5
-                                                                    ratio = SequenceMatcher(None, sentence.lower(), saved.lower()).ratio()
-                                                                    if ratio >= fuzzy_threshold:
-                                                                        print(f"[SKIP DUP] '{sentence[:40]}' matched '{saved[:40]}' (ratio={ratio:.2f})", flush=True)
-                                                                        break
-                                                        # Also save substantial remainder from finalized segments
-                                                        if remainder and not is_whisper_hallucination(remainder):
-                                                            remainder = apply_profanity_filter(remainder)
-                                                            rem_word_count = len(remainder.split())
-                                                            rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
-                                                            if rem_word_count >= MIN_WORDS and not rem_is_dup:
-                                                                needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
-                                                                persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
-                                                                    (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review),
-                                                                )
-                                                                _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                                saved_sentences.append(remainder)
-                                                                print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
-                                                            elif rem_word_count < MIN_WORDS:
-                                                                print(f"[SKIP SHORT REMAINDER] '{remainder}' ({rem_word_count} words)", flush=True)
-                                                            elif rem_is_dup:
-                                                                print(f"[SKIP DUP REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[SKIP DUP REMAINDER] '{remainder}'", flush=True)
+                                            # Split into sentences
+                                            sentences, remainder = split_into_sentences(batch_text)
+
+                                            if pending_buffer_enabled:
+                                                # Hold the incomplete remainder for the next capture
+                                                # instead of saving a fragment row
+                                                if remainder:
+                                                    if sentences or pending_remainder_since is None:
+                                                        # Fresh fragment (old one consumed or none existed)
+                                                        pending_remainder_since = now
+                                                        pending_remainder_meta = (batch_end if sentences else segment_start, batch_end, segment_confidence)
+                                                    elif pending_remainder_meta:
+                                                        # Fragment still growing - keep its start, extend its end
+                                                        pending_remainder_meta = (pending_remainder_meta[0], batch_end, pending_remainder_meta[2])
+                                                else:
+                                                    pending_remainder_since = None
+                                                    pending_remainder_meta = None
+                                                pending_remainder = remainder
+                                                remainder = ""  # Insert block below must not save the held fragment
+
+                                            # Save substantial sentences to DB
+                                            MIN_WORDS = min_words_threshold
+                                            _newly_inserted_ids = []  # Track IDs for Whisper translation caching
+                                            with _db_lock:
+                                                try:
+                                                    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+                                                    for sentence in sentences:
+                                                        # Skip known Whisper hallucinations
+                                                        if is_whisper_hallucination(sentence):
+                                                            print(f"[SKIP HALLUCINATION] '{sentence[:40]}'", flush=True)
+                                                            continue
+                                                        sentence = apply_profanity_filter(sentence)
+                                                        word_count = len(sentence.split())
+                                                        is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
+                                                        if word_count >= MIN_WORDS and not is_dup:
+                                                            needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
+                                                            persistent_db_cursor.execute(
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review),
+                                                            )
+                                                            _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            saved_sentences.append(sentence)
+                                                            conf_str = f", conf={segment_confidence:.2f}" if segment_confidence is not None else ""
+                                                            print(f"[DB INSERT] '{sentence[:50]}...'{conf_str}" if len(sentence) > 50 else f"[DB INSERT] '{sentence}'{conf_str}", flush=True)
+                                                        elif word_count < MIN_WORDS:
+                                                            print(f"[SKIP SHORT] '{sentence}' ({word_count} words, min={MIN_WORDS})", flush=True)
+                                                        elif is_dup:
+                                                            # Find which saved sentence it matched
+                                                            from difflib import SequenceMatcher
+                                                            for saved in saved_sentences[-5:]:  # Check last 5
+                                                                ratio = SequenceMatcher(None, sentence.lower(), saved.lower()).ratio()
+                                                                if ratio >= fuzzy_threshold:
+                                                                    print(f"[SKIP DUP] '{sentence[:40]}' matched '{saved[:40]}' (ratio={ratio:.2f})", flush=True)
+                                                                    break
+                                                    # Run-on safety valve: flush a held fragment that never
+                                                    # completes a sentence (word cap or age cap exceeded)
+                                                    if pending_buffer_enabled and pending_remainder and (
+                                                        len(pending_remainder.split()) > pending_max_words
+                                                        or (pending_remainder_since is not None and (now - pending_remainder_since).total_seconds() > pending_max_age)
+                                                    ):
+                                                        remainder = pending_remainder
+                                                        if pending_remainder_meta:
+                                                            segment_start = pending_remainder_meta[0]
+                                                            segment_end = pending_remainder_meta[1]
+                                                        pending_remainder = ""
+                                                        pending_remainder_since = None
+                                                        pending_remainder_meta = None
+                                                        print(f"[PENDING FLUSH] Run-on fragment hit cap: '{remainder[:50]}'", flush=True)
+                                                    # Save substantial remainder (run-on flush, or pending buffer disabled)
+                                                    if remainder and not is_whisper_hallucination(remainder):
+                                                        remainder = apply_profanity_filter(remainder)
+                                                        rem_word_count = len(remainder.split())
+                                                        rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
+                                                        if rem_word_count >= MIN_WORDS and not rem_is_dup:
+                                                            needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
+                                                            persistent_db_cursor.execute(
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review),
+                                                            )
+                                                            _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            saved_sentences.append(remainder)
+                                                            print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
+                                                        elif rem_word_count < MIN_WORDS:
+                                                            print(f"[SKIP SHORT REMAINDER] '{remainder}' ({rem_word_count} words)", flush=True)
+                                                        elif rem_is_dup:
+                                                            print(f"[SKIP DUP REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[SKIP DUP REMAINDER] '{remainder}'", flush=True)
+                                                    persistent_db_conn.commit()
+                                                    # Cache Whisper translation for newly inserted rows
+                                                    if _whisper_translated_text and _newly_inserted_ids:
+                                                        _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
+                                                        _tcache = get_translation_cache()
+                                                        for _row_id in _newly_inserted_ids:
+                                                            _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
+                                                            # Also save to DB translated_text column
+                                                            persistent_db_cursor.execute(
+                                                                "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
+                                                                (_whisper_translated_text, _target_lang, _row_id),
+                                                            )
                                                         persistent_db_conn.commit()
-                                                        # Cache Whisper translation for newly inserted rows
-                                                        if _whisper_translated_text and _newly_inserted_ids:
-                                                            _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
-                                                            _tcache = get_translation_cache()
-                                                            for _row_id in _newly_inserted_ids:
-                                                                _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
-                                                                # Also save to DB translated_text column
-                                                                persistent_db_cursor.execute(
-                                                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                                                    (_whisper_translated_text, _target_lang, _row_id),
-                                                                )
-                                                            persistent_db_conn.commit()
-                                                        # Track saved_sentences and database row count
-                                                        # Periodically verify database row count matches
-                                                        if len(saved_sentences) % 10 == 0:
-                                                            db_count = persistent_db_cursor.execute("SELECT COUNT(*) FROM transcriptions").fetchone()[0]
-                                                            if db_count != len(saved_sentences) + 1:  # +1 for default first entry
-                                                                pass  # Row count mismatch — non-critical
-                                                        # print(f"[LOOP-DEBUG] {time.strftime('%H:%M:%S')} - DB commit done", flush=True)
-                                                    except Exception as db_error:
-                                                        print(f"[ERROR] DB save failed: {db_error}")
+                                                    # Track saved_sentences and database row count
+                                                    # Periodically verify database row count matches
+                                                    if len(saved_sentences) % 10 == 0:
+                                                        db_count = persistent_db_cursor.execute("SELECT COUNT(*) FROM transcriptions").fetchone()[0]
+                                                        if db_count != len(saved_sentences) + 1:  # +1 for default first entry
+                                                            pass  # Row count mismatch — non-critical
+                                                    # print(f"[LOOP-DEBUG] {time.strftime('%H:%M:%S')} - DB commit done", flush=True)
+                                                except Exception as db_error:
+                                                    print(f"[ERROR] DB save failed: {db_error}")
 
-                                                # print(f"[FINALIZED] '{segment_text[:60]}...'" if len(segment_text) > 60 else f"[FINALIZED] '{segment_text}'")
+                                            # print(f"[FINALIZED] '{batch_text[:60]}...'" if len(batch_text) > 60 else f"[FINALIZED] '{batch_text}'")
 
                                     # Handle phrase completion (silence timeout)
                                     if phrase_complete:
@@ -13563,75 +13690,82 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                     'completed': True
                                                 }
 
-                                        if finalized_segment:
-                                            segment_text = finalized_segment.get('text', '').strip()
-                                            segment_start = finalized_segment.get('start', 0)
-                                            segment_end = finalized_segment.get('end', 0)
-                                            if segment_text:
-                                                # Remove overlapping prefix from previous saved text
-                                                original_segment_text = segment_text
-                                                if saved_sentences:
-                                                    segment_text = remove_overlapping_prefix(segment_text, saved_sentences[-1])
-                                                    if segment_text != original_segment_text:
-                                                        pass  # Overlap was removed
-                                                    if not segment_text:
-                                                        pass  # Entire segment was overlap — will be skipped below
+                                        if finalized_segment or pending_remainder:
+                                            segment_text = (finalized_segment or {}).get('text', '').strip()
+                                            segment_start = (finalized_segment or {}).get('start', 0)
+                                            segment_end = (finalized_segment or {}).get('end', 0)
+                                            # Remove overlapping prefix from previous saved text
+                                            if segment_text and saved_sentences:
+                                                segment_text = remove_overlapping_prefix(segment_text, saved_sentences[-1])
+                                            if segment_text and pending_remainder:
+                                                segment_text = remove_overlapping_prefix(segment_text, pending_remainder)
+                                            # Silence boundary: no more words are coming, so flush the
+                                            # held fragment together with (or instead of) the new text
+                                            if pending_remainder:
+                                                segment_text = (pending_remainder + " " + segment_text).strip() if segment_text else pending_remainder
+                                                if pending_remainder_meta:
+                                                    segment_start = pending_remainder_meta[0]
+                                                    if not segment_end:
+                                                        segment_end = pending_remainder_meta[1]
+                                                pending_remainder = ""
+                                                pending_remainder_since = None
+                                                pending_remainder_meta = None
 
-                                                if segment_text:  # Check again after overlap removal
-                                                    sentences, remainder = split_into_sentences(segment_text)
-                                                    MIN_WORDS = min_words_threshold
-                                                    _phrase_inserted_ids = []
-                                                    with _db_lock:
-                                                        try:
-                                                            timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-                                                            for sentence in sentences:
-                                                                # Skip known Whisper hallucinations
-                                                                if is_whisper_hallucination(sentence):
-                                                                    print(f"[SKIP HALLUCINATION PHRASE] '{sentence[:40]}'", flush=True)
-                                                                    continue
-                                                                sentence = apply_profanity_filter(sentence)
-                                                                word_count = len(sentence.split())
-                                                                is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
-                                                                if word_count >= MIN_WORDS and not is_dup:
-                                                                    persistent_db_cursor.execute(
-                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
-                                                                        (timestamp, sentence, segment_start, segment_end),
-                                                                    )
-                                                                    _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                                    saved_sentences.append(sentence)
-                                                                    print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
-                                                                elif word_count < MIN_WORDS:
-                                                                    print(f"[SKIP SHORT PHRASE] '{sentence}' ({word_count} words, min={MIN_WORDS})", flush=True)
-                                                                elif is_dup:
-                                                                    print(f"[SKIP DUP PHRASE] '{sentence[:40]}'", flush=True)
-                                                            # Also save substantial remainder from phrase_complete
-                                                            if remainder and not is_whisper_hallucination(remainder):
-                                                                remainder = apply_profanity_filter(remainder)
-                                                                rem_word_count = len(remainder.split())
-                                                                rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
-                                                                if rem_word_count >= MIN_WORDS and not rem_is_dup:
-                                                                    persistent_db_cursor.execute(
-                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
-                                                                        (timestamp, remainder, segment_start, segment_end),
-                                                                    )
-                                                                    _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                                    saved_sentences.append(remainder)
+                                            if segment_text:  # Check again after overlap removal
+                                                sentences, remainder = split_into_sentences(segment_text)
+                                                MIN_WORDS = min_words_threshold
+                                                _phrase_inserted_ids = []
+                                                with _db_lock:
+                                                    try:
+                                                        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+                                                        for sentence in sentences:
+                                                            # Skip known Whisper hallucinations
+                                                            if is_whisper_hallucination(sentence):
+                                                                print(f"[SKIP HALLUCINATION PHRASE] '{sentence[:40]}'", flush=True)
+                                                                continue
+                                                            sentence = apply_profanity_filter(sentence)
+                                                            word_count = len(sentence.split())
+                                                            is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
+                                                            if word_count >= MIN_WORDS and not is_dup:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
+                                                                    (timestamp, sentence, segment_start, segment_end),
+                                                                )
+                                                                _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                saved_sentences.append(sentence)
+                                                                print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
+                                                            elif word_count < MIN_WORDS:
+                                                                print(f"[SKIP SHORT PHRASE] '{sentence}' ({word_count} words, min={MIN_WORDS})", flush=True)
+                                                            elif is_dup:
+                                                                print(f"[SKIP DUP PHRASE] '{sentence[:40]}'", flush=True)
+                                                        # Also save substantial remainder from phrase_complete
+                                                        if remainder and not is_whisper_hallucination(remainder):
+                                                            remainder = apply_profanity_filter(remainder)
+                                                            rem_word_count = len(remainder.split())
+                                                            rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
+                                                            if rem_word_count >= MIN_WORDS and not rem_is_dup:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
+                                                                    (timestamp, remainder, segment_start, segment_end),
+                                                                )
+                                                                _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                saved_sentences.append(remainder)
+                                                        persistent_db_conn.commit()
+                                                        # Cache Whisper translation for phrase-completed rows
+                                                        if _whisper_translated_text and _phrase_inserted_ids:
+                                                            _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
+                                                            _tcache = get_translation_cache()
+                                                            for _row_id in _phrase_inserted_ids:
+                                                                _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
+                                                                persistent_db_cursor.execute(
+                                                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
+                                                                    (_whisper_translated_text, _target_lang, _row_id),
+                                                                )
                                                             persistent_db_conn.commit()
-                                                            # Cache Whisper translation for phrase-completed rows
-                                                            if _whisper_translated_text and _phrase_inserted_ids:
-                                                                _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
-                                                                _tcache = get_translation_cache()
-                                                                for _row_id in _phrase_inserted_ids:
-                                                                    _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
-                                                                    persistent_db_cursor.execute(
-                                                                        "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                                                        (_whisper_translated_text, _target_lang, _row_id),
-                                                                    )
-                                                                persistent_db_conn.commit()
-                                                        except Exception as db_error:
-                                                            print(f"[ERROR] phrase_complete DB save failed: {db_error}")
+                                                    except Exception as db_error:
+                                                        print(f"[ERROR] phrase_complete DB save failed: {db_error}")
 
-                                                    # print(f"[PHRASE_COMPLETE] Finalized: '{segment_text[:40]}...'")
+                                                # print(f"[PHRASE_COMPLETE] Finalized: '{segment_text[:40]}...'")
 
                                         # Clear live preview
                                         transcription_state["live_text"] = ""
@@ -13642,7 +13776,10 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                                     # Update live preview with current incomplete text only
                                     # (finalized segments are already shown separately from the database)
+                                    # Prepend any held fragment so it stays visible until its sentence completes
                                     current_text = result.get('current_text', '')
+                                    if pending_remainder:
+                                        current_text = (pending_remainder + " " + current_text).strip()
                                     if current_text:
                                         old_live_text = transcription_state.get("live_text", "")
                                         transcription_state["live_text"] = current_text
@@ -13665,6 +13802,26 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                     # Clean up resources before exiting
                     print("\nCleaning up resources...")
+
+                    # Flush any held sentence fragment so it isn't lost on stop
+                    if pending_remainder and not is_whisper_hallucination(pending_remainder):
+                        try:
+                            _flush_text = apply_profanity_filter(pending_remainder)
+                            if len(_flush_text.split()) >= min_words_threshold and not is_fuzzy_duplicate(_flush_text, saved_sentences, fuzzy_threshold):
+                                _flush_start, _flush_end, _flush_conf = pending_remainder_meta if pending_remainder_meta else (0, 0, None)
+                                with _db_lock:
+                                    persistent_db_cursor.execute(
+                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence) VALUES (?, ?, ?, ?, ?)",
+                                        (datetime.now(configured_timezone).strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf),
+                                    )
+                                    persistent_db_conn.commit()
+                                saved_sentences.append(_flush_text)
+                                print(f"[DB INSERT STOP-FLUSH] '{_flush_text[:50]}'", flush=True)
+                        except Exception as _flush_err:
+                            print(f"[WARNING] Failed to flush pending fragment on stop: {_flush_err}")
+                        pending_remainder = ""
+                        pending_remainder_since = None
+                        pending_remainder_meta = None
 
                     # Stop audio source FIRST to release audio device
                     if source:

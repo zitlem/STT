@@ -81,7 +81,21 @@
     "fuzzy_duplicate_threshold": 0.85,
     "_fuzzy_duplicate_threshold_comment": "Similarity threshold (0.0-1.0) for detecting duplicate sentences in live transcription. Higher = stricter matching. Default: 0.85",
     "min_words": 0,
-    "_min_words_comment": "Minimum word count to save a segment. 0 = save all segments, 5 = skip short fragments. Default: 0"
+    "_min_words_comment": "Minimum word count to save a segment. 0 = save all segments, 5 = skip short fragments. Default: 0",
+    "pending_buffer": {
+      "enabled": true,
+      "_enabled_comment": "Hold incomplete sentence fragments until the sentence completes, so transcript rows (and translation units) are whole sentences. false = save fragments immediately (old behavior)",
+      "max_words": 30,
+      "_max_words_comment": "Safety valve for run-on speech: flush a held fragment once it exceeds this many words",
+      "max_age_seconds": 10,
+      "_max_age_seconds_comment": "Safety valve: flush a held fragment older than this many seconds"
+    },
+    "context_prompt": {
+      "enabled": true,
+      "_enabled_comment": "Feed the tail of the finalized transcript to Whisper as initial_prompt so each capture knows what came before (better continuity and punctuation)",
+      "max_chars": 200,
+      "_max_chars_comment": "How much trailing transcript to include in the prompt. Whisper's prompt budget is 224 tokens (~900 chars)"
+    }
   },
   "vad": {
     "enabled": true,
@@ -355,6 +369,8 @@
     "_srt_enabled_comment": "Generate SRT subtitle files for translations",
     "html_enabled": true,
     "_html_enabled_comment": "Generate HTML transcript files for translations",
+    "context_window": 2,
+    "_context_window_comment": "Number of segments combined for translation context. 1 = translate each segment in isolation; 2-3 = include preceding sentence(s) for pronoun/gender/tense accuracy",
     "remote": {
       "enabled": false,
       "_enabled_comment": "Offload translation to another machine running this app",
