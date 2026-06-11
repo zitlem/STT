@@ -1911,12 +1911,14 @@
             const statusEl = document.getElementById(`nllb_status_${modelName}`);
             const btnEl = document.getElementById(`nllb_btn_${modelName}`);
 
+            let pollFailures = 0;
             const poll = async () => {
                 try {
                     const response = await fetch('/api/models/nllb-download-progress');
                     const data = await response.json();
+                    pollFailures = 0;
 
-                    if (data.status === 'complete') {
+                    if (data.status === 'complete' || data.status === 'completed') {
                         stopDownloadProgress(modelId);
                         showAlert(`✅ ${modelName} downloaded successfully!`, 'success');
                         statusEl.innerHTML = '<span style="color: var(--success);">✅ Downloaded</span>';
@@ -1949,6 +1951,14 @@
                         setTimeout(poll, 2000);
                     }
                 } catch (error) {
+                    pollFailures++;
+                    if (pollFailures >= 10) {
+                        stopDownloadProgress(modelId);
+                        statusEl.innerHTML = '<span style="color: #fc8181;">Status unknown — server unreachable</span>';
+                        btnEl.textContent = 'Retry';
+                        btnEl.disabled = false;
+                        return;
+                    }
                     setTimeout(poll, 3000);
                 }
             };
@@ -2714,6 +2724,8 @@
                 return;
             }
 
+            let consecutivePollFailures = 0;
+
             progressPollingInterval = setInterval(async () => {
                 const downloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
 
@@ -2770,19 +2782,25 @@
                         });
                         localStorage.setItem('activeDownloads', JSON.stringify(currentDownloads));
                     }
+                    consecutivePollFailures = 0;
                 } catch (error) {
                     console.error('Error fetching download status:', error);
+                    consecutivePollFailures++;
 
-                    // If fetch failed, retry after a delay instead of continuing blindly
-                    if (error instanceof TypeError && error.message.includes('fetch')) {
-                        // Network error - back off and retry
-                        setTimeout(() => {
-                            // Restart polling if we still have downloads
-                            const currentDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
-                            if (Object.keys(currentDownloads).length > 0 && !progressPollingInterval) {
-                                startProgressPolling();
+                    // Server unreachable for ~10s: mark visible downloads as
+                    // unknown and stop polling instead of hammering forever
+                    if (consecutivePollFailures >= 10) {
+                        const currentDownloads = JSON.parse(localStorage.getItem('activeDownloads') || '{}');
+                        Object.keys(currentDownloads).forEach(model => {
+                            if (currentDownloads[model].status === 'downloading') {
+                                currentDownloads[model].status = 'failed';
+                                currentDownloads[model].error = 'Status unknown — server unreachable';
                             }
-                        }, 2000);
+                        });
+                        localStorage.setItem('activeDownloads', JSON.stringify(currentDownloads));
+                        updateDownloadUI();
+                        stopProgressPolling();
+                        return;
                     }
                 }
 
