@@ -1035,7 +1035,6 @@ _tts_piper_model = None
 _tts_lock = threading.Lock()
 _tts_model_loaded = False
 _tts_model_loading = False
-_tts_downloading = False
 _tts_sample_rate = 22050
 
 # Edge-TTS voice cache (populated on first request)
@@ -5264,7 +5263,7 @@ def get_tts_status():
         "backend": backend,
         "model_loaded": is_tts_model_loaded(),
         "model_loading": is_tts_model_loading(),
-        "downloading": _tts_downloading,
+        "downloading": _tts_download_status.get("status") == "downloading",
         "speed": tts_config.get("speed", 1.0),
     }
 
@@ -5430,51 +5429,65 @@ def download_tts_model():
     if not model_name:
         return jsonify({"success": False, "error": "model_name required"}), 400
 
-    if _tts_downloading or _tts_download_status.get("status") == "downloading":
-        return jsonify({"success": False, "error": "A TTS download is already in progress"}), 409
+    # Parse model ID: e.g., "en_US-lessac-medium" -> lang "en_US", name "lessac", quality "medium"
+    parts = model_name.split("-")
+    if len(parts) < 3:
+        return jsonify({"success": False, "error": f"Invalid piper model ID format: {model_name}"}), 400
+
+    lang_code, voice_name, quality = parts[0], parts[1], parts[2]
+
+    # HuggingFace piper voices URL
+    lang_family = lang_code.split("_")[0]  # "en_US" -> "en"
+    base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang_family}/{lang_code}/{voice_name}/{quality}"
+    onnx_url = f"{base_url}/{model_name}.onnx"
+    json_url = f"{base_url}/{model_name}.onnx.json"
+
+    # Best-effort total size for a real progress percentage (json config is negligible)
+    total_size = None
+    try:
+        import urllib.request
+        req = urllib.request.Request(onnx_url, method="HEAD")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            total_size = int(resp.headers.get("Content-Length") or 0) or None
+    except Exception as e:
+        print(f"[TTS] Could not get size of {model_name}: {e}")
+
+    download_key = f"tts-{model_name}"
+    if not try_register_download(download_key, total=total_size):
+        return jsonify({"success": False, "error": "Download already in progress"}), 409
 
     def _do_download():
-        global _tts_downloading, _tts_download_status
-        _tts_downloading = True
+        global _tts_download_status
         _tts_download_status = {"status": "downloading", "model": model_name, "error": ""}
+        model_dir = _get_piper_model_dir(model_name)
         try:
-            import urllib.request
-
-            # Parse model ID: e.g., "en_US-lessac-medium" -> lang "en_US", name "lessac", quality "medium"
-            parts = model_name.split("-")
-            if len(parts) < 3:
-                raise ValueError(f"Invalid piper model ID format: {model_name}")
-
-            lang_code = parts[0]  # e.g., "en_US"
-            voice_name = parts[1]  # e.g., "lessac"
-            quality = parts[2]     # e.g., "medium"
-
-            # HuggingFace piper voices URL
-            lang_family = lang_code.split("_")[0]  # "en_US" -> "en"
-            base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang_family}/{lang_code}/{voice_name}/{quality}"
-            onnx_filename = f"{model_name}.onnx"
-            json_filename = f"{model_name}.onnx.json"
-
-            model_dir = _get_piper_model_dir(model_name)
             os.makedirs(model_dir, exist_ok=True)
-
-            onnx_url = f"{base_url}/{onnx_filename}"
-            json_url = f"{base_url}/{json_filename}"
+            start_download_monitor(download_key, model_dir, total=total_size)
 
             print(f"[TTS] Downloading piper model: {model_name}")
-            print(f"[TTS]   ONNX: {onnx_url}")
-
-            urllib.request.urlretrieve(onnx_url, os.path.join(model_dir, onnx_filename))
-            print(f"[TTS]   JSON config: {json_url}")
-            urllib.request.urlretrieve(json_url, os.path.join(model_dir, json_filename))
+            for url, filename in ((onnx_url, f"{model_name}.onnx"),
+                                  (json_url, f"{model_name}.onnx.json")):
+                print(f"[TTS]   {url}")
+                outcome = download_url_to_file(
+                    url, os.path.join(model_dir, filename),
+                    cancel_check=lambda: download_key in cancelled_downloads,
+                )
+                if outcome == "cancelled":
+                    print(f"[TTS] Download cancelled: {model_name}")
+                    # Piper models live under models/tts/piper/, which the generic
+                    # cancel-route cleanup doesn't know about — clean up here
+                    shutil.rmtree(model_dir, ignore_errors=True)
+                    _tts_download_status = {"status": "failed", "model": model_name, "error": "Cancelled"}
+                    finish_download(download_key, cancelled=True)
+                    return
 
             print(f"[TTS] Piper model downloaded: {model_name}")
             _tts_download_status = {"status": "completed", "model": model_name, "error": ""}
+            finish_download(download_key)
         except Exception as e:
             print(f"[TTS ERROR] Download failed: {e}")
             _tts_download_status = {"status": "failed", "model": model_name, "error": str(e)}
-        finally:
-            _tts_downloading = False
+            finish_download(download_key, error=e)
 
     threading.Thread(target=_do_download, daemon=True).start()
     return jsonify({"success": True, "message": f"Downloading {model_name}..."})
