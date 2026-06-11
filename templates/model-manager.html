@@ -2692,8 +2692,11 @@
                         progressBarColor = '#fbbf24';
                     }
 
-                    // Always show dismiss button so stuck downloads can be cleared
-                    const dismissBtn = `<button onclick="stopDownloadProgress('${modelName}', true)" style="position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: #888; cursor: pointer; font-size: 1.2em; padding: 2px 6px; line-height: 1;" title="Dismiss/Cancel">&times;</button>`;
+                    // Always show dismiss button so stuck downloads can be cleared.
+                    // Only cancel server-side while in flight — dismissing a
+                    // completed/failed notification must never delete files
+                    const cancelOnServer = status === 'downloading';
+                    const dismissBtn = `<button onclick="stopDownloadProgress('${modelName}', ${cancelOnServer})" style="position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: #888; cursor: pointer; font-size: 1.2em; padding: 2px 6px; line-height: 1;" title="${cancelOnServer ? 'Cancel download' : 'Dismiss'}">&times;</button>`;
 
                     progressList.innerHTML += `
                         <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; position: relative;">
