@@ -6,12 +6,8 @@ Handles automatic file moving to remote locations (SMB/NAS) with retry logic
 import os
 import shutil
 import glob
-import time
-import threading
 import logging
 import platform
-from datetime import datetime, timedelta
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +121,11 @@ def mount_smb_share(smb_path, username, password, domain=''):
             # Build credential string
             user_str = f'{domain}\\{username}' if domain else username
 
-            # Try to mount the share
+            # Try to mount the share. NOTE: the password appears in the process
+            # command line for the duration of the call; Windows offers no
+            # non-interactive way to pass it that avoids this (cmdkey has the
+            # same exposure), and unlike /proc on Linux it's only visible to
+            # administrators.
             cmd = ['net', 'use', smb_path, f'/user:{user_str}', password]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
@@ -164,20 +164,31 @@ def mount_smb_share(smb_path, username, password, domain=''):
             # Build mount command
             cmd = ['sudo', 'mount', '-t', 'cifs', f'//{server}/{share}', mount_point]
 
-            # Add credentials
-            creds_options = []
-            if username:
-                creds_options.append(f'username={username}')
-            if password:
-                creds_options.append(f'password={password}')
-            if domain:
-                creds_options.append(f'domain={domain}')
+            # Pass credentials via a 0600 temp file instead of -o password=...,
+            # which would be world-readable in /proc/<pid>/cmdline for the
+            # duration of the mount call
+            import tempfile
+            creds_file = None
+            try:
+                if username or password or domain:
+                    fd, creds_file = tempfile.mkstemp(prefix='.smbcreds-')
+                    with os.fdopen(fd, 'w') as f:
+                        if username:
+                            f.write(f'username={username}\n')
+                        if password:
+                            f.write(f'password={password}\n')
+                        if domain:
+                            f.write(f'domain={domain}\n')
+                    cmd.extend(['-o', f'credentials={creds_file}'])
 
-            if creds_options:
-                cmd.extend(['-o', ','.join(creds_options)])
-
-            # Try to mount
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                # Try to mount
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            finally:
+                if creds_file:
+                    try:
+                        os.unlink(creds_file)
+                    except OSError:
+                        pass
 
             if result.returncode == 0:
                 logger.info(f"SMB share mounted successfully at {mount_point}")

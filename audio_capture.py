@@ -10,7 +10,7 @@ import sys
 import os
 import numpy as np
 from queue import Queue
-from typing import Optional, Callable
+from typing import Callable
 from datetime import datetime
 
 # select.select() doesn't work on pipes on Windows - only on sockets

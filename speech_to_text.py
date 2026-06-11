@@ -1,5 +1,4 @@
 import argparse
-import io
 import os
 import sys
 import warnings
@@ -44,7 +43,6 @@ import logging
 import signal
 import threading
 import multiprocessing
-import platform
 from multiprocessing import Queue as MPQueue
 
 import json
@@ -52,8 +50,8 @@ import re
 import secrets
 import shutil
 import statistics
+from pathlib import Path
 from datetime import timedelta, datetime
-import pytz
 from queue import Queue
 from tempfile import NamedTemporaryFile
 from time import sleep
@@ -142,7 +140,6 @@ def _lazy_import_audio():
 
 import tempfile
 import uuid
-import mimetypes
 import random
 
 
@@ -7841,7 +7838,7 @@ def get_audio_devices():
             }
         )
 
-    except Exception as e:
+    except Exception:
         # Return fallback device
         return jsonify(
             {
@@ -8479,7 +8476,6 @@ def download_model():
             print(f"[DOWNLOAD] Downloading Whisper model: {model_name}")
 
             _lazy_import_ml_libraries()
-            import whisper
 
             # Create custom download directory in ./models
             models_dir = MODELS_DIR
@@ -8491,7 +8487,6 @@ def download_model():
             # Set environment variable to use custom download directory
             os.environ["WHISPER_CACHE"] = whisper_dir
 
-            import time
 
             model_key = f"whisper-{model_name}"
             if not try_register_download(model_key, total=WHISPER_MODEL_SIZES.get(model_name)):
@@ -8616,7 +8611,6 @@ def download_model():
                 model_dir_name = model_id.replace("/", "--")
                 local_dir = os.path.join(models_dir, model_dir_name)
 
-            import time
 
             if not try_register_download(model_id):
                 return jsonify({"success": False, "error": "Download already in progress"}), 409
@@ -8784,8 +8778,7 @@ def upload_model():
             ), 400
 
         _lazy_import_ml_libraries()
-        from huggingface_hub import HfApi, Repository
-        import os
+        from huggingface_hub import HfApi
         from pathlib import Path
 
         model_path = Path(model_path)
@@ -8897,7 +8890,6 @@ def get_cached_models():
 
     try:
         import os
-        from pathlib import Path
 
         # Get Hugging Face cache directory
         cache_dir = os.getenv(
@@ -12327,7 +12319,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     error_msg = f"All audio devices failed to initialize. Last error: {last_error}"
                         except FileNotFoundError:
                             error_msg = f"Audio initialization failed: {last_error}. Unable to check for devices."
-                        except Exception as check_error:
+                        except Exception:
                             error_msg = f"Audio initialization failed: {last_error}"
 
                         print(f"[ERROR] {error_msg}")
@@ -12342,87 +12334,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             transcription_state["message"] = "Audio initialization failed"
                         return
 
-                    # Remove old PyAudio initialization code
-                    if False:  # Disabled - PyAudio code removed
-                        try:
-                            if "linux" in platform:
-                                mic_name = args.default_microphone
-                                if not mic_name or mic_name == "list":
-                                    print("Available microphone devices are: ")
-                                    for index, name in enumerate(
-                                        sr.Microphone.list_microphone_names()
-                                    ):
-                                        print(f'Microphone with name "{name}" found')
-                                    return
-                                else:
-                                    # Try to parse as device index first
-                                    device_index = None
-                                    try:
-                                        device_index = int(mic_name)
-                                    except ValueError:
-                                        # If not a number, try name matching
-                                        for index, name in enumerate(
-                                            sr.Microphone.list_microphone_names()
-                                        ):
-                                            if mic_name in name:
-                                                device_index = index
-                                                break
-
-                                    if device_index is None:
-                                        print(
-                                            f"[ERROR] Microphone '{mic_name}' not found. Available devices:"
-                                        )
-                                        for index, name in enumerate(
-                                            sr.Microphone.list_microphone_names()
-                                        ):
-                                            print(f"  {index}: {name}")
-                                        return
-
-                                    # Try different sample rates until one works
-                                    last_error = None
-                                    for sample_rate in sample_rates_to_try:
-                                        try:
-                                            source = sr.Microphone(
-                                                sample_rate=sample_rate,
-                                                device_index=device_index,
-                                            )
-                                            print(
-                                                f"[OK] Audio device initialized at {sample_rate} Hz"
-                                            )
-                                            break
-                                        except OSError as e:
-                                            last_error = e
-                                            continue
-
-                                    if source is None:
-                                        print(
-                                            f"[ERROR] Could not initialize audio device with any supported sample rate"
-                                        )
-                                        print(f"Last error: {last_error}")
-                                        return
-                            else:
-                                # Windows - try sample rates
-                                last_error = None
-                                for sample_rate in sample_rates_to_try:
-                                    try:
-                                        source = sr.Microphone(sample_rate=sample_rate)
-                                        print(
-                                            f"[OK] Audio device initialized at {sample_rate} Hz"
-                                        )
-                                        break
-                                    except OSError as e:
-                                        last_error = e
-                                        continue
-
-                                if source is None:
-                                    print(
-                                        f"[ERROR] Could not initialize audio device with any supported sample rate"
-                                    )
-                                    print(f"Last error: {last_error}")
-                                    return
-                        except Exception as e:
-                            print(f"[ERROR] Failed to initialize microphone: {e}")
-                            return
 
                     # Check if stop was requested during audio initialization
                     if not is_running:
@@ -12893,7 +12804,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             )
                             transcription_state["audio_level"] = level
                             transcription_state["audio_db"] = db
-                        except Exception as e:
+                        except Exception:
                             pass  # Don't break callback on error
 
                     # For ffmpeg, the capture is already running and filling source.data_queue
@@ -13703,7 +13614,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     # Fix WAV header for session audio file (update file size in header)
                     if session_audio_file and session_audio_written:
                         try:
-                            import wave
 
                             # Get current file size
                             file_size = os.path.getsize(session_audio_file)
