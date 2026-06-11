@@ -10972,7 +10972,6 @@ def handle_join_tts_audio():
     """Client wants to receive TTS audio for translated text"""
     from flask_socketio import join_room
     join_room("tts_audio")
-    emit("tts_audio_info", {"status": "joined"})
 
 
 @socketio.on("leave_tts_audio")
