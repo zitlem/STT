@@ -8270,6 +8270,8 @@ def finish_download(key, error=None, cancelled=False):
                 entry["status"] = "completed"
                 entry["percentage"] = 100
                 entry["completion_time"] = time.time()
+                if entry.get("total"):
+                    entry["downloaded"] = entry["total"]
     save_download_progress()
 
 
@@ -8393,6 +8395,55 @@ def download_url_to_file(url, dest_path, cancel_check=None, max_attempts=5, log=
     raise Exception(
         f"Failed to download {os.path.basename(dest_path)} after {max_attempts} attempts: {last_error[:300]}"
     )
+
+
+def download_hf_repo_files(repo_id, local_dir, download_key, log=print):
+    """Download every file of a HuggingFace repo with resume + cancellation.
+
+    Returns "ok" or "cancelled"; raises on failure after retries."""
+    from huggingface_hub import list_repo_files, hf_hub_url
+
+    os.makedirs(local_dir, exist_ok=True)
+    local_root = os.path.abspath(local_dir)
+    files = list_repo_files(repo_id=repo_id)
+    log(f"[DOWNLOAD] Found {len(files)} files to download for {repo_id}")
+
+    for idx, filename in enumerate(files):
+        if download_key in cancelled_downloads:
+            return "cancelled"
+
+        dest_path = os.path.abspath(os.path.join(local_root, filename))
+        if not dest_path.startswith(local_root + os.sep):
+            raise ValueError(f"Unsafe filename in repo {repo_id}: {filename}")
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+
+        # Skip if already downloaded and has content
+        if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+            log(f"[DOWNLOAD] Already exists: {filename}")
+            continue
+
+        log(f"[DOWNLOAD] Downloading file {idx + 1}/{len(files)}: {filename}")
+
+        # File-count progress only when no byte total is known (a directory
+        # size monitor provides byte-accurate progress otherwise)
+        with active_downloads_lock:
+            entry = active_downloads.get(download_key)
+            if entry and entry.get("status") == "downloading" and not entry.get("total"):
+                entry["percentage"] = int((idx / len(files)) * 100)
+                entry["last_update"] = time.time()
+        save_download_progress()
+
+        url = hf_hub_url(repo_id=repo_id, filename=filename)
+        outcome = download_url_to_file(
+            url, dest_path,
+            cancel_check=lambda: download_key in cancelled_downloads,
+            log=log,
+        )
+        if outcome == "cancelled":
+            return "cancelled"
+        log(f"[OK] Downloaded: {filename}")
+
+    return "ok"
 
 # Start periodic cleanup thread
 def periodic_cleanup():
@@ -8558,7 +8609,6 @@ def download_model():
             print(f"[DOWNLOAD] Downloading HuggingFace model: {model_id}")
 
             _lazy_import_ml_libraries()
-            from huggingface_hub import snapshot_download
 
             # If no local_dir specified, download to ./models directory
             if not local_dir:
@@ -8575,60 +8625,13 @@ def download_model():
                 return jsonify({"success": False, "error": "Download already in progress"}), 409
 
             try:
-                # Use wget for reliable download (huggingface_hub hangs on large files)
-                from huggingface_hub import list_repo_files, hf_hub_url
-
-                os.makedirs(local_dir, exist_ok=True)
-
-                # Get list of files in the repo
-                files = list_repo_files(repo_id=model_id)
-                print(f"[DOWNLOAD] Found {len(files)} files to download")
-
-                # Download each file using wget
-                for idx, filename in enumerate(files):
-                    # Check if cancelled before each file
-                    if model_id in cancelled_downloads:
-                        print(f"[CANCELLED] Download cancelled for {model_id}")
-                        finish_download(model_id, cancelled=True)
-                        return jsonify({"success": False, "message": "Download cancelled"})
-
-                    dest_path = os.path.join(local_dir, filename)
-                    os.makedirs(os.path.dirname(dest_path) if os.path.dirname(dest_path) else local_dir, exist_ok=True)
-
-                    # Skip if already downloaded and has content
-                    if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
-                        print(f"[DOWNLOAD] Already exists: {filename}")
-                        continue
-
-                    print(f"[DOWNLOAD] Downloading file {idx+1}/{len(files)}: {filename}")
-
-                    # Update progress
-                    with active_downloads_lock:
-                        # Check cancelled inside lock
-                        if model_id in cancelled_downloads:
-                            print(f"[CANCELLED] Download cancelled for {model_id}")
-                            cancelled_downloads.discard(model_id)
-                            return jsonify({"success": False, "message": "Download cancelled"})
-
-                        if model_id in active_downloads:
-                            active_downloads[model_id]["percentage"] = int((idx / len(files)) * 100)
-                            active_downloads[model_id]["last_update"] = time.time()
-                    save_download_progress()
-
-                    # Get download URL from HuggingFace
-                    url = hf_hub_url(repo_id=model_id, filename=filename)
-
-                    # Download with resume + retry, checking cancellation mid-file
-                    outcome = download_url_to_file(
-                        url, dest_path,
-                        cancel_check=lambda: model_id in cancelled_downloads,
-                    )
-                    if outcome == "cancelled":
-                        print(f"[CANCELLED] Download cancelled mid-file for {model_id}")
-                        finish_download(model_id, cancelled=True)
-                        return jsonify({"success": False, "message": "Download cancelled"})
-
-                    print(f"[OK] Downloaded: {filename}")
+                # Per-file download with resume + cancellation
+                # (huggingface_hub's snapshot_download hangs on large files)
+                outcome = download_hf_repo_files(model_id, local_dir, model_id)
+                if outcome == "cancelled":
+                    print(f"[CANCELLED] Download cancelled for {model_id}")
+                    finish_download(model_id, cancelled=True)
+                    return jsonify({"success": False, "message": "Download cancelled"})
 
                 path = local_dir
                 message = f"Model {model_id} downloaded to: {path}"
@@ -8711,29 +8714,23 @@ def cancel_download():
 
     try:
         with active_downloads_lock:
-            # Add to cancelled set to prevent download thread from re-adding
-            cancelled_downloads.add(model_id)
-
-            if model_id in active_downloads:
+            entry = active_downloads.get(model_id)
+            was_downloading = entry is not None and entry.get("status") == "downloading"
+            if was_downloading:
+                # Signal the download thread to stop
+                cancelled_downloads.add(model_id)
+            if entry is not None:
                 del active_downloads[model_id]
 
         # Save outside the lock to avoid deadlock (save_download_progress acquires the same lock)
         save_download_progress()
 
-        # Also clean up the persisted file directly
-        try:
-            if os.path.exists(DOWNLOAD_PROGRESS_FILE):
-                with open(DOWNLOAD_PROGRESS_FILE, 'r') as f:
-                    persisted = json.load(f)
-                if model_id in persisted:
-                    del persisted[model_id]
-                    with open(DOWNLOAD_PROGRESS_FILE, 'w') as f:
-                        json.dump(persisted, f)
-        except Exception as e:
-            print(f"[WARNING] Error cleaning persisted download entry: {e}")
+        if not was_downloading:
+            # Completed/failed entry (or already gone): this is a dismiss, not a
+            # cancel — never delete files for a download that isn't in flight
+            return jsonify({"success": True, "message": f"Dismissed {model_id}"})
 
         # Clean up partial download directories/files so model shows as not downloaded
-        import shutil
         models_dir = MODELS_DIR
 
         # model_id already includes prefix (e.g., "whisper-small.en" or "faster-whisper-base.en")
@@ -9799,8 +9796,6 @@ def download_faster_whisper_model():
 
         print(f"[DOWNLOAD] Downloading faster-whisper model: {model_name} from {repo_id}")
 
-        from huggingface_hub import snapshot_download
-
         models_dir = MODELS_DIR
         os.makedirs(models_dir, exist_ok=True)
         local_dir = os.path.join(models_dir, f"faster-whisper-{model_name}")
@@ -9821,13 +9816,15 @@ def download_faster_whisper_model():
         try:
             start_download_monitor(download_key, local_dir, total=total_size)
 
-            # Download model (progress shown in server console via tqdm)
-            path = snapshot_download(
-                repo_id=repo_id,
-                local_dir=local_dir,
-                local_dir_use_symlinks=False
-            )
-            message = f"faster-whisper {model_name} downloaded to: {path}"
+            # Per-file download with resume + cancellation (snapshot_download
+            # can't be interrupted once started)
+            outcome = download_hf_repo_files(repo_id, local_dir, download_key)
+            if outcome == "cancelled":
+                print(f"[CANCELLED] Download cancelled for {download_key}")
+                finish_download(download_key, cancelled=True)
+                return jsonify({"success": False, "message": "Download cancelled"})
+
+            message = f"faster-whisper {model_name} downloaded to: {local_dir}"
             print(f"[OK] {message}")
 
             finish_download(download_key)
@@ -10356,7 +10353,6 @@ def download_translation_model():
 
     try:
         import threading
-        from huggingface_hub import snapshot_download
 
         data = request.get_json()
         model_id = data.get("model_id", "facebook/nllb-200-distilled-600M")
