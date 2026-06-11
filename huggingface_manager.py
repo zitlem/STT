@@ -69,16 +69,14 @@ class HuggingFaceManager:
         
         try:
             # Create repository if it doesn't exist
-            try:
-                self.api.create_repo(
-                    repo_id=repo_id,
-                    token=self.token,
-                    private=private,
-                    repo_type="model"
-                )
-                print(f"✓ Created repository: {repo_id}")
-            except Exception:
-                print(f"Repository {repo_id} already exists")
+            self.api.create_repo(
+                repo_id=repo_id,
+                token=self.token,
+                private=private,
+                repo_type="model",
+                exist_ok=True
+            )
+            print(f"✓ Repository ready: {repo_id}")
             
             # Upload files
             if model_path.is_file():

@@ -42,7 +42,8 @@ import zipfile
 try:
     import certifi
     _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
-except Exception:
+except Exception as e:
+    logging.warning(f"[SSL] certifi unavailable ({e}); using system default certificates")
     _SSL_CTX = None
 
 IS_WINDOWS = sys.platform == "win32"
@@ -492,6 +493,12 @@ class AutoUpdater:
 
             os.makedirs(extract_dir, exist_ok=True)
             with zipfile.ZipFile(zip_path) as zf:
+                # Guard against zip-slip: no absolute paths or traversal outside extract_dir
+                extract_root = os.path.abspath(extract_dir)
+                for member in zf.infolist():
+                    target = os.path.abspath(os.path.join(extract_root, member.filename))
+                    if not target.startswith(extract_root + os.sep):
+                        raise ValueError(f"Unsafe path in update zip: {member.filename}")
                 zf.extractall(extract_dir)
 
             # GitHub source zips contain one top-level dir, e.g. "zitlem-STT-<sha>/"
@@ -510,6 +517,7 @@ class AutoUpdater:
         self.pm.stop(timeout=20)
 
         try:
+            failed_items = []
             for item in os.listdir(src_root):
                 if item in _UPDATE_PRESERVE:
                     continue
@@ -523,15 +531,23 @@ class AutoUpdater:
                     else:
                         shutil.copy2(src, dst)
                 except Exception as e:
-                    logging.warning(f"[AU] Skipped {item}: {e}")
+                    failed_items.append(item)
+                    logging.warning(f"[AU] Failed to copy {item}: {e}")
 
-            write_version(remote)
-            result = (
-                f"Updated to {remote} "
-                f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
-            )
-            logging.info(f"[AU] {result}")
-            self.state.set(last_update_result=result)
+            if failed_items:
+                # Don't record the new version: the install is partial, and writing
+                # it would stop the next update cycle from retrying.
+                result = f"Update to {remote} incomplete; failed: {', '.join(failed_items)}"
+                logging.error(f"[AU] {result}")
+                self.state.set(last_update_result=result)
+            else:
+                write_version(remote)
+                result = (
+                    f"Updated to {remote} "
+                    f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
+                )
+                logging.info(f"[AU] {result}")
+                self.state.set(last_update_result=result)
 
         except Exception as e:
             result = f"Apply failed: {e}"
@@ -602,9 +618,15 @@ class AutoUpdater:
         # Block here; the installer's pre-script (launchctl unload / systemctl stop /
         # taskkill) will send SIGTERM / kill this process, at which point the shutdown
         # signal handler exits cleanly and the updated binary takes over.
+        # Bounded wait: if the installer never kills us, recover instead of hanging.
         import time
-        while True:
-            time.sleep(30)
+        deadline = time.time() + 600
+        while time.time() < deadline:
+            time.sleep(5)
+        logging.error("[AU] Installer did not stop the service within 10 minutes; "
+                      "resuming with current version")
+        self.state.set(last_update_result=f"Installer for {remote} did not complete")
+        self.pm.start()
 
     # -- Scheduler -----------------------------------------------------------
 
@@ -1084,7 +1106,7 @@ def _run_crash_report_test():
         print("[test] FAIL — _CRASH_WORKER_URL is empty. Deploy the Cloudflare Worker first.")
         raise SystemExit(1)
 
-    fingerprint = "test-" + __import__("hashlib").sha256(b"test-crash-report").hexdigest()[:8]
+    fingerprint = "test-" + hashlib.sha256(b"test-crash-report").hexdigest()[:8]
     payload = {
         "version":             read_version(),
         "platform":            f"{platform.system()} {platform.release()} {platform.machine()}",
@@ -1098,7 +1120,7 @@ def _run_crash_report_test():
         "fingerprint":         fingerprint,
         "log_tail":            "RuntimeError: synthetic test crash — please ignore and close this issue",
     }
-    data = __import__("json").dumps(payload).encode()
+    data = json.dumps(payload).encode()
     req  = urllib.request.Request(
         _CRASH_WORKER_URL,
         data=data,
@@ -1111,7 +1133,7 @@ def _run_crash_report_test():
     )
     try:
         with urllib.request.urlopen(req, timeout=20, context=_SSL_CTX) as resp:
-            result = __import__("json").loads(resp.read().decode())
+            result = json.loads(resp.read().decode())
         print(f"[test] OK — issue filed: {result.get('issue_url', result)}")
     except urllib.error.HTTPError as e:
         body = e.read().decode()[:300]

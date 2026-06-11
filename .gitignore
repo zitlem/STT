@@ -8,6 +8,9 @@ server.log
 config.json
 config.json.backup
 config.json.tmp
+config.json.before-restore
+*.wav
+*.log
 .wrangler/
 config.json.watchdog.tmp
 watchdog.lock

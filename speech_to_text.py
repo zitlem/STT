@@ -48,6 +48,8 @@ import platform
 from multiprocessing import Queue as MPQueue
 
 import json
+import re
+import secrets
 import shutil
 import statistics
 from datetime import timedelta, datetime
@@ -1273,14 +1275,17 @@ class TranslationCache:
                 return entry['translated']
             return None
 
+    def _evict_if_full(self):
+        """Remove oldest entries when full (insertion order). Caller must hold _lock."""
+        if len(self._cache) >= self._max_size:
+            oldest = list(self._cache.keys())[:100]
+            for key in oldest:
+                del self._cache[key]
+
     def set(self, segment_id, original_text, translated_text, target_lang):
         """Cache a translation"""
         with self._lock:
-            if len(self._cache) >= self._max_size:
-                # Remove oldest entries (simple LRU - remove first 100 entries)
-                oldest = list(self._cache.keys())[:100]
-                for key in oldest:
-                    del self._cache[key]
+            self._evict_if_full()
             self._cache[segment_id] = {
                 'original': original_text,
                 'translated': translated_text,
@@ -1296,10 +1301,7 @@ class TranslationCache:
     def set_with_extras(self, segment_id, original_text, translated_text, target_lang, confidence=None, alternatives=None):
         """Cache a translation with confidence and alternatives"""
         with self._lock:
-            if len(self._cache) >= self._max_size:
-                oldest = list(self._cache.keys())[:100]
-                for key in oldest:
-                    del self._cache[key]
+            self._evict_if_full()
             self._cache[segment_id] = {
                 'original': original_text,
                 'translated': translated_text,
@@ -1329,6 +1331,11 @@ class TranslationCache:
         """Get current cache size"""
         with self._lock:
             return len(self._cache)
+
+    def max_segment_id(self):
+        """Highest integer segment id currently cached, or 0 if none"""
+        with self._lock:
+            return max((sid for sid in self._cache if isinstance(sid, int)), default=0)
 
 
 # Global translation cache instance
@@ -3450,7 +3457,7 @@ def validate_file(file):
 app = Flask(__name__,
             template_folder=os.path.join(BUNDLE_DIR, "templates"),
             static_folder=os.path.join(BUNDLE_DIR, "static"))
-app.config["SECRET_KEY"] = "your_secret_keyss"
+app.config["SECRET_KEY"] = os.environ.get("STT_SECRET_KEY") or secrets.token_urlsafe(32)
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # Auto-reload templates when they change
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching for static files
 socketio = SocketIO(app, async_mode="threading", static_url_path="/static", static_folder=os.path.join(BUNDLE_DIR, "static"), ping_timeout=120, ping_interval=25)
@@ -8753,7 +8760,12 @@ def cancel_download():
         # model_id already includes prefix (e.g., "whisper-small.en" or "faster-whisper-base.en")
         # For HuggingFace models like "facebook/nllb-200-distilled-600M", slashes become double dashes
         dir_name = model_id.replace("/", "--")
-        model_path = os.path.join(models_dir, dir_name)
+        model_path = os.path.normpath(os.path.join(models_dir, dir_name))
+        # Containment check: model_id is user input and must resolve to a
+        # subdirectory strictly inside MODELS_DIR (rmtree happens below)
+        if (model_path == models_dir
+                or os.path.commonpath([model_path, models_dir]) != models_dir):
+            return jsonify({"success": False, "error": "Invalid model id"}), 400
         if os.path.exists(model_path):
             try:
                 shutil.rmtree(model_path)
@@ -10717,6 +10729,10 @@ def upload_local_model():
         if not model_name:
             return jsonify({"success": False, "error": "Model name is required"}), 400
 
+        # Reject path separators / traversal so the model dir stays inside MODELS_DIR
+        if not re.fullmatch(r"[\w.\- ]+", model_name) or model_name.strip(". ") == "":
+            return jsonify({"success": False, "error": "Invalid model name"}), 400
+
         if not files or len(files) == 0:
             return jsonify({"success": False, "error": "No files selected"}), 400
 
@@ -11802,9 +11818,7 @@ def emit_tts_audio():
         # so we don't replay everything from the beginning
         if _tts_was_off:
             _tts_was_off = False
-            cache = get_translation_cache()
-            with cache._lock:
-                max_id = max((sid for sid in cache._cache if isinstance(sid, int)), default=0)
+            max_id = get_translation_cache().max_segment_id()
             if max_id > _tts_last_spoken_id:
                 _tts_last_spoken_id = max_id
 
@@ -13431,6 +13445,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     # Never include pending_remainder — that audio is still being
                                     # re-transcribed from the rolling buffer and would get echoed.
                                     _ctx_prompt_added = False
+                                    _prompt_before_ctx = None
                                     ctx_prompt_cfg = process_config.get("audio", {}).get("context_prompt", {})
                                     if ctx_prompt_cfg.get("enabled", True) and saved_sentences:
                                         ctx_max_chars = ctx_prompt_cfg.get("max_chars", 200)
@@ -13439,11 +13454,16 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             if len(prompt_tail) > ctx_max_chars:
                                                 prompt_tail = prompt_tail[-ctx_max_chars:]
                                                 _cut = prompt_tail.find(" ")
+                                                # Drop the leading partial word; if the tail is one
+                                                # unbroken run with no space, discard it entirely
                                                 if _cut > 0:
                                                     prompt_tail = prompt_tail[_cut + 1:]
+                                                elif _cut < 0:
+                                                    prompt_tail = ""
                                             if prompt_tail:
                                                 whisper_params = dict(whisper_params)
                                                 existing = whisper_params.get("initial_prompt")
+                                                _prompt_before_ctx = existing
                                                 whisper_params["initial_prompt"] = (existing + " " + prompt_tail) if existing else prompt_tail
                                                 _ctx_prompt_added = True
 
