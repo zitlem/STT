@@ -16,10 +16,12 @@
             margin-bottom: 6px;
         }
 
-        .slider-label span {
+        .slider-label span,
+        .slider-label label {
             font-weight: 500;
             color: var(--text-primary);
             font-size: 0.85em;
+            margin: 0;
         }
 
         .slider-value {
@@ -132,7 +134,7 @@
             border-radius: var(--radius-sm);
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: background-color 0.3s, transform 0.3s, opacity 0.3s;
             font-size: 0.9em;
         }
 
@@ -296,7 +298,7 @@
             background: var(--bg-card);
             border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: all 0.2s var(--ease-out);
+            transition: background-color 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
             border: 1px solid transparent;
             color: var(--text-primary);
         }
@@ -420,7 +422,7 @@
 
                 <!-- Audio Settings -->
                 <div class="form-group" style="margin-top: 12px;">
-                    <label>Audio Interface</label>
+                    <label for="audio_device">Audio Interface</label>
                     <select id="audio_device" style="width: 100%; padding: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
                         <option value="">Loading devices...</option>
                     </select>
@@ -430,13 +432,13 @@
                 </div>
 
                 <div class="form-group" style="margin-top: 12px;">
-                    <label>Energy Threshold</label>
+                    <label for="energy_threshold">Energy Threshold</label>
                     <input type="number" id="energy_threshold" min="500" max="10000" step="100" value="3500" oninput="updateThresholdDisplay(this.value)">
                 </div>
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Phrase Timeout</span>
+                        <label for="phrase_timeout">Phrase Timeout</label>
                         <span class="slider-value"><span id="phraseValue">2</span>s</span>
                     </div>
                     <input type="range" id="phrase_timeout" min="0.5" max="15" value="2" step="0.1" oninput="document.getElementById('phraseValue').textContent = this.value">
@@ -445,7 +447,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Same Output Threshold</span>
+                        <label for="same_output_threshold">Same Output Threshold</label>
                         <span class="slider-value"><span id="sameOutputValue">7</span></span>
                     </div>
                     <input type="range" id="same_output_threshold" min="3" max="25" value="7" step="1" oninput="document.getElementById('sameOutputValue').textContent = this.value">
@@ -454,7 +456,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Fuzzy Duplicate Threshold</span>
+                        <label for="fuzzy_duplicate_threshold">Fuzzy Duplicate Threshold</label>
                         <span class="slider-value"><span id="fuzzyThresholdValue">0.85</span></span>
                     </div>
                     <input type="range" id="fuzzy_duplicate_threshold" min="0.5" max="1.0" value="0.85" step="0.05" oninput="document.getElementById('fuzzyThresholdValue').textContent = this.value">
@@ -463,7 +465,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Minimum Words</span>
+                        <label for="min_words">Minimum Words</label>
                         <span class="slider-value"><span id="minWordsValue">0</span></span>
                     </div>
                     <input type="range" id="min_words" min="0" max="15" value="0" step="1" oninput="document.getElementById('minWordsValue').textContent = this.value">
@@ -472,7 +474,7 @@
 
                 <!-- Language Selection -->
                 <div class="form-group" style="margin-top: 12px;">
-                    <label>Language</label>
+                    <label for="live_language">Language</label>
                     <select id="live_language" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
                         <option value="auto">Auto Detect</option>
                         <option value="en">English</option>
@@ -505,7 +507,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>VAD Threshold</span>
+                        <label for="vad_threshold">VAD Threshold</label>
                         <span class="slider-value"><span id="vadValue">0.5</span></span>
                     </div>
                     <input type="range" id="vad_threshold" min="0.1" max="1.0" value="0.5" step="0.05" oninput="document.getElementById('vadValue').textContent = this.value">
@@ -532,7 +534,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Beam Size</span>
+                        <label for="beam_size">Beam Size</label>
                         <span class="slider-value"><span id="beamSizeValue">1</span></span>
                     </div>
                     <input type="range" id="beam_size" min="1" max="5" value="1" step="1" oninput="document.getElementById('beamSizeValue').textContent = this.value">
@@ -549,7 +551,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Temperature</span>
+                        <label for="temperature">Temperature</label>
                         <span class="slider-value"><span id="temperatureValue">0.0</span></span>
                     </div>
                     <input type="range" id="temperature" min="0" max="1.0" value="0.0" step="0.1" oninput="document.getElementById('temperatureValue').textContent = this.value">
@@ -566,7 +568,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Compression Ratio Threshold</span>
+                        <label for="compression_ratio">Compression Ratio Threshold</label>
                         <span class="slider-value"><span id="compressionRatioValue">1.8</span></span>
                     </div>
                     <input type="range" id="compression_ratio" min="1.0" max="3.0" value="1.8" step="0.1" oninput="document.getElementById('compressionRatioValue').textContent = this.value">
@@ -583,7 +585,7 @@
 
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Log Probability Threshold</span>
+                        <label for="logprob_threshold">Log Probability Threshold</label>
                         <span class="slider-value"><span id="logprobValue">-0.5</span></span>
                     </div>
                     <input type="range" id="logprob_threshold" min="-1.0" max="0.0" value="-0.5" step="0.1" oninput="document.getElementById('logprobValue').textContent = this.value">
@@ -622,7 +624,7 @@
 
                     <div class="slider-container">
                         <div class="slider-label">
-                            <span>Confidence Threshold</span>
+                            <label for="confidence_threshold">Confidence Threshold</label>
                             <span class="slider-value"><span id="confidenceThresholdValue">0.7</span></span>
                         </div>
                         <input type="range" id="confidence_threshold" min="0.3" max="0.95" value="0.7" step="0.05"
@@ -643,7 +645,7 @@
                     <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Replaces translated terms using glossary mappings after translation</div>
 
                     <div class="form-group" style="margin-top: 12px;">
-                        <label style="font-size: 0.85em;">Glossary (source=target, one per line)</label>
+                        <label for="glossary_list" style="font-size: 0.85em;">Glossary (source=target, one per line)</label>
                         <textarea id="glossary_list" rows="4" placeholder="Add translation term mappings...&#10;e.g. neural network=red neuronal&#10;machine learning=aprendizaje automatico"
                                   style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid #333; color: var(--text-primary); border-radius: 4px; font-size: 0.85em; resize: vertical;"></textarea>
                         <small style="color: #666; font-size: 0.75em;">Applied when translating to the target language</small>

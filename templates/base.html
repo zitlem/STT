@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="color-scheme: dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Speech to Text{% endblock %}</title>
+    <meta name="theme-color" content="#050506">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='fonts/inter.css') }}">
     <script src="{{ url_for('static', filename='socket.io.js') }}"></script>
@@ -82,7 +83,7 @@
             border-radius: 0 0 var(--radius-sm) 0;
             transition: top 0.2s var(--ease-out);
         }
-        .skip-link:focus {
+        .skip-link:focus-visible {
             top: 0;
         }
 
@@ -135,7 +136,7 @@
             font-weight: 500;
             padding: 6px 10px;
             border-radius: var(--radius-sm);
-            transition: all 0.2s var(--ease-out);
+            transition: background-color 0.2s var(--ease-out), color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
             font-size: 0.8em;
             white-space: nowrap;
             display: inline-flex;
@@ -298,12 +299,12 @@
             color: #EDEDEF !important;
         }
 
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus,
-        input:focus,
-        select:focus,
-        textarea:focus {
+        .form-group input:focus-visible,
+        .form-group select:focus-visible,
+        .form-group textarea:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible {
             outline: none;
             border-color: var(--accent);
             box-shadow: 0 0 0 3px var(--accent-glow);
@@ -355,7 +356,7 @@
             font-size: 0.82em;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s var(--ease-out);
+            transition: background-color 0.2s var(--ease-out), color 0.2s var(--ease-out), transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
             font-family: inherit;
         }
 
@@ -426,7 +427,7 @@
             font-weight: 600;
             cursor: pointer;
             font-size: 0.88em;
-            transition: all 0.2s var(--ease-out);
+            transition: background-color 0.2s var(--ease-out), transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), opacity 0.2s var(--ease-out);
             margin-top: 12px;
         }
 

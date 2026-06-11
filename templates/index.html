@@ -687,7 +687,7 @@
         border: none;
         border-radius: 4px;
         box-shadow: none;
-        transition: all 0.3s ease;
+        transition: background-color 0.3s ease, box-shadow 0.3s ease;
       }
 
       body.transparent-bg tbody tr {
@@ -737,7 +737,7 @@
         align-items: center;
         justify-content: center;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-        transition: all 0.2s ease;
+        transition: background-color 0.2s ease, border-color 0.2s ease;
       }
 
       .font-size-controls button:hover {
@@ -1014,7 +1014,7 @@
 
   <body>
     <!-- Status in Upper Right Corner (clickable to open settings) -->
-    <div class="status-container" onclick="redirectBasedOnAuth()" style="cursor: pointer;" title="Click to open settings">
+    <button class="status-container" onclick="redirectBasedOnAuth()" style="cursor: pointer; background: none; border: none; padding: 0; text-align: left;" aria-label="Open settings">
       <div class="status-indicator">
         <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
           <div style="display: flex; align-items: center; gap: 6px;">
@@ -1031,13 +1031,13 @@
           </div>
         </div>
       </div>
-    </div>
+    </button>
 
     <!-- Main Content -->
     <div class="main-container">
       <div id="table-container">
         <div class="empty-state" id="empty-state">
-          <i class="fas fa-microphone"></i>
+          <i class="fas fa-microphone" aria-hidden="true"></i>
           <h3>No transcriptions yet</h3>
         </div>
         <table id="transcription-table">
@@ -1067,8 +1067,8 @@
     </div>
 
     <!-- Hidden click zones for font size control -->
-    <div id="font-zone-left" class="font-click-zone"></div>
-    <div id="font-zone-right" class="font-click-zone"></div>
+    <div id="font-zone-left" class="font-click-zone" aria-hidden="true"></div>
+    <div id="font-zone-right" class="font-click-zone" aria-hidden="true"></div>
 
     <script>
       // Toast notifications and connection banner removed - status indicators provide all feedback
