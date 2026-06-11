@@ -2050,11 +2050,16 @@
                 });
                 const data = await resp.json();
                 if (data.success) {
+                    // Show in the unified progress box (live percentage + cancel)
+                    startDownloadProgress('tts-' + modelId);
+
                     if (_ttsDownloadPoll) clearInterval(_ttsDownloadPoll);
+                    let ttsPollFailures = 0;
                     _ttsDownloadPoll = setInterval(async () => {
                         try {
                             const st = await fetch('/api/models/tts/download-progress');
                             const sd = await st.json();
+                            ttsPollFailures = 0;
                             if (sd.status === 'completed') {
                                 clearInterval(_ttsDownloadPoll);
                                 _ttsDownloadPoll = null;
@@ -2066,7 +2071,14 @@
                                 alert('Download failed: ' + (sd.error || 'Unknown error'));
                                 loadTTSModels();
                             }
-                        } catch (_) {}
+                        } catch (_) {
+                            // Server unreachable for ~30s: stop polling and reset the button
+                            if (++ttsPollFailures >= 10) {
+                                clearInterval(_ttsDownloadPoll);
+                                _ttsDownloadPoll = null;
+                                if (btn) { btn.disabled = false; btn.textContent = 'Download'; btn.style.opacity = ''; }
+                            }
+                        }
                     }, 3000);
                 } else {
                     if (btn) { btn.disabled = false; btn.textContent = 'Download'; btn.style.opacity = ''; }
