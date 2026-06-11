@@ -1201,8 +1201,12 @@ def _synthesize_edge_tts(text, voice=None, speed=1.0):
             return buf.getvalue()
 
         loop = asyncio.new_event_loop()
-        mp3_bytes = loop.run_until_complete(_do_synth())
-        loop.close()
+        try:
+            # Bound the network call: a hung connection would otherwise block
+            # the TTS emit loop indefinitely
+            mp3_bytes = loop.run_until_complete(asyncio.wait_for(_do_synth(), timeout=15))
+        finally:
+            loop.close()
 
         if not mp3_bytes:
             return None, None
@@ -2598,43 +2602,6 @@ def extract_audio_from_file(file_path):
         raise Exception(f"Failed to extract audio: {str(e)}")
 
 
-def chunk_audio_file(audio_path, chunk_duration=30):
-    """
-    Split audio file into chunks for processing.
-
-    Args:
-        audio_path: Path to WAV audio file
-        chunk_duration: Duration of each chunk in seconds
-
-    Returns:
-        List of (audio_chunk_array, start_time, end_time) tuples
-    """
-    try:
-        import librosa
-
-        # Load audio
-        audio_data, sr = librosa.load(audio_path, sr=16000)
-
-        # Calculate chunk size in samples
-        chunk_size = chunk_duration * sr
-        total_duration = len(audio_data) / sr
-
-        chunks = []
-        for start_sample in range(0, len(audio_data), chunk_size):
-            end_sample = min(start_sample + chunk_size, len(audio_data))
-            chunk_data = audio_data[start_sample:end_sample]
-
-            start_time = start_sample / sr
-            end_time = end_sample / sr
-
-            chunks.append((chunk_data, start_time, end_time))
-
-        return chunks
-
-    except Exception as e:
-        raise Exception(f"Failed to chunk audio: {str(e)}")
-
-
 def format_transcription(segments, format_type):
     """
     Format transcription segments into requested format.
@@ -3461,6 +3428,7 @@ app = Flask(__name__,
             template_folder=os.path.join(BUNDLE_DIR, "templates"),
             static_folder=os.path.join(BUNDLE_DIR, "static"))
 app.config["SECRET_KEY"] = os.environ.get("STT_SECRET_KEY") or secrets.token_urlsafe(32)
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024  # 4GB cap on uploads (media files are large)
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # Auto-reload templates when they change
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching for static files
 socketio = SocketIO(app, async_mode="threading", static_url_path="/static", static_folder=os.path.join(BUNDLE_DIR, "static"), ping_timeout=120, ping_interval=25)
@@ -5968,6 +5936,8 @@ def transcribe_file_endpoint():
 
         file = request.files["file"]
         output_format = request.form.get("format", "txt")
+        if output_format not in ("txt", "srt", "vtt", "json"):
+            return jsonify({"success": False, "error": f"Invalid format: {output_format}"}), 400
         language = request.form.get("language", "auto")  # Get language from upload form
         translate_to = request.form.get("translate_to", "")  # Optional translation target
 
@@ -11720,7 +11690,14 @@ def emit_tts_audio():
                         _tts_buffer.clear()
                         continue
 
-                    audio_bytes, sample_rate = synthesize_tts(combined_text, language=target_lang)
+                    try:
+                        audio_bytes, sample_rate = synthesize_tts(combined_text, language=target_lang)
+                    except Exception as synth_err:
+                        # Drop the buffered text: retrying the same input every
+                        # cycle would loop forever on a persistent failure
+                        print(f"[TTS] Synthesis failed, dropping buffered text: {synth_err}")
+                        _tts_buffer.clear()
+                        continue
                     if audio_bytes:
                         backend = _get_tts_backend()
                         audio_format = "mp3" if backend == "edge" else "wav"
@@ -12051,6 +12028,12 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         print("[STOP] Stop command received, signaling main loop to exit...")
                         is_running = False  # Signal the main loop to stop
                         transcription_state["live_text"] = ""  # Clear live preview
+                        # Abort any in-flight calibration; the worker survives
+                        # stop/start, so stale flags would report "calibrating" forever
+                        if calibration_mode or calibration_state.get("active"):
+                            print("[STOP] Aborting in-flight calibration")
+                            calibration_mode = False
+                            calibration_state["active"] = False
                         print("[STOP] is_running set to False - main() will exit and cleanup")
 
                         # Stop audio source to unblock the main loop if it's waiting for audio
