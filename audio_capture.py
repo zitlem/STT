@@ -95,6 +95,27 @@ class FFmpegAudioCapture:
             if self._ts_file_count > 1:
                 print(f"[DEBUG-TS-SPLIT] *** WARNING: THIS IS BACKUP FILE #{self._ts_file_count} - RECORDING HAS BEEN SPLIT ***", flush=True)
 
+        # File playback mode: device_name is a path to an audio file (for testing)
+        if self.device_name and os.path.isfile(self.device_name):
+            if self.ts_enabled:
+                cmd = [
+                    'ffmpeg', '-y', '-re',
+                    '-i', self.device_name,
+                    '-ar', str(self.sample_rate), '-ac', '1',
+                    '-filter_complex', '[0:a]asplit=2[a1][a2]',
+                    '-map', '[a1]', '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:1',
+                    '-map', '[a2]', '-c:a', 'mp2', '-b:a', '128k', '-f', 'mpegts', self.backup_file,
+                ]
+            else:
+                cmd = [
+                    'ffmpeg', '-y', '-re',
+                    '-i', self.device_name,
+                    '-ar', str(self.sample_rate), '-ac', '1',
+                    '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:1',
+                ]
+            print(f"[DEBUG-TS-CMD] FFmpeg command: {' '.join(cmd)}", flush=True)
+            return cmd
+
         if sys.platform.startswith('linux'):
             # Linux: Use ALSA or PulseAudio
             if self.device_name:

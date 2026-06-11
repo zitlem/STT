@@ -398,10 +398,6 @@
   "custom_dictionary": {
     "file": "custom_dictionary.json",
     "_file_comment": "Path to custom dictionary JSON file for domain-specific terms",
-    "whisper_hotwords_enabled": true,
-    "_whisper_hotwords_enabled_comment": "Pass dictionary terms as hotwords to Whisper for better recognition",
-    "whisper_initial_prompt_enabled": true,
-    "_whisper_initial_prompt_enabled_comment": "Include dictionary terms in Whisper initial prompt for context",
     "nllb_glossary_enabled": true,
     "_nllb_glossary_enabled_comment": "Use dictionary for NLLB translation glossary (forced term translations)"
   }

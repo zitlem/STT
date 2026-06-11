@@ -1349,6 +1349,11 @@
          const hasInProgress = inProgressSegment && inProgressSegment.text && inProgressSegment.text.trim();
 
          if (!hasSegments && !hasInProgress) {
+           // If transcription is actively running and we already have segments, a brief
+           // silence shouldn't wipe them — wait for the next update with real data.
+           if (data.is_running !== false && allSegments.length > 0) {
+             return;
+           }
            allSegments = [];
            lastIncompleteSegment = null;
            lastEndTime = 0;
