@@ -5518,14 +5518,50 @@ def list_tts_models():
 
 # Proxy endpoints — forward browser requests to Machine B server-side (avoids CORS)
 
-def _get_remote_endpoint():
-    remote_cfg = config.get("live_translation", {}).get("remote", {})
-    if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
-        ep = remote_cfg["endpoint"].strip().rstrip("/")
-        if ep and "://" not in ep:
-            ep = "http://" + ep
-        return ep
+class _RemoteEndpointError(Exception):
+    pass
+
+
+def _probe_remote_port(base_url):
+    """Try common ports to find which one the STT app is listening on."""
+    from urllib.parse import urlparse
+    import requests as _req
+    parsed = urlparse(base_url)
+    hostname = parsed.hostname
+    for port in [80, 8080, 443, 5000, 8000]:
+        scheme = "https" if port == 443 else "http"
+        try:
+            r = _req.get(f"{scheme}://{hostname}:{port}/api/translation/status", timeout=2)
+            if r.status_code == 200:
+                return f"{scheme}://{hostname}:{port}"
+        except Exception:
+            continue
     return None
+
+
+def _get_remote_endpoint():
+    from urllib.parse import urlparse
+    remote_cfg = config.get("live_translation", {}).get("remote", {})
+    if not (remote_cfg.get("enabled") and remote_cfg.get("endpoint")):
+        return None
+    ep = remote_cfg["endpoint"].strip().rstrip("/")
+    if not ep:
+        return None
+    if "://" not in ep:
+        ep = "http://" + ep
+    # If no port specified, probe for it and save the result
+    if not urlparse(ep).port:
+        found = _probe_remote_port(ep)
+        if found:
+            remote_cfg["endpoint"] = found
+            save_config(config)
+            ep = found
+        else:
+            host = urlparse(ep).hostname
+            raise _RemoteEndpointError(
+                f"Could not find STT server on {host} — try specifying the port manually (e.g. {host}:8080)"
+            )
+    return ep
 
 
 @app.route("/api/remote-translation/status", methods=["GET"])
@@ -5533,7 +5569,10 @@ def proxy_remote_translation_status():
     """Proxy: fetch Machine B's translation status for display on Machine A's UI."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"success": False, "error": str(e)}), 502
     if not endpoint:
         return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
     import requests as _req
@@ -5553,7 +5592,10 @@ def proxy_pair_request():
     """Proxy: send pairing request from Machine A's server to Machine B (avoids CORS)."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"error": str(e)}), 502
     if not endpoint:
         return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
     import requests as _req
@@ -5573,7 +5615,10 @@ def proxy_pair_confirm():
     """Proxy: send pairing confirmation from Machine A's server to Machine B (avoids CORS)."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"error": str(e)}), 502
     if not endpoint:
         return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
     import requests as _req
@@ -5594,7 +5639,10 @@ def proxy_pair_status():
     """Proxy: check if Machine A is paired with Machine B (avoids CORS)."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"paired": False, "error": str(e)}), 502
     if not endpoint:
         return jsonify({"paired": False}), 200
     import requests as _req
@@ -5614,7 +5662,10 @@ def proxy_translate_unload():
     """Proxy: tell Machine B to unload its translation model (avoids CORS)."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"success": False, "error": str(e)}), 502
     if not endpoint:
         return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
     import requests as _req
@@ -5634,7 +5685,10 @@ def proxy_translate_preload():
     """Proxy: tell Machine B to preload its translation model (avoids CORS)."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"success": False, "error": str(e)}), 502
     if not endpoint:
         return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
     import requests as _req
@@ -5654,7 +5708,10 @@ def proxy_translate_unpair():
     """Proxy: tell Machine B to remove this machine from its trusted list."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
-    endpoint = _get_remote_endpoint()
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"success": False, "error": str(e)}), 502
     if not endpoint:
         return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
     import requests as _req
