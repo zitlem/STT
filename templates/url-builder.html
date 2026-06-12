@@ -377,7 +377,7 @@
                     <label for="url_hideInProgress">Hide In-Progress Transcription Text</label>
                 </div>
 
-                <div class="checkbox-group">
+                <div class="checkbox-group" id="hideTranslateInProgressGroup">
                     <input type="checkbox" id="url_hideTranslateInProgress" oninput="updateCustomURL()">
                     <label for="url_hideTranslateInProgress">Hide In-Progress Translation Text</label>
                 </div>
@@ -1035,6 +1035,21 @@
                 });
         }
 
+        function checkTranslateInProgressEnabled() {
+            fetch('/api/translation/settings')
+                .then(r => r.json())
+                .then(data => {
+                    const enabled = data.success && data.settings && data.settings.translate_in_progress;
+                    const checkbox = document.getElementById('url_hideTranslateInProgress');
+                    const group = document.getElementById('hideTranslateInProgressGroup');
+                    checkbox.disabled = !enabled;
+                    group.style.opacity = enabled ? '' : '0.4';
+                    group.title = enabled ? '' : 'Enable "Translate In-Progress Text" on the Translations page first';
+                    if (!enabled) checkbox.checked = false;
+                })
+                .catch(() => {});
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             // Load saved defaults
@@ -1042,6 +1057,8 @@
 
             updateCustomURL();
             updatePreview();
+
+            checkTranslateInProgressEnabled();
 
             // Check transcription status periodically (switches between iframe/placeholder)
             checkPreviewTranscriptionStatus();
