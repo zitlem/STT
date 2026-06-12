@@ -5521,7 +5521,10 @@ def list_tts_models():
 def _get_remote_endpoint():
     remote_cfg = config.get("live_translation", {}).get("remote", {})
     if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
-        return remote_cfg["endpoint"].rstrip("/")
+        ep = remote_cfg["endpoint"].strip().rstrip("/")
+        if ep and "://" not in ep:
+            ep = "http://" + ep
+        return ep
     return None
 
 
