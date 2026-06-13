@@ -13,8 +13,15 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Determine Python binary
+if [ -f "$VENV_PYTHON" ]; then
+    PYTHON_BIN="$VENV_PYTHON"
+else
+    PYTHON_BIN="python3"
+fi
+
 # Read port from config.json
-PORT=$(python3 -c "import json; print(json.load(open('config.json')).get('web_server',{}).get('port',80))" 2>/dev/null || echo 80)
+PORT=$("$PYTHON_BIN" -c "import json; print(json.load(open('config.json')).get('web_server',{}).get('port',80))" 2>/dev/null || echo 80)
 
 # Check if already running
 if pgrep -f "speech_to_text\.py" > /dev/null 2>&1; then
@@ -30,13 +37,6 @@ if command -v fuser &> /dev/null && fuser "$PORT/tcp" 2>/dev/null; then
 elif command -v lsof &> /dev/null && lsof -i :"$PORT" -sTCP:LISTEN > /dev/null 2>&1; then
     echo -e "${RED}[ERROR]${NC} Port $PORT is already in use by another process"
     exit 1
-fi
-
-# Determine Python binary
-if [ -f "$VENV_PYTHON" ]; then
-    PYTHON_BIN="$VENV_PYTHON"
-else
-    PYTHON_BIN="python3"
 fi
 
 OS=$(uname -s)
