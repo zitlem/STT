@@ -6564,6 +6564,7 @@ def get_api_endpoints():
                 description = ""
                 examples = []
                 view_func = app.view_functions.get(rule.endpoint)
+                auth_required = False
                 if view_func and view_func.__doc__:
                     doc_lines = view_func.__doc__.strip().split('\n')
                     # First line is description
@@ -6573,12 +6574,20 @@ def get_api_endpoints():
                         line = line.strip()
                         if line.startswith("Example:"):
                             examples.append(line[8:].strip())
+                if view_func:
+                    try:
+                        import inspect
+                        src = inspect.getsource(view_func)
+                        auth_required = "check_ip_whitelist()" in src
+                    except Exception:
+                        pass
 
                 endpoints.append({
                     "path": rule.rule,
                     "methods": sorted(methods),
                     "description": description,
-                    "examples": examples
+                    "examples": examples,
+                    "auth_required": auth_required,
                 })
 
         # Sort by path for consistent ordering
