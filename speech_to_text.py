@@ -5834,9 +5834,6 @@ def hot_switch_all_languages():
             config["live_translation"] = {}
         config["live_translation"]["target_language"] = translation_lang
 
-        # Clear translation cache
-        get_translation_cache().clear()
-
         language_name = TRANSLATION_LANGUAGES.get(translation_lang, translation_lang)
         results["translation"] = {
             "old": old_target,
@@ -11547,6 +11544,23 @@ def emit_translated_entries():
                             seg_data["alternatives"] = extras.get("alternatives", [])
                         if not is_whisper_hallucination(translated_text):
                             translated_segments.append(seg_data)
+                        continue
+                    # Cache cold (e.g. server restart): seed from DB if it has any translation
+                    # and skip live retranslation, same as stale-lang cache hit.
+                    if len(entry) > 7 and entry[7]:
+                        db_translation = entry[7]
+                        db_lang = entry[8] if len(entry) > 8 and entry[8] else target_lang
+                        cache.set(seg_id, original_text, db_translation, db_lang)
+                        if not is_whisper_hallucination(db_translation):
+                            translated_segments.append({
+                                "id": seg_id,
+                                "timestamp": entry[1],
+                                "original_text": original_text,
+                                "translated_text": db_translation,
+                                "start": entry[3],
+                                "end": entry[4],
+                                "completed": True,
+                            })
                         continue
                     # Build context from preceding segments if context_window > 1.
                     # The combined (context + target) text is translated in one call, then the
