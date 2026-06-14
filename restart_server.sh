@@ -89,7 +89,7 @@ if [ "$OS" = "Linux" ]; then
             systemctl start "$service_name"
             sleep 3
             if systemctl is-active --quiet "$service_name" 2>/dev/null; then
-                echo -e "${GREEN}[OK]${NC} Server started ($service_name)"
+                echo -e "${GREEN}[OK]${NC} Server started ($service_name) on port $PORT"
                 exit 0
             fi
         fi
@@ -100,7 +100,7 @@ elif [ "$OS" = "Darwin" ]; then
         echo "Starting via launchd..."
         launchctl start com.stt.server
         sleep 3
-        echo -e "${GREEN}[OK]${NC} Server started (launchd)"
+        echo -e "${GREEN}[OK]${NC} Server started (launchd) on port $PORT"
         exit 0
     fi
 fi
@@ -118,7 +118,7 @@ nohup "$PYTHON_BIN" "$SCRIPT_DIR/speech_to_text.py" > "$SCRIPT_DIR/server.log" 2
 # ─── Verify ──────────────────────────────────────────────────────────
 sleep 3
 if pgrep -f "speech_to_text\.py" > /dev/null; then
-    echo -e "${GREEN}[OK]${NC} Server started successfully"
+    echo -e "${GREEN}[OK]${NC} Server started successfully on port $PORT"
 else
     echo -e "${RED}[ERROR]${NC} Failed to start server. Check server.log or journalctl -u stt-server"
     exit 1
