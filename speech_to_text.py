@@ -6193,6 +6193,11 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
 
             elif remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
                 # Remote path: send each segment to Machine B, no local model load needed
+                try:
+                    _file_remote_ep = _get_remote_endpoint()
+                except _RemoteEndpointError as e:
+                    print(f"[FILE_TRANSLATE] Endpoint error: {e}")
+                    _file_remote_ep = None
                 socketio.emit(
                     "file_progress",
                     {"session_id": session_id, "percent": 65, "status": "Translating via remote server..."},
@@ -6201,7 +6206,7 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
                 total = len(segments)
                 for i, seg in enumerate(segments):
                     text = seg.get("text", "").strip()
-                    translated_text = _translate_via_remote(text, source_lang, translate_to, remote_cfg["endpoint"]) if text else ""
+                    translated_text = _translate_via_remote(text, source_lang, translate_to, _file_remote_ep) if (text and _file_remote_ep) else text
                     translated_seg = dict(seg)
                     translated_seg["translated_text"] = translated_text
                     translated_segments.append(translated_seg)
@@ -7285,8 +7290,10 @@ def start_transcription():
         if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
             def _notify_remote_preload():
                 try:
+                    ep = _get_remote_endpoint()
+                    if not ep:
+                        return
                     import requests as _req
-                    ep = remote_cfg["endpoint"].rstrip("/")
                     r = _req.post(ep + "/api/translate/preload", timeout=10)
                     print(f"[START] Remote translation preload: {r.json()}")
                 except Exception as e:
@@ -7350,8 +7357,10 @@ def stop_transcription():
         if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
             def _notify_remote_unload():
                 try:
+                    ep = _get_remote_endpoint()
+                    if not ep:
+                        return
                     import requests as _req
-                    ep = remote_cfg["endpoint"].rstrip("/")
                     r = _req.post(ep + "/api/translate/unload", timeout=10)
                     print(f"[STOP] Remote translation unload: {r.json()}")
                 except Exception as e:
@@ -11382,9 +11391,15 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
     # Skip remote offload if this machine is itself serving remote clients (prevents chaining)
     remote_cfg = config.get("live_translation", {}).get("remote", {})
     if remote_cfg.get("enabled") and remote_cfg.get("endpoint") and not _trusted_translation_clients:
-        return _translate_via_remote(text, source_lang, target_lang, remote_cfg["endpoint"],
-                                     return_extras=return_extras, num_alternatives=num_alternatives,
-                                     generation_params=gen_params)
+        try:
+            _remote_ep = _get_remote_endpoint()
+        except _RemoteEndpointError as e:
+            print(f"[REMOTE_TRANSLATE] Endpoint error: {e}")
+            _remote_ep = None
+        if _remote_ep:
+            return _translate_via_remote(text, source_lang, target_lang, _remote_ep,
+                                         return_extras=return_extras, num_alternatives=num_alternatives,
+                                         generation_params=gen_params)
 
     if not text or not text.strip():
         if return_extras:
