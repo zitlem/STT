@@ -376,6 +376,10 @@
                     <div class="description" style="margin-bottom: 12px;">
                         All available API endpoints for integration and automation.
                     </div>
+                    <div style="margin-bottom: 10px; font-size: 0.82em; color: var(--text-secondary);">
+                        <span style="background: #744210; color: #fbd38d; border-radius: 4px; padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">🔒 Auth</span> requires IP whitelist or password login &nbsp;·&nbsp;
+                        <span style="background: var(--bg-secondary); color: var(--text-secondary); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">Open</span> accessible from any IP
+                    </div>
                     <div id="api-endpoints-list" style="max-height: 400px; overflow-y: auto;">
                         <div style="color: var(--text-secondary);">Loading endpoints...</div>
                     </div>
@@ -598,6 +602,9 @@
                             const examples = ep.examples || [];
                             const descriptionHtml = description ? `<div class="endpoint-description">${description}</div>` : '';
                             const examplesHtml = examples.length > 0 ? examples.map(ex => `<div class="endpoint-example">${ex}</div>`).join('') : '';
+                            const authBadge = ep.auth_required
+                                ? `<span style="background:#744210;color:#fbd38d;border-radius:4px;padding:1px 6px;font-size:0.75em;white-space:nowrap;cursor:help;" title="Whitelisted IPs can call this freely. Other IPs need to log in with a password first (/api/auth/login).">🔒 Auth</span>`
+                                : `<span style="background:var(--bg-secondary);color:var(--text-secondary);border-radius:4px;padding:1px 6px;font-size:0.75em;white-space:nowrap;" title="No authentication required — any IP can call this endpoint.">Open</span>`;
                             html += `
                                 <div class="endpoint-item">
                                     <span class="endpoint-methods">${methods}</span>
@@ -606,6 +613,7 @@
                                         ${descriptionHtml}
                                         ${examplesHtml}
                                     </div>
+                                    ${authBadge}
                                     <button class="endpoint-copy-btn" onclick="copyEndpoint('${fullUrl}')" title="Copy full URL">📋</button>
                                 </div>`;
                         });
