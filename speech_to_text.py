@@ -2300,6 +2300,7 @@ if multiprocessing.current_process().name == 'MainProcess':
             "live_word_confidences": [],  # Word-level confidence for the live preview
             "loaded_model": "",  # Name of the actual model that was loaded
             "audio_stream_enabled": False,  # Whether to stream audio to web clients
+            "audio_type": None,  # "Speaking", "Music", or "Quiet" — detected from Whisper no_speech_prob
         }
     )
 
@@ -2371,6 +2372,19 @@ current_month = datetime.now().strftime("%Y-%m")
 # Database will be created lazily when transcription starts
 db_name = None  # Will be set when database is initialized
 db_initialized = False
+
+
+def classify_audio_type(no_speech_prob, audio_db):
+    """Classify a finalized segment as Speaking, Music, or Quiet.
+
+    Uses Whisper's no_speech_prob: low = clear speech, high = non-speech audio.
+    When non-speech, audio_db distinguishes audible music from silence.
+    """
+    music_threshold = config.get("speech_type_detection", {}).get("music_threshold", 0.5)
+    quiet_db_threshold = config.get("speech_type_detection", {}).get("quiet_db_threshold", -40)
+    if (no_speech_prob or 0.0) <= music_threshold:
+        return "Speaking"
+    return "Music" if (audio_db or -60) > quiet_db_threshold else "Quiet"
 
 
 def initialize_database():
@@ -2510,6 +2524,12 @@ def initialize_database():
                 db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN translation_language TEXT DEFAULT NULL")
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added translation columns)")
+
+            if "speech_type" not in columns:
+                print("[DB] Migrating database: adding speech_type column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN speech_type TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added speech_type column)")
 
             # Insert a blank first entry with default values
             default_timestamp = " "
@@ -11196,7 +11216,7 @@ def get_new_entries(limit_override=None):
                 cursor.execute(
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                           confidence, needs_review, translated_text, translation_language
+                           confidence, needs_review, translated_text, translation_language, speech_type
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
                     ORDER BY id ASC
@@ -11207,9 +11227,9 @@ def get_new_entries(limit_override=None):
                 # Use subquery to get last N entries by id DESC, then re-order ASC for display
                 cursor.execute(
                     """
-                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language FROM (
+                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type FROM (
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                               confidence, needs_review, translated_text, translation_language
+                               confidence, needs_review, translated_text, translation_language, speech_type
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
                         ORDER BY id DESC
@@ -11255,7 +11275,7 @@ def emit_new_entries():
 
 
         # Convert entries to segment format with temporal data
-        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review)
+        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type)
         segments = []
         for entry in entries:
             seg = {
@@ -11270,6 +11290,8 @@ def emit_new_entries():
             if len(entry) > 5:
                 seg["confidence"] = entry[5]
                 seg["needs_review"] = bool(entry[6]) if entry[6] is not None else False
+            if len(entry) > 9:
+                seg["speech_type"] = entry[9]
             segments.append(seg)
 
         # Build in-progress segment if there's text
@@ -11319,6 +11341,7 @@ def emit_new_entries():
             "entries": [(e[1], e[2]) for e in entries],  # [(timestamp, text), ...]
             "in_progress": in_progress,  # Current incomplete text or ""
             "is_running": is_running,
+            "audio_type": transcription_state.get("audio_type"),  # "Speaking", "Music", or "Quiet"
         }
         if staged_segments:
             emit_data["staged_segments"] = staged_segments
@@ -13388,6 +13411,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         batch_start = None
                                         batch_end = 0
                                         batch_confidences = []
+                                        batch_no_speech_probs = []
                                         for segment in result['completed_segments']:
                                             segment_text = segment.get('text', '').strip()
                                             # Compute average word confidence for this segment
@@ -13396,6 +13420,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 probs = [w.get('probability') for w in word_confidences if w.get('probability') is not None]
                                                 if probs:
                                                     batch_confidences.append(sum(probs) / len(probs))
+                                            nsp = segment.get('no_speech_prob')
+                                            if nsp is not None:
+                                                batch_no_speech_probs.append(nsp)
                                             if not segment_text:
                                                 continue
                                             # Remove overlapping prefix from previous saved text
@@ -13417,6 +13444,10 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             segment_start = batch_start if batch_start is not None else 0
                                             segment_end = batch_end
                                             segment_confidence = sum(batch_confidences) / len(batch_confidences) if batch_confidences else None
+                                            batch_no_speech_prob = max(batch_no_speech_probs) if batch_no_speech_probs else 0.0
+                                            _seg_audio_db = transcription_state.get('audio_db', -60)
+                                            segment_speech_type = classify_audio_type(batch_no_speech_prob, _seg_audio_db)
+                                            transcription_state['audio_type'] = segment_speech_type
                                             # Prepend the fragment held from the previous capture so it
                                             # can complete its sentence
                                             if pending_remainder:
@@ -13463,8 +13494,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         if word_count >= MIN_WORDS and not is_dup:
                                                             needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
-                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             saved_sentences.append(sentence)
@@ -13585,6 +13616,10 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             if segment_text:  # Check again after overlap removal
                                                 sentences, remainder = split_into_sentences(segment_text)
                                                 MIN_WORDS = min_words_threshold
+                                                _phrase_nsp = (finalized_segment or {}).get('no_speech_prob', 0.0) or 0.0
+                                                _phrase_audio_db = transcription_state.get('audio_db', -60)
+                                                _phrase_speech_type = classify_audio_type(_phrase_nsp, _phrase_audio_db)
+                                                transcription_state['audio_type'] = _phrase_speech_type
                                                 _phrase_inserted_ids = []
                                                 with _db_lock:
                                                     try:
@@ -13599,8 +13634,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                             if word_count >= MIN_WORDS and not is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
-                                                                    (timestamp, sentence, segment_start, segment_end),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type) VALUES (?, ?, ?, ?, ?)",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(sentence)
@@ -13616,8 +13651,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                             if rem_word_count >= MIN_WORDS and not rem_is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time) VALUES (?, ?, ?, ?)",
-                                                                    (timestamp, remainder, segment_start, segment_end),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type) VALUES (?, ?, ?, ?, ?)",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(remainder)
