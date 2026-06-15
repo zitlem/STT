@@ -1442,7 +1442,7 @@
              const prevHTML = _lastFinalizedHTML;
              _lastFinalizedHTML = highlightedText;
              // Drip-feed when in-progress is hidden
-             if (window.displayConfig?.hideInProgress && prevHTML) {
+             if (window.displayConfig?.hideInProgress) {
                dripFeedWords(highlightedText, prevHTML, _finalizedTextEl, false);
              } else {
                _finalizedTextEl.innerHTML = highlightedText;
@@ -1608,7 +1608,7 @@
                const prevHTML = _lastTranslationFinalizedHTML;
                _lastTranslationFinalizedHTML = highlightedText;
                // Drip-feed when in-progress translation is hidden
-               if (window.displayConfig?.hideTranslateInProgress && prevHTML) {
+               if (window.displayConfig?.hideTranslateInProgress) {
                  dripFeedWords(highlightedText, prevHTML, _translationFinalizedEl, true);
                } else {
                  _translationFinalizedEl.innerHTML = highlightedText;
