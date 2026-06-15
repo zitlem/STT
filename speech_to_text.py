@@ -4950,6 +4950,20 @@ def hot_switch_translation_language():
         except (OSError, ValueError):
             pass
 
+    # Propagate language change to remote Machine B so its TTS/display/config also updates
+    if old_language != new_language:
+        _remote_ep = _get_remote_endpoint_safe()
+        if _remote_ep:
+            try:
+                import requests as _req
+                _req.post(
+                    _remote_ep.rstrip("/") + "/api/translate/language",
+                    json={"target_language": new_language},
+                    timeout=5,
+                )
+            except Exception as _e:
+                print(f"[HOT-SWITCH] Could not notify remote server of language change: {_e}")
+
     # Don't clear cache — old segments keep their cached translations (stale-lang fallback).
     # Only new segments will be translated to the new language.
     language_name = TRANSLATION_LANGUAGES.get(new_language, new_language)
@@ -5215,6 +5229,61 @@ def translation_unpair():
     save_config(config)
     socketio.emit("translation_pair_denied", {"ip": ip})
     return jsonify({"success": True})
+
+
+@app.route("/api/translate/language", methods=["POST"])
+def translate_remote_language():
+    """Paired Machine A calls this to switch Machine B's target translation language."""
+    client_ip = request.remote_addr
+    if not _is_trusted_translation_client(client_ip):
+        return jsonify({"error": "Not paired"}), 403
+
+    global config
+    data = request.get_json() or {}
+    new_language = data.get("target_language")
+    if not new_language or new_language not in NLLB_LANG_CODES:
+        return jsonify({"error": "Invalid language"}), 400
+
+    old_language = config.get("live_translation", {}).get("target_language", "en")
+    if "live_translation" not in config:
+        config["live_translation"] = {}
+    config["live_translation"]["target_language"] = new_language
+
+    # Auto-switch TTS voice/model on Machine B to match the new language
+    new_tts_voice = None
+    tts_section = config["live_translation"].setdefault("tts", {})
+    backend = tts_section.get("backend", "edge")
+    if old_language != new_language:
+        if backend == "edge":
+            prefs = tts_section.setdefault("edge_voice_preferences", {})
+            current_voice = tts_section.get("edge_voice", "")
+            if current_voice:
+                prefs[old_language] = current_voice
+            new_tts_voice = prefs.get(new_language) or _pick_default_edge_voice(new_language)
+            if new_tts_voice:
+                tts_section["edge_voice"] = new_tts_voice
+        elif backend == "piper":
+            prefs = tts_section.setdefault("piper_model_preferences", {})
+            current_model = tts_section.get("piper_model", "")
+            if current_model:
+                prefs[old_language] = current_model
+            new_tts_voice = prefs.get(new_language) or _pick_default_piper_model(new_language)
+            if new_tts_voice:
+                tts_section["piper_model"] = new_tts_voice
+                def _reload():
+                    unload_tts_model()
+                    get_tts_model(model_name=new_tts_voice)
+                threading.Thread(target=_reload, daemon=True).start()
+
+    save_config(config)
+    language_name = TRANSLATION_LANGUAGES.get(new_language, new_language)
+    print(f"[LIVE-TRANSLATION] Remote hot-switch: {old_language} -> {new_language} ({language_name})")
+    socketio.emit("language_switched", {
+        "old_language": old_language,
+        "new_language": new_language,
+        "language_name": language_name,
+    })
+    return jsonify({"success": True, "language_name": language_name})
 
 
 @app.route("/api/translate/pair/unpair-me", methods=["POST"])
@@ -5582,6 +5651,14 @@ def _get_remote_endpoint():
                 f"Could not find STT server on {host} — try specifying the port manually (e.g. {host}:8080)"
             )
     return ep
+
+
+def _get_remote_endpoint_safe():
+    """Return the remote endpoint URL, or None if not configured or unreachable."""
+    try:
+        return _get_remote_endpoint()
+    except _RemoteEndpointError:
+        return None
 
 
 @app.route("/api/remote-translation/status", methods=["GET"])
