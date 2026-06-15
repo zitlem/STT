@@ -416,5 +416,14 @@
     "_file_comment": "Path to custom dictionary JSON file for domain-specific terms",
     "nllb_glossary_enabled": true,
     "_nllb_glossary_enabled_comment": "Use dictionary for NLLB translation glossary (forced term translations)"
+  },
+  "speech_type_detection": {
+    "_comment": "Automatic audio type detection per segment (Speaking / Music / Quiet)",
+    "enabled": true,
+    "_enabled_comment": "Tag each transcription segment with its detected audio type",
+    "music_threshold": 0.5,
+    "_music_threshold_comment": "Whisper no_speech_prob above this value = non-speech audio (0.0-1.0)",
+    "quiet_db_threshold": -40,
+    "_quiet_db_threshold_comment": "Audio level (dB) below this = Quiet; above = Music (when non-speech detected)"
   }
 }

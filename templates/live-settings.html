@@ -742,6 +742,18 @@
                     </div>
                 </div>
 
+                <!-- Audio Type Detection -->
+                <div class="status-card" style="border-left-color: #805ad5;">
+                    <div class="status-header" style="margin-bottom: 8px;">
+                        <div class="status-title" style="color: #805ad5;">Audio Type</div>
+                        <div id="audio_type_dot" style="width: 12px; height: 12px; min-width: 12px; border-radius: 50%; background: #555; transition: background 0.4s;"></div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div id="audio_type_label" style="font-size: 1.4em; font-weight: 700; color: #555; transition: color 0.4s; min-width: 90px;">—</div>
+                        <div id="audio_type_desc" style="font-size: 0.85em; color: var(--text-secondary);">Waiting for transcription…</div>
+                    </div>
+                </div>
+
                 <!-- Transcription Preview -->
                 <div class="transcription-preview">
                     <div class="section-title">Live Transcription</div>
@@ -1279,6 +1291,7 @@
             // console.log('[UPDATE] segments:', data.segments?.length || 0,
             //             'in_progress:', data.in_progress_segment?.text?.substring(0, 40) || 'none');
             updateTranscriptionPreview(data);
+            updateAudioType(data.is_running ? data.audio_type : null);
         });
 
         // Only process audio_level when page is visible (optimization)
@@ -1328,6 +1341,30 @@
         let previewLastInProgressText = '';
 
         // Update transcription preview - uses Whisper-Live's temporal validation pattern
+        function updateAudioType(audioType) {
+            const dot = document.getElementById('audio_type_dot');
+            const label = document.getElementById('audio_type_label');
+            const desc = document.getElementById('audio_type_desc');
+            if (!dot || !label) return;
+            const types = {
+                'Speaking': { color: '#48bb78', desc: 'Whisper detected speech' },
+                'Music':    { color: '#805ad5', desc: 'Non-speech audio (music, singing)' },
+                'Quiet':    { color: '#718096', desc: 'Low audio / silence' },
+            };
+            if (!audioType) {
+                dot.style.background = '#555';
+                label.style.color = '#555';
+                label.textContent = '—';
+                if (desc) desc.textContent = 'Waiting for transcription…';
+                return;
+            }
+            const info = types[audioType] || { color: '#999', desc: '' };
+            dot.style.background = info.color;
+            label.style.color = info.color;
+            label.textContent = audioType;
+            if (desc) desc.textContent = info.desc;
+        }
+
         function updateTranscriptionPreview(data) {
             const preview = document.getElementById('transcription_preview');
             const segments = data.segments || [];

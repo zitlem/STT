@@ -81,6 +81,14 @@
       }
       .seg-confidence.low { color: orange; background: rgba(255,165,0,0.1); }
 
+      .speech-type-pill {
+        font-size: 0.7em; padding: 1px 7px; border-radius: 8px;
+        font-weight: 600; letter-spacing: 0.02em; border: 1px solid transparent;
+      }
+      .speech-type-pill.Speaking { color: #48bb78; background: rgba(72,187,120,0.12); border-color: rgba(72,187,120,0.3); }
+      .speech-type-pill.Music    { color: #9f7aea; background: rgba(159,122,234,0.12); border-color: rgba(159,122,234,0.3); }
+      .speech-type-pill.Quiet    { color: #a0aec0; background: rgba(160,174,192,0.1); border-color: rgba(160,174,192,0.25); }
+
       /* Alternatives */
       .seg-alts { display: flex; flex-wrap: wrap; gap: 4px; }
       .alt-pill {
@@ -221,11 +229,12 @@
             let changed = false;
             segs.forEach(s => {
                 if (!segments[s.id]) {
-                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence };
+                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null };
                     changed = true;
                 } else {
                     if (segments[s.id].text !== s.text) { segments[s.id].text = s.text; changed = true; }
                     if (s.confidence != null) segments[s.id].confidence = s.confidence;
+                    if (s.speech_type != null) segments[s.id].speech_type = s.speech_type;
                 }
             });
             segOrder = Object.keys(segments).map(Number).sort((a, b) => a - b);
@@ -342,6 +351,9 @@
                     const tPct = (s.trans_confidence * 100).toFixed(0);
                     const tCls = s.trans_confidence < confidenceThreshold ? 'seg-confidence low' : 'seg-confidence';
                     confHtml += ` <span class="${tCls}">TRA ${tPct}%</span>`;
+                }
+                if (s.speech_type) {
+                    confHtml += ` <span class="speech-type-pill ${s.speech_type}">${esc(s.speech_type)}</span>`;
                 }
 
                 let transHtml = '';
