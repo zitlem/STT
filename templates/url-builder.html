@@ -387,6 +387,11 @@
                     <label for="url_showAll">Show All Text (no 100-sentence limit)</label>
                 </div>
 
+                <div class="checkbox-group">
+                    <input type="checkbox" id="url_hideMusicSegments" oninput="updateCustomURL()">
+                    <label for="url_hideMusicSegments">Hide Music Segments</label>
+                </div>
+
                 <div class="form-group">
                     <label for="url_inProgressStyle">In-Progress Text Style</label>
                     <select id="url_inProgressStyle" oninput="updateCustomURL()">
@@ -573,6 +578,7 @@
             document.getElementById('url_hideTranslateInProgress').checked = false;
             document.getElementById('url_dripSpeed').value = '80';
             document.getElementById('url_showAll').checked = false;
+            document.getElementById('url_hideMusicSegments').checked = false;
             toggleWordColorPicker();
             updateOpacityLabel();
 
@@ -698,6 +704,9 @@
             }
             if (document.getElementById('url_showAll').checked) {
                 params.append('showAll', 'true');
+            }
+            if (document.getElementById('url_hideMusicSegments').checked) {
+                params.append('hideMusicSegments', 'true');
             }
 
             // Audio streaming parameters
@@ -929,6 +938,7 @@
                 document.getElementById('url_dripSpeed').value = params.dripSpeed;
             }
             document.getElementById('url_showAll').checked = params.showAll === 'true';
+            document.getElementById('url_hideMusicSegments').checked = params.hideMusicSegments === 'true';
 
             // Update URL with loaded defaults
             updateCustomURL();
