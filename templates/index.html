@@ -237,6 +237,7 @@
          // Hide in-progress text for this URL (even if enabled globally)
          const hideInProgress = urlParams.get('hideInProgress') === 'true';
          const hideTranslateInProgress = urlParams.get('hideTranslateInProgress') === 'true';
+         const hideMusicSegments = urlParams.get('hideMusicSegments') === 'true';
 
          // Audio streaming URL params
          const audioStream = urlParams.get('audioStream') === 'true';
@@ -259,6 +260,7 @@
            showMenu,
            hideInProgress,
            hideTranslateInProgress,
+           hideMusicSegments,
            showAll,
            audioStream,
            ttsAudio,
@@ -1171,7 +1173,10 @@
          const tableBody = $("#transcription-table-body");
 
          // Build display text from existing segments
-         let displayText = allSegments.map(s => s.text).join(' ');
+         const _rerenderSegs = window.displayConfig?.hideMusicSegments
+           ? allSegments.filter(s => s.speech_type !== 'Music')
+           : allSegments;
+         let displayText = _rerenderSegs.map(s => s.text).join(' ');
          let inProgressHTML = '';
 
          if (lastIncompleteSegment && lastIncompleteSegment.text && !window.displayConfig?.hideInProgress) {
@@ -1387,6 +1392,7 @@
                  text: seg.text,
                  start: parseFloat(seg.start) || 0,
                  end: parseFloat(seg.end) || 0,
+                 speech_type: seg.speech_type || null,
                });
                segmentsChanged = true;
              } else if (allSegments[existingIdx].text !== seg.text) {
@@ -1427,7 +1433,10 @@
 
          // Update finalized text only when segments changed
          if (segmentsChanged || !_lastFinalizedHTML) {
-           const fullText = allSegments.map(s => s.text).join(' ');
+           const _visibleSegs = window.displayConfig?.hideMusicSegments
+             ? allSegments.filter(s => s.speech_type !== 'Music')
+             : allSegments;
+           const fullText = _visibleSegs.map(s => s.text).join(' ');
            const highlightedText = applyWordHighlighting(fullText);
            if (highlightedText !== _lastFinalizedHTML) {
              const prevHTML = _lastFinalizedHTML;
