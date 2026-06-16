@@ -509,10 +509,16 @@ class FFmpegAudioCapture:
             print(f"[DEBUG-TS-SPLIT] *** SESSION HAD {self._ts_file_count} BACKUP FILES (recording was split {self._ts_file_count - 1} time(s)) ***", flush=True)
 
     @staticmethod
-    def list_devices():
-        """List available audio devices using ffmpeg"""
+    def list_devices(deprioritize_markers=None):
+        """List available audio devices using ffmpeg
+
+        deprioritize_markers: optional list of lowercase substrings matched against
+        the card name/description; matching cards are never flagged as is_default.
+        """
         import sys
         import os
+
+        deprioritize_markers = [m.lower() for m in (deprioritize_markers or [])]
 
         try:
             if sys.platform.startswith('linux'):
@@ -542,11 +548,16 @@ class FFmpegAudioCapture:
 
                                 # Use plughw instead of hw for better format compatibility
                                 # plughw handles automatic format/rate conversion
+                                is_deprioritized = any(
+                                    m in card_id.lower() or m in card_desc.lower()
+                                    for m in deprioritize_markers
+                                )
                                 devices.append({
                                     'name': f'plughw:{card_num},0',
                                     'index': len(devices),
                                     'display_name': display_name,
-                                    'is_default': len(devices) == 0
+                                    'card_id': card_id,
+                                    'is_default': (len(devices) == 0) and not is_deprioritized
                                 })
                     except Exception as e:
                         print(f"[FFMPEG] Error reading /proc/asound/cards: {e}")
@@ -563,6 +574,7 @@ class FFmpegAudioCapture:
                                     'name': line,
                                     'index': len(devices),
                                     'display_name': line,
+                                    'card_id': '',
                                     'is_default': len(devices) == 0
                                 })
                     except FileNotFoundError:
@@ -574,12 +586,14 @@ class FFmpegAudioCapture:
                         'name': 'default',
                         'index': 0,
                         'display_name': 'Default Audio Device',
+                        'card_id': '',
                         'is_default': True
                     })
                     devices.append({
                         'name': 'plughw:0,0',
                         'index': 1,
                         'display_name': 'Hardware Device 0',
+                        'card_id': '',
                         'is_default': False
                     })
 
@@ -641,10 +655,31 @@ class FFmpegAudioCapture:
             print(f"[FFMPEG] Error listing devices: {e}")
             return []
 
+    @staticmethod
+    def resolve_device_by_name(saved_name, devices=None):
+        """Find the device whose card_id/display_name contains saved_name (case-insensitive)."""
+        if not saved_name:
+            return None
+        if devices is None:
+            devices = FFmpegAudioCapture.list_devices()
+        needle = saved_name.strip().lower()
+        if not needle:
+            return None
+        for dev in devices:
+            card_id = (dev.get('card_id') or '').lower()
+            disp = (dev.get('display_name') or '').lower()
+            if needle in card_id or needle in disp or card_id in needle:
+                return dev
+        return None
 
-def list_audio_devices():
+
+def list_audio_devices(deprioritize_markers=None):
     """List available audio devices using ffmpeg"""
-    return FFmpegAudioCapture.list_devices()
+    return FFmpegAudioCapture.list_devices(deprioritize_markers=deprioritize_markers)
+
+
+def resolve_audio_device_by_name(saved_name, devices=None):
+    return FFmpegAudioCapture.resolve_device_by_name(saved_name, devices)
 
 
 def create_compatible_audio_source(device_name=None, sample_rate=16000, backup_dir=None, filename_format=None, filename_prefix=None, ts_enabled=True):

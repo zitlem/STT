@@ -182,7 +182,9 @@ DEFAULT_CONFIG = {
         "backend": "ffmpeg",  # ffmpeg is more reliable than pyaudio
         "energy_threshold": 100,
         "phrase_timeout": 2,
-        "default_microphone": "plughw:1,0",
+        "default_microphone": "default",
+        "default_microphone_name": "",
+        "deprioritize_device_markers": [],
         "device_index": None,
         "language": "auto",
         "same_output_threshold": 7,  # Number of repeated outputs before finalizing text
@@ -3829,6 +3831,21 @@ def update_config():
 
         # Merge new config into existing config (preserves backend and other fields)
         config = deep_merge(config, new_config)
+
+        # If the audio device selection changed, also persist a stable name-based
+        # identifier so the correct card can be re-found after ALSA index reshuffles
+        # across reboots (USB vs onboard/GPU HDA enumeration order is not stable).
+        try:
+            new_mic = new_config.get("audio", {}).get("default_microphone")
+            if new_mic:
+                from audio_capture import list_audio_devices
+                markers = config.get("audio", {}).get("deprioritize_device_markers", [])
+                devices = list_audio_devices(deprioritize_markers=markers)
+                matched = next((d for d in devices if d.get("name") == new_mic), None)
+                if matched and matched.get("card_id"):
+                    config.setdefault("audio", {})["default_microphone_name"] = matched["card_id"]
+        except Exception as e:
+            app_logger.warning(f"Could not derive stable microphone name: {e}")
 
         # Write to config file
         with open(CONFIG_FILE, "w") as f:
@@ -7956,7 +7973,8 @@ def get_audio_devices():
 
         # Get devices using ffmpeg
         try:
-            devices = list_audio_devices()
+            markers = audio_config.get("deprioritize_device_markers", [])
+            devices = list_audio_devices(deprioritize_markers=markers)
             app_logger.info(f"Listed {len(devices)} devices using ffmpeg")
 
             # Normalize device format for UI compatibility
@@ -12435,8 +12453,28 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     source = None
                     from audio_capture import create_compatible_audio_source
 
+                    # Resolve saved stable device name (e.g. "UR22mkII") against the CURRENT
+                    # ALSA enumeration first, since plughw:N,0 indices are not stable across
+                    # reboots (USB vs onboard/GPU HDA cards can enumerate in either order).
+                    resolved_device = None
+                    saved_mic_name = audio_config.get("default_microphone_name", "")
+                    if saved_mic_name:
+                        try:
+                            from audio_capture import list_audio_devices, FFmpegAudioCapture
+                            markers = audio_config.get("deprioritize_device_markers", [])
+                            current_devices = list_audio_devices(deprioritize_markers=markers)
+                            matched = FFmpegAudioCapture.resolve_device_by_name(saved_mic_name, current_devices)
+                            if matched:
+                                resolved_device = matched["name"]
+                                print(f"[AUDIO] Resolved saved device name '{saved_mic_name}' -> '{resolved_device}'")
+                            else:
+                                print(f"[AUDIO] WARNING: Saved device name '{saved_mic_name}' not found in current devices; falling back")
+                        except Exception as e:
+                            print(f"[AUDIO] WARNING: Device name resolution failed: {e}")
+
                     # Try multiple audio devices in order of preference
                     audio_devices_to_try = [
+                        resolved_device,           # Name-resolved device (correct card, current index)
                         args.default_microphone,  # Configured device (e.g., plughw:1,0)
                         "default",                 # System default
                         "plughw:0,0"              # First hardware device
