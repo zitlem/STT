@@ -846,9 +846,11 @@
                     if (data.success && data.defaults && Object.keys(data.defaults).length > 0) {
                         applyParametersToForm(data.defaults);
                     }
+                    checkTranslateInProgressEnabled();
                 })
                 .catch(error => {
                     console.error('Error loading saved defaults:', error);
+                    checkTranslateInProgressEnabled();
                 });
         }
 
@@ -1072,8 +1074,6 @@
 
             updateCustomURL();
             updatePreview();
-
-            checkTranslateInProgressEnabled();
 
             // Check transcription status periodically (switches between iframe/placeholder)
             checkPreviewTranscriptionStatus();
