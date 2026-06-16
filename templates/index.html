@@ -1441,9 +1441,14 @@
            if (highlightedText !== _lastFinalizedHTML) {
              const prevHTML = _lastFinalizedHTML;
              _lastFinalizedHTML = highlightedText;
-             // Drip-feed when in-progress is hidden
+             // Drip-feed when in-progress is hidden; on first load show existing text instantly
              if (window.displayConfig?.hideInProgress) {
-               dripFeedWords(highlightedText, prevHTML, _finalizedTextEl, false);
+               if (!prevHTML) {
+                 _finalizedTextEl.innerHTML = highlightedText;
+                 _dripRevealedHTML = highlightedText;
+               } else {
+                 dripFeedWords(highlightedText, prevHTML, _finalizedTextEl, false);
+               }
              } else {
                _finalizedTextEl.innerHTML = highlightedText;
                _dripRevealedHTML = highlightedText;
@@ -1607,9 +1612,14 @@
              if (highlightedText !== _lastTranslationFinalizedHTML) {
                const prevHTML = _lastTranslationFinalizedHTML;
                _lastTranslationFinalizedHTML = highlightedText;
-               // Drip-feed when in-progress translation is hidden
+               // Drip-feed when in-progress translation is hidden; on first load show existing text instantly
                if (window.displayConfig?.hideTranslateInProgress) {
-                 dripFeedWords(highlightedText, prevHTML, _translationFinalizedEl, true);
+                 if (!prevHTML) {
+                   _translationFinalizedEl.innerHTML = highlightedText;
+                   _transDripRevealedHTML = highlightedText;
+                 } else {
+                   dripFeedWords(highlightedText, prevHTML, _translationFinalizedEl, true);
+                 }
                } else {
                  _translationFinalizedEl.innerHTML = highlightedText;
                  _transDripRevealedHTML = highlightedText;
