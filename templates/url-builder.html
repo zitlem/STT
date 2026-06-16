@@ -1046,7 +1046,23 @@
         }
 
         function checkTranslateInProgressEnabled() {
-            // No-op: hideTranslateInProgress also controls drip feed, so always available
+            fetch('/api/translation/settings')
+                .then(r => r.json())
+                .then(data => {
+                    const enabled = data.success && data.settings && data.settings.translate_in_progress;
+                    const checkbox = document.getElementById('url_hideTranslateInProgress');
+                    const group = document.getElementById('hideTranslateInProgressGroup');
+                    checkbox.disabled = !enabled;
+                    group.style.opacity = enabled ? '' : '0.4';
+                    group.title = enabled ? '' : 'In-progress translation is disabled — hiding it is always on';
+                    // When in-progress is disabled, force-check so hideTranslateInProgress=true
+                    // is still added to the URL (required for drip feed to work)
+                    if (!enabled) {
+                        checkbox.checked = true;
+                        updateCustomURL();
+                    }
+                })
+                .catch(() => {});
         }
 
         // Initialize on page load
