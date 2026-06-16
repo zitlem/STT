@@ -225,7 +225,7 @@
          const uppercase = urlParams.get('uppercase') === 'true';
          const inProgressStyle = urlParams.get('inProgressStyle') || 'italic';
          const inProgressOpacity = parseFloat(urlParams.get('inProgressOpacity')) || 0.7;
-         const dripSpeed = parseInt(urlParams.get('dripSpeed')) || 80;  // ms per word drip-feed when in-progress is hidden (0 = disabled)
+         const dripSpeed = parseInt(urlParams.get('dripSpeed')) || 140;  // ms per word drip-feed when in-progress is hidden (0 = disabled)
          const maxLines = parseInt(urlParams.get('maxLines')) || 0;  // 0 = unlimited, 1-10 = caption mode
 
          // Translation mode: 'transcribe' (default), 'translate', 'both'
@@ -1270,7 +1270,7 @@
        let _transDripRevealedHTML = '';
 
        function dripFeedWords(newFullHTML, prevFullHTML, element, isTranslation) {
-         const dripSpeed = window.displayConfig?.dripSpeed || 80;
+         const dripSpeed = window.displayConfig?.dripSpeed || 140;
          if (!dripSpeed || dripSpeed <= 0) {
            element.innerHTML = newFullHTML;
            if (isTranslation) { _transDripRevealedHTML = newFullHTML; }
