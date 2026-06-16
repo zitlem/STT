@@ -936,7 +936,7 @@
             document.getElementById('url_translationLayout').value = layoutValue;
             document.getElementById('url_hideInProgress').checked = params.hideInProgress === 'true';
             document.getElementById('url_hideTranslateInProgress').checked = params.hideTranslateInProgress === 'true';
-            if (params.dripSpeed) {
+            if (params.dripSpeed && params.dripSpeed !== '80') {
                 document.getElementById('url_dripSpeed').value = params.dripSpeed;
             }
             document.getElementById('url_showAll').checked = params.showAll === 'true';
