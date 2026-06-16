@@ -409,7 +409,7 @@
 
                 <div class="form-group">
                     <label for="url_dripSpeed">Word Drip Speed (ms)</label>
-                    <input type="number" id="url_dripSpeed" min="0" max="500" step="10" value="80" oninput="updateCustomURL()">
+                    <input type="number" id="url_dripSpeed" min="0" max="500" step="10" value="140" oninput="updateCustomURL()">
                     <small>When in-progress is hidden, words appear one-by-one at this interval. 0 = disabled (instant).</small>
                 </div>
 
@@ -576,7 +576,7 @@
             document.getElementById('url_translationLayout').value = 'stacked';
             document.getElementById('url_hideInProgress').checked = false;
             document.getElementById('url_hideTranslateInProgress').checked = false;
-            document.getElementById('url_dripSpeed').value = '80';
+            document.getElementById('url_dripSpeed').value = '140';
             document.getElementById('url_showAll').checked = false;
             document.getElementById('url_hideMusicSegments').checked = false;
             toggleWordColorPicker();
@@ -699,7 +699,7 @@
                 params.append('hideTranslateInProgress', 'true');
             }
             const dripSpeed = parseInt(document.getElementById('url_dripSpeed').value) || 0;
-            if (dripSpeed !== 80) {
+            if (dripSpeed !== 140) {
                 params.append('dripSpeed', dripSpeed.toString());
             }
             if (document.getElementById('url_showAll').checked) {
