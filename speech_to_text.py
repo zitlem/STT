@@ -10722,7 +10722,8 @@ def handle_request_all_entries():
         "segments": segments,
         "in_progress_segment": None,
         "entries": [(e[1], e[2]) for e in entries],
-        "in_progress": ""
+        "in_progress": "",
+        "is_running": transcription_state.get("running", False)
     })
 
 
@@ -10773,7 +10774,8 @@ def handle_request_all_translation_entries():
         "target_language": target_lang,
         "target_language_name": TRANSLATION_LANGUAGES.get(target_lang, target_lang),
         "source_language": source_lang,
-        "enabled": True
+        "enabled": True,
+        "is_running": transcription_state.get("running", False)
     })
 
 
@@ -11390,7 +11392,8 @@ def emit_translated_entries():
                     "in_progress": None,
                     "target_language": trans_config.get("target_language", "en"),
                     "source_language": trans_config.get("source_language", "auto"),
-                    "enabled": True
+                    "enabled": True,
+                    "is_running": False
                 })
                 socketio.sleep(update_interval)
                 continue
@@ -11612,7 +11615,8 @@ def emit_translated_entries():
                 "target_language": target_lang,
                 "target_language_name": TRANSLATION_LANGUAGES.get(target_lang, target_lang),
                 "source_language": source_lang,
-                "enabled": True
+                "enabled": True,
+                "is_running": is_running
             })
 
         except Exception as e:

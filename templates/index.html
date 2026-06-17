@@ -267,6 +267,9 @@
            dripSpeed
          };
 
+        // Empty-state wording reflects the active mode and whether transcription is running
+        updateEmptyStateMessage();
+
         // Load word highlighting configuration
         let wordHighlightingConfig = { enabled: false, words: [], disabled_colors: [] };
 
@@ -1042,7 +1045,7 @@
       <div id="table-container">
         <div class="empty-state" id="empty-state">
           <i class="fas fa-microphone" aria-hidden="true"></i>
-          <h3>No transcriptions yet</h3>
+          <h3>Waiting for transcription...</h3>
         </div>
         <table id="transcription-table">
           <tbody id="transcription-table-body">
@@ -1112,6 +1115,21 @@
         }
       }
 
+      // Set the empty-state heading to reflect the active mode and running state.
+      // While running/starting we're "waiting" for content; when stopped we say so.
+      function updateEmptyStateMessage() {
+        const heading = document.querySelector('#empty-state h3');
+        if (!heading) return;
+        const mode = window.displayConfig?.translationMode || 'transcribe';
+        if (window.transcriptionIsRunning === false) {
+          heading.textContent = 'Transcription not running';
+        } else {
+          heading.textContent = mode === 'translate'
+            ? 'Waiting for translation...'
+            : 'Waiting for transcription...';
+        }
+      }
+
       function updateTranscriptionStatus(status) {
         const dot = document.getElementById('transcription-status-dot');
         const text = document.getElementById('transcription-status-text');
@@ -1125,9 +1143,11 @@
           if (status) {
             dot.classList.add('active');
             text.textContent = 'Transcription: Running';
+            window.transcriptionIsRunning = true;
           } else {
             dot.classList.add('inactive');
             text.textContent = 'Transcription: Stopped';
+            window.transcriptionIsRunning = false;
           }
         } else if (typeof status === 'object' && status.status) {
           // New object format with status property
@@ -1135,26 +1155,35 @@
           if (statusValue === 'running') {
             dot.classList.add('active');
             text.textContent = 'Transcription: Running';
+            window.transcriptionIsRunning = true;
           } else if (statusValue === 'starting') {
             dot.classList.add('starting');
             text.textContent = 'Transcription: Starting...';
+            window.transcriptionIsRunning = true; // coming up — still "waiting" for content
           } else if (statusValue === 'stopping') {
             dot.classList.add('starting'); // Use yellow for stopping too
             text.textContent = 'Transcription: Stopping...';
+            window.transcriptionIsRunning = false;
           } else if (statusValue === 'error') {
             dot.classList.add('error');
             const errorMsg = status.error || 'Unknown error';
             text.textContent = 'Transcription: Error';
             text.title = errorMsg;
+            window.transcriptionIsRunning = false;
           } else {
             dot.classList.add('inactive');
             text.textContent = 'Transcription: Stopped';
+            window.transcriptionIsRunning = false;
           }
         } else {
           // Fallback
           dot.classList.add('inactive');
           text.textContent = 'Transcription: Stopped';
+          window.transcriptionIsRunning = false;
         }
+
+        // Keep the empty-state wording in sync with the running state
+        updateEmptyStateMessage();
       }
 
       // Legacy function for compatibility
@@ -1371,6 +1400,10 @@
            _finalizedTextEl = null;
            _inProgressTextEl = null;
            tableBody.empty();
+           // Reflect live running state in the empty-state wording (socket-driven,
+           // works regardless of showMenu/iframe mode)
+           if (typeof data.is_running !== 'undefined') window.transcriptionIsRunning = data.is_running;
+           updateEmptyStateMessage();
            emptyState.style.display = 'block';
            table.classList.remove('has-content');
            return;
@@ -1540,6 +1573,9 @@
              const tableBody = $("#transcription-table-body");
              const emptyState = document.getElementById('empty-state');
              tableBody.empty();
+             // Reflect live running state in the empty-state wording (socket-driven)
+             if (typeof data.is_running !== 'undefined') window.transcriptionIsRunning = data.is_running;
+             updateEmptyStateMessage();
              emptyState.style.display = 'block';
            }
            return;
