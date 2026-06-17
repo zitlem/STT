@@ -35,6 +35,7 @@ a = Analysis(
         ("whisper_models.json",      "."),
         ("word_highlighting.json",   "."),
         ("custom_dictionary.json",   "."),
+        ("config.default.json",      "."),
         ("VERSION",                  "."),
         # Local modules
         ("file_mover.py",            "."),

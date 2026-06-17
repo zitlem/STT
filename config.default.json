@@ -74,6 +74,8 @@
     "_default_microphone_name_comment": "Stable card name substring (e.g. 'UR22mkII', 'Steinberg') used to re-find the device after a reboot, even if its ALSA card index changes. Takes priority over default_microphone if set and matched. Auto-populated when you save a device selection in Settings.",
     "deprioritize_device_markers": [],
     "_deprioritize_device_markers_comment": "Optional list of lowercase substrings (e.g. 'nvidia', 'hdmi') matched against card name/description to exclude those cards from being auto-flagged as the default device. Leave empty to disable this filtering.",
+    "device_index": null,
+    "_device_index_comment": "Optional numeric device index override. null = resolve device from default_microphone / default_microphone_name instead.",
     "energy_threshold": 100,
     "_energy_threshold_comment": "Energy level for mic to detect speech. Lower = more sensitive, Higher = less sensitive",
     "phrase_timeout": 2,
@@ -373,6 +375,18 @@
     "_srt_enabled_comment": "Generate SRT subtitle files for translations",
     "html_enabled": true,
     "_html_enabled_comment": "Generate HTML transcript files for translations",
+    "translation_method": "nllb",
+    "_translation_method_comment": "Translation engine to use (currently 'nllb').",
+    "generation_params": {
+      "num_beams": 5,
+      "_num_beams_comment": "Beam search width. Higher = better quality but slower.",
+      "length_penalty": 1.0,
+      "_length_penalty_comment": "Exponential penalty on sequence length. >1.0 favors longer output, <1.0 shorter.",
+      "no_repeat_ngram_size": 0,
+      "_no_repeat_ngram_size_comment": "Block repeated n-grams of this size. 0 = disabled.",
+      "repetition_penalty": 1.0,
+      "_repetition_penalty_comment": "Penalty applied to repeated tokens. 1.0 = disabled."
+    },
     "context_window": 2,
     "_context_window_comment": "Number of segments combined for translation context. 1 = translate each segment in isolation; 2-3 = include preceding sentence(s) for pronoun/gender/tense accuracy",
     "remote": {
@@ -429,5 +443,13 @@
     "_music_threshold_comment": "Whisper no_speech_prob above this value = non-speech audio (0.0-1.0)",
     "quiet_db_threshold": -40,
     "_quiet_db_threshold_comment": "Audio level (dB) below this = Quiet; above = Music (when non-speech detected)"
+  },
+  "watchdog": {
+    "update_channel": "stable",
+    "_update_channel_comment": "Auto-update channel: 'stable' or 'beta'."
+  },
+  "crash_reporting": {
+    "enabled": true,
+    "_enabled_comment": "Send anonymous crash reports to help diagnose failures."
   }
 }

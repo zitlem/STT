@@ -183,242 +183,11 @@ FILE_TRANSCRIPTION_PARAMS = {
 
 
 # Configuration file management
+# The canonical default/template config lives in config.default.json (bundled at
+# BUNDLE_DIR when compiled). It is used only to seed a fresh config.json on first
+# run, or to recover from a missing/corrupted config.json — see load_config().
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
-DEFAULT_CONFIG = {
-    "model": {
-        "type": "whisper",
-        "whisper": {"model": "small"},
-        "backend": "whisper",
-        "huggingface": {
-            "model_id": "openai/whisper-tiny",
-            "use_flash_attention": False,
-        },
-        "custom": {"model_path": "", "model_type": "whisper"},
-    },
-    "audio": {
-        "backend": "ffmpeg",  # ffmpeg is more reliable than pyaudio
-        "energy_threshold": 100,
-        "phrase_timeout": 2,
-        "default_microphone": "default",
-        "default_microphone_name": "",
-        "deprioritize_device_markers": [],
-        "device_index": None,
-        "language": "auto",
-        "same_output_threshold": 7,  # Number of repeated outputs before finalizing text
-        "fuzzy_duplicate_threshold": 0.85,
-        "min_words": 0,
-        "pending_buffer": {
-            "enabled": True,  # Hold incomplete sentence fragments until the sentence completes
-            "max_words": 30,  # Flush a fragment that grows beyond this many words (run-on speech)
-            "max_age_seconds": 10,  # Flush a fragment older than this many seconds
-        },
-        "context_prompt": {
-            "enabled": True,  # Feed tail of finalized transcript as initial_prompt for cross-capture context
-            "max_chars": 200,  # How much trailing transcript to include (Whisper prompt budget is 224 tokens)
-        },
-    },
-    "vad": {"enabled": True, "threshold": 0.5},
-    "database": {
-        "path": "",
-        "filename_prefix": "",
-        "path_format": "%Y/%m",
-        "filename_format": "%Y-%m-%d_%H%M%S",
-        "max_entries_to_send": 100,
-        "srt_enabled": True,
-        "html_enabled": True,
-    },
-    "web_server": {
-        "host": "0.0.0.0",
-        "port": 8080,
-        "update_interval": 0.5,
-        "settings_ip_whitelist": ["127.0.0.1", "::1", "10.1.10.0/24"],
-        "password_auth": {
-            "enabled": True,
-            "password": "admin",
-            "session_timeout_minutes": 60,
-        },
-    },
-    "performance": {"use_gpu": True},
-    "audio_backup": {
-        "wav_enabled": True,
-        "ts_enabled": True,
-        "base_directory": "",
-        "filename_prefix": "Recording",
-        "format": "wav",
-        "path_format": "%Y/%m",
-        "filename_format": "%Y-%m-%d_%H%M%S",
-    },
-    "file_transcription": {
-        "model": {
-            "type": "whisper",
-            "whisper": {"model": "tiny.en"},
-            "backend": "",
-        },
-        "use_gpu": True,
-        "language": "auto",
-        "translate_enabled": False,
-        "translate_to": "en",
-        "translation_model": "facebook/nllb-200-distilled-600M",
-    },
-    "whisper_decoding": {
-        "live_transcription": {
-            "beam_size": 3,
-            "best_of": 1,
-            "temperature": 0,
-            "condition_on_previous_text": False,
-            "compression_ratio_threshold": 1.8,
-            "logprob_threshold": -0.5,
-            "no_speech_threshold": 0.6,
-        },
-        "file_transcription": {
-            "beam_size": 5,
-            "temperature": [0.0, 0.2, 0.4, 0.6, 0.8],
-            "condition_on_previous_text": True,
-            "compression_ratio_threshold": 2.4,
-            "logprob_threshold": -1.0,
-            "no_speech_threshold": 0.6,
-        },
-    },
-    "file_manager": {
-        "hidden_items": [
-            "static",
-            "__pycache__",
-            ".claude",
-            "templates",
-            "config.json",
-            "models",
-            "audio_capture.py",
-            "faster_whisper_models.json",
-            "file_mover.py",
-            "huggingface_manager.py",
-            "INSTALL.md",
-            "install.sh",
-            "install.bat",
-            "install.ps1",
-            "README.md",
-            "requirements.txt",
-            "word_highlighting.json",
-            "whisper_models.json",
-            "speech_to_text.py",
-            "start_server.sh",
-            "start_server.bat",
-            "stop_server.sh",
-            "stop_server.bat",
-            "restart_server.sh",
-            "restart_server.bat",
-            "download_progress.json",
-            "watchdog.py",
-            "watchdog.lock",
-            ".crash_token",
-            "VERSION",
-            "start_watchdog.sh",
-            "start_watchdog.bat",
-            "start_watchdog.ps1",
-            "stt-watchdog.service",
-            "com.stt.watchdog.plist",
-        ],
-        "file_mover": {
-            "move_on_transcription_stop": False,
-            "destination_path": "",
-            "smb_username": "",
-            "smb_password": "",
-            "smb_domain": "",
-            "source_patterns": ["_AUTOMATIC_BACKUP/**/*"],
-            "delete_source": True,
-            "preserve_structure": True,
-        },
-    },
-    "url_builder_defaults": {
-        "fontSize": "30",
-        "bgColor": "000000",
-        "textColor": "ffffff",
-        "alignment": "center",
-        "verticalAlign": "bottom",
-        "fontFamily": "Arial",
-        "fontWeight": "400",
-        "lineHeight": "1",
-        "paddingTop": "10",
-        "paddingBottom": "20",
-        "paddingLeft": "20",
-        "paddingRight": "20",
-        "maxWidth": "100",
-        "inProgressOpacity": "0.9",
-        "dripSpeed": "80",
-        "layout": "side_by_side",
-        "inverse": "true",
-    },
-    "hallucination_filter": {
-        "enabled": True,
-        "phrases": [
-            "Субтитры сделал DimaTorzok",
-            "Субтитры делал DimaTorzok",
-            "Субтитры подготовил DimaTorzok",
-            "Продолжение следует...",
-            "Thank you for watching",
-            "Thanks for watching",
-            "Please subscribe",
-            "Like and subscribe",
-            "Don't forget to subscribe",
-        ],
-        "cjk_filter_enabled": True,
-    },
-    "live_translation": {
-        "enabled": True,
-        "target_language": "en",
-        "source_language": "auto",
-        "translate_in_progress": False,
-        "display_mode": "translated_only",
-        "translation_model": "facebook/nllb-200-distilled-600M",
-        "use_gpu": True,
-        "max_entries_to_send": 100,
-        "srt_enabled": True,
-        "html_enabled": True,
-        "translation_method": "nllb",
-        "generation_params": {
-            "num_beams": 5,
-            "length_penalty": 1.0,
-            "no_repeat_ngram_size": 0,
-            "repetition_penalty": 1.0,
-        },
-        "context_window": 2,
-        "remote": {
-            "enabled": False,
-            "endpoint": "",
-        },
-        "trusted_clients": [],
-        "tts": {
-            "enabled": False,
-            "backend": "edge",
-            "edge_voice": "en-US-AriaNeural",
-            "piper_model": "",
-            "speed": 1.0,
-        },
-    },
-    "corrections": {
-        "enabled": True,
-        "confidence_threshold": 0.7,
-        "confidence_highlighting": True,
-        "show_review_queue": True,
-        "n_best_alternatives": {
-            "translation_count": 3,
-        },
-        "output_delay": {
-            "enabled": False,
-            "delay_seconds": 7,
-            "auto_publish": True,
-        },
-    },
-    "custom_dictionary": {
-        "file": "custom_dictionary.json",
-        "nllb_glossary_enabled": True,
-    },
-    "watchdog": {
-        "update_channel": "stable",
-    },
-    "crash_reporting": {
-        "enabled": True,
-    },
-}
+CONFIG_TEMPLATE_FILE = os.path.join(BUNDLE_DIR, "config.default.json")
 
 
 def save_config(config_to_save):
@@ -459,71 +228,99 @@ def save_word_highlighting(data):
         return False
 
 
+def _restore_config_from_template(reason=""):
+    """Copy the bundled config.default.json over CONFIG_FILE. Returns True on success."""
+    import shutil
+    if not os.path.exists(CONFIG_TEMPLATE_FILE):
+        print(f"[CONFIG] ERROR: template '{CONFIG_TEMPLATE_FILE}' is missing; cannot {reason or 'restore config'}.")
+        return False
+    shutil.copy2(CONFIG_TEMPLATE_FILE, CONFIG_FILE)
+    return True
+
+
 def load_config():
-    """Load configuration from config.json, create if doesn't exist"""
+    """Load configuration from config.json.
+
+    config.default.json (bundled, read from BUNDLE_DIR) is the canonical template.
+    It seeds a fresh config.json on first run and is used to recover from a
+    missing or corrupted config.json. No deep-merge is performed on normal loads —
+    whatever seeds config.json is the complete config; missing keys are patched
+    per-access via config.get(key, fallback)."""
+    # First run: no config.json yet -> seed from the bundled template.
     if not os.path.exists(CONFIG_FILE):
-        default_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.default.json")
-        if os.path.exists(default_file):
-            import shutil
-            shutil.copy2(default_file, CONFIG_FILE)
+        if _restore_config_from_template("create config.json"):
             print(f"[OK] Created '{CONFIG_FILE}' from config.default.json")
             print(f"[NOTE] Edit this file to configure your settings.")
         else:
-            print(f"WARNING: config.json not found and config.default.json missing — using built-in defaults.")
-            return DEFAULT_CONFIG
+            raise FileNotFoundError(
+                f"Neither '{CONFIG_FILE}' nor template '{CONFIG_TEMPLATE_FILE}' exist; cannot start."
+            )
 
     try:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
         print(f"[OK] Loaded configuration from '{CONFIG_FILE}'")
+    except Exception as e:
+        # Corrupted / unreadable config.json: back up the bad file, then rewrite a
+        # fresh one from the template so the app can still start.
+        print(f"[CONFIG] ERROR: could not parse '{CONFIG_FILE}': {e}")
+        from datetime import datetime
+        import shutil
+        try:
+            corrupt_path = f"{CONFIG_FILE}.corrupt.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            shutil.move(CONFIG_FILE, corrupt_path)
+            print(f"[CONFIG] Backed up corrupt config to '{corrupt_path}'")
+        except Exception as move_err:
+            print(f"[CONFIG] WARNING: could not back up corrupt config: {move_err}")
+        if not _restore_config_from_template("recover config.json"):
+            raise
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+        print(f"[CONFIG] Recovered '{CONFIG_FILE}' from config.default.json")
 
-        # Migrate old use_english_model format to new .en model names
-        migrated = False
-        for section in ["model", "file_transcription"]:
-            if section in config:
-                # Handle top-level model section
-                if section == "model" and "whisper" in config[section]:
-                    whisper = config[section]["whisper"]
+    # Migrate old use_english_model format to new .en model names
+    migrated = False
+    for section in ["model", "file_transcription"]:
+        if section in config:
+            # Handle top-level model section
+            if section == "model" and "whisper" in config[section]:
+                whisper = config[section]["whisper"]
+                if whisper.get("use_english_model", False):
+                    model = whisper.get("model", "base")
+                    if model in ["tiny", "base", "small", "medium"] and not model.endswith(".en"):
+                        whisper["model"] = f"{model}.en"
+                        print(f"[MIGRATION] Converted model '{model}' to '{model}.en'")
+                        migrated = True
+                # Remove the old flag
+                if "use_english_model" in whisper:
+                    whisper.pop("use_english_model")
+                    migrated = True
+
+            # Handle file_transcription model section
+            elif section == "file_transcription" and "model" in config[section]:
+                if "whisper" in config[section]["model"]:
+                    whisper = config[section]["model"]["whisper"]
                     if whisper.get("use_english_model", False):
                         model = whisper.get("model", "base")
                         if model in ["tiny", "base", "small", "medium"] and not model.endswith(".en"):
                             whisper["model"] = f"{model}.en"
-                            print(f"[MIGRATION] Converted model '{model}' to '{model}.en'")
+                            print(f"[MIGRATION] Converted file transcription model '{model}' to '{model}.en'")
                             migrated = True
                     # Remove the old flag
                     if "use_english_model" in whisper:
                         whisper.pop("use_english_model")
                         migrated = True
 
-                # Handle file_transcription model section
-                elif section == "file_transcription" and "model" in config[section]:
-                    if "whisper" in config[section]["model"]:
-                        whisper = config[section]["model"]["whisper"]
-                        if whisper.get("use_english_model", False):
-                            model = whisper.get("model", "base")
-                            if model in ["tiny", "base", "small", "medium"] and not model.endswith(".en"):
-                                whisper["model"] = f"{model}.en"
-                                print(f"[MIGRATION] Converted file transcription model '{model}' to '{model}.en'")
-                                migrated = True
-                        # Remove the old flag
-                        if "use_english_model" in whisper:
-                            whisper.pop("use_english_model")
-                            migrated = True
+    # Save migrated config
+    if migrated:
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(config, f, indent=2)
+            print("[MIGRATION] Config file updated and saved")
+        except Exception as e:
+            print(f"[MIGRATION] Warning: Could not save migrated config: {e}")
 
-        # Save migrated config
-        if migrated:
-            try:
-                with open(CONFIG_FILE, "w") as f:
-                    json.dump(config, f, indent=2)
-                print("[MIGRATION] Config file updated and saved")
-            except Exception as e:
-                print(f"[MIGRATION] Warning: Could not save migrated config: {e}")
-
-        return config
-    except Exception as e:
-        print(f"[ERROR] Error loading config file: {e}")
-        print("Using default configuration.")
-        return DEFAULT_CONFIG
+    return config
 
 
 # Load configuration
@@ -3940,12 +3737,11 @@ def reset_config():
                 # Continue with reset even if backup fails
                 backup_path = None
 
-        # Reset to defaults
-        config = DEFAULT_CONFIG.copy()
-
-        # Write default config to file
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2)
+        # Reset to defaults: reseed config.json from the canonical template, then
+        # reload it (same path as first-run init).
+        if not _restore_config_from_template("reset config to defaults"):
+            return jsonify({"success": False, "error": "Default config template is missing; cannot reset."}), 500
+        config = load_config()
 
         # Send config update through queue
         try:
