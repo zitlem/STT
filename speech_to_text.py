@@ -10732,6 +10732,15 @@ def handle_request_all_translation_entries():
     """Send all historical translation entries to the requesting client only"""
     trans_config = config.get("live_translation", {})
     if not trans_config.get("enabled", False):
+        # Translation is off — tell the client so the translate view can say so
+        emit("translation_update", {
+            "segments": [],
+            "in_progress": None,
+            "target_language": trans_config.get("target_language", "en"),
+            "source_language": trans_config.get("source_language", "auto"),
+            "enabled": False,
+            "is_running": transcription_state.get("running", False)
+        })
         return
 
     target_lang = trans_config.get("target_language", "en")
@@ -11379,6 +11388,16 @@ def emit_translated_entries():
     while True:
         trans_config = config.get("live_translation", {})
         if not trans_config.get("enabled", False):
+            # Translation is off — emit a disabled marker so the translate view
+            # can show "Translation disabled" instead of being stuck on "Waiting..."
+            socketio.emit("translation_update", {
+                "segments": [],
+                "in_progress": None,
+                "target_language": trans_config.get("target_language", "en"),
+                "source_language": trans_config.get("source_language", "auto"),
+                "enabled": False,
+                "is_running": transcription_state.get("running", False)
+            })
             # Sleep longer when translation is disabled
             socketio.sleep(update_interval * 2)
             continue
