@@ -1122,7 +1122,9 @@
         if (!heading) return;
         const mode = window.displayConfig?.translationMode || 'transcribe';
         if (window.transcriptionIsRunning === false) {
-          heading.textContent = 'Transcription not running';
+          heading.textContent = mode === 'translate'
+            ? 'Translation not running'
+            : 'Transcription not running';
         } else {
           heading.textContent = mode === 'translate'
             ? 'Waiting for translation...'
