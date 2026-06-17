@@ -1121,7 +1121,9 @@
         const heading = document.querySelector('#empty-state h3');
         if (!heading) return;
         const mode = window.displayConfig?.translationMode || 'transcribe';
-        if (window.transcriptionIsRunning === false) {
+        if (mode === 'translate' && window.translationEnabled === false) {
+          heading.textContent = 'Translation disabled';
+        } else if (window.transcriptionIsRunning === false) {
           heading.textContent = mode === 'translate'
             ? 'Translation not running'
             : 'Transcription not running';
@@ -1546,8 +1548,21 @@
          const mode = window.displayConfig?.translationMode || 'transcribe';
          const layout = window.displayConfig?.translationLayout || 'stacked';
 
-         // Only process if translation is enabled in the data
-         if (!data.enabled) return;
+         // Track whether translation is enabled so the empty state can reflect it
+         if (typeof data.enabled !== 'undefined') window.translationEnabled = data.enabled;
+
+         // If translation is off, show the empty state (translate mode) and stop
+         if (!data.enabled) {
+           if (mode === 'translate') {
+             const tableBody = $("#transcription-table-body");
+             const emptyState = document.getElementById('empty-state');
+             tableBody.empty();
+             if (typeof data.is_running !== 'undefined') window.transcriptionIsRunning = data.is_running;
+             updateEmptyStateMessage();
+             emptyState.style.display = 'block';
+           }
+           return;
+         }
 
          const segments = data.segments || [];
          const inProgress = window.displayConfig?.hideTranslateInProgress ? null : data.in_progress;
