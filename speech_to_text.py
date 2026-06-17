@@ -17,6 +17,23 @@ os.makedirs(APP_DIR, exist_ok=True)
 MODELS_DIR = os.path.join(APP_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
+# Default base directory for database + audio backups (rooted in APP_DIR so compiled
+# builds keep all data under ~/.stt instead of the launch directory).
+BACKUP_DIR = os.path.join(APP_DIR, "_AUTOMATIC_BACKUP")
+
+
+def _seed_from_bundle(filename):
+    """Copy a bundled default file into APP_DIR on first run if missing (compiled builds)."""
+    import shutil
+    dst = os.path.join(APP_DIR, filename)
+    src = os.path.join(BUNDLE_DIR, filename)
+    if not os.path.exists(dst) and os.path.exists(src) and src != dst:
+        try:
+            shutil.copy2(src, dst)
+        except Exception as e:
+            print(f"[INIT] Could not seed {filename} from bundle: {e}")
+    return dst
+
 # Suppress NNPACK warnings from PyTorch (harmless but spammy)
 # These are C++ warnings so we need to disable at the PyTorch level
 os.environ['NNPACK_DISABLE'] = '1'
@@ -417,7 +434,7 @@ def save_config(config_to_save):
 
 
 # Word highlighting uses a separate config file
-WORD_HIGHLIGHTING_FILE = "word_highlighting.json"
+WORD_HIGHLIGHTING_FILE = _seed_from_bundle("word_highlighting.json")
 
 
 def load_word_highlighting():
@@ -2407,8 +2424,9 @@ def initialize_database():
         folder_name = os.path.join(custom_db_path, formatted_path)
         print(f"[OK] Using custom database path: {folder_name}")
     else:
-        # Use default base path + path_format subdirectory
-        folder_name = os.path.join("_AUTOMATIC_BACKUP", formatted_path)
+        # Use default base path (under APP_DIR) + path_format subdirectory so compiled
+        # builds keep the DB in ~/.stt instead of the launch directory.
+        folder_name = os.path.join(BACKUP_DIR, formatted_path)
         print(f"[OK] Using default database path: {folder_name}")
 
     # Create the folder if it doesn't exist
@@ -6074,7 +6092,7 @@ def file_transcription_settings_endpoint():
 
             # Save config to file
             try:
-                with open("config.json", "w") as f:
+                with open(CONFIG_FILE, "w") as f:
                     json.dump(config, f, indent=2)
                 print(
                     f"[OK] File transcription settings updated and saved to config.json"
@@ -6615,7 +6633,7 @@ def get_disk_space():
 
     try:
         # Get the current working directory path
-        current_path = os.getcwd()
+        current_path = APP_DIR
 
         # Get disk usage statistics using shutil (works on both Windows and Linux)
         disk_usage = shutil.disk_usage(current_path)
@@ -6717,7 +6735,7 @@ def browse_files():
 
     try:
         # Get query parameters
-        path = request.args.get("path", os.getcwd())
+        path = request.args.get("path", APP_DIR)
         show_hidden = request.args.get("show_hidden", "false").lower() == "true"
 
         # Normalize and validate path
@@ -6735,7 +6753,7 @@ def browse_files():
 
         # Get hidden items from config
         hidden_items = config.get("file_manager", {}).get("hidden_items", [])
-        working_dir = os.getcwd()
+        working_dir = APP_DIR
 
         # List directory contents
         items = []
@@ -6843,9 +6861,9 @@ def delete_file():
         path = os.path.abspath(path)
 
         # Security check: prevent deletion of critical files
-        if path == os.getcwd() or path in [
+        if path == APP_DIR or path in [
             os.path.abspath("speech_to_text.py"),
-            os.path.abspath("config.json"),
+            CONFIG_FILE,
         ]:
             return jsonify(
                 {
@@ -6995,7 +7013,7 @@ def hide_item():
 
         # Normalize path to be relative to working directory
         abs_path = os.path.abspath(path)
-        working_dir = os.getcwd()
+        working_dir = APP_DIR
 
         # Get relative path
         try:
@@ -7043,7 +7061,7 @@ def unhide_item():
 
         # Normalize path to be relative to working directory
         abs_path = os.path.abspath(path)
-        working_dir = os.getcwd()
+        working_dir = APP_DIR
 
         # Get relative path
         try:
@@ -7088,7 +7106,7 @@ def download_file():
 
         # Security: Ensure the path is within the working directory
         abs_path = os.path.abspath(path)
-        working_dir = os.getcwd()
+        working_dir = APP_DIR
 
         if not abs_path.startswith(working_dir):
             return jsonify({"success": False, "error": "Access denied"}), 403
@@ -9373,7 +9391,7 @@ def sync_model_configs():
 _whisper_models_cache = None
 _whisper_models_cache_time = None
 WHISPER_CACHE_DURATION = 86400  # Cache for 24 hours (1 day)
-WHISPER_MODELS_FILE = "whisper_models.json"  # Persistent storage file
+WHISPER_MODELS_FILE = _seed_from_bundle("whisper_models.json")  # Persistent storage file
 
 
 def load_whisper_models_from_file():
@@ -9508,7 +9526,7 @@ def get_whisper_models_list():
 # Cache for discovered Faster-Whisper models
 _faster_whisper_models_cache = None
 _faster_whisper_models_cache_time = None
-FASTER_WHISPER_MODELS_FILE = "faster_whisper_models.json"
+FASTER_WHISPER_MODELS_FILE = _seed_from_bundle("faster_whisper_models.json")
 
 
 def load_faster_whisper_models_from_file():
@@ -12495,7 +12513,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             ts_filename_format = backup_cfg.get("filename_format", "").strip() or "%Y-%m-%d_%H%M%S"
                             ts_filename_prefix = backup_cfg.get("filename_prefix", "")
                             # Build full backup directory path (same as .wav uses)
-                            ts_base_dir = backup_cfg.get("base_directory", "").strip() or "_AUTOMATIC_BACKUP"
+                            ts_base_dir = backup_cfg.get("base_directory", "").strip() or BACKUP_DIR
                             ts_path_format = backup_cfg.get("path_format", "").strip() or "%Y/%m"
                             ts_formatted_path = datetime.now().strftime(ts_path_format)
                             ts_backup_dir = os.path.join(ts_base_dir, ts_formatted_path) if ts_enabled else None
@@ -12764,7 +12782,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             now = datetime.now(configured_timezone)
                             base_dir = backup_config.get(
                                 "base_directory", ""
-                            ).strip() or "_AUTOMATIC_BACKUP"
+                            ).strip() or BACKUP_DIR
                             path_format = backup_config.get("path_format", "").strip() or "%Y/%m"
                             formatted_path = now.strftime(path_format)
                             full_dir_path = os.path.join(base_dir, formatted_path)
@@ -12872,7 +12890,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             now = datetime.now(configured_timezone)
 
                             # Use configurable base directory or default
-                            base_dir = backup_config.get("base_directory", "").strip() or "_AUTOMATIC_BACKUP"
+                            base_dir = backup_config.get("base_directory", "").strip() or BACKUP_DIR
 
                             # Use configurable path format or default (using Python strftime format)
                             path_format = backup_config.get("path_format", "").strip() or "%Y/%m"
@@ -12921,7 +12939,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             # Use same default as database if not specified
                             base_dir = backup_config.get("base_directory", "").strip()
                             if not base_dir:
-                                base_dir = "_AUTOMATIC_BACKUP"
+                                base_dir = BACKUP_DIR
                             year_dir = os.path.join(base_dir, now.strftime("%Y"))
                             month_dir = os.path.join(year_dir, now.strftime("%Y-%m"))
 

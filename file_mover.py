@@ -4,6 +4,7 @@ Handles automatic file moving to remote locations (SMB/NAS) with retry logic
 """
 
 import os
+import sys
 import shutil
 import glob
 import logging
@@ -483,7 +484,9 @@ def execute_file_move(config_getter):
         delete_source = mover_config.get('delete_source', True)
         preserve_structure = mover_config.get('preserve_structure', True)
 
-        working_dir = os.getcwd()
+        # Resolve source patterns against APP_DIR (where backups now live in compiled
+        # builds) instead of the launch directory. Mirrors audio_capture.py's lookup.
+        working_dir = getattr(sys.modules.get('speech_to_text'), 'APP_DIR', None) or os.path.dirname(os.path.abspath(__file__))
         base_dirs = get_base_directories_from_patterns(patterns, working_dir)
 
         # Test destination accessibility
