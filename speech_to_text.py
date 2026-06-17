@@ -7808,13 +7808,16 @@ def get_audio_devices():
                 )
             devices = normalized_devices
 
-            # Prepend aaa.wav as a selectable test source if present in the app directory
-            test_wav = os.path.join(APP_DIR, "aaa.wav")
-            if os.path.isfile(test_wav):
+            # Prepend any .wav files sitting directly in APP_DIR as selectable test
+            # sources (non-recursive — backups live in _AUTOMATIC_BACKUP/ subdirs and
+            # are excluded so they don't flood the dropdown).
+            import glob
+            test_wavs = sorted(glob.glob(os.path.join(APP_DIR, "*.wav")))
+            for i, wav_path in enumerate(test_wavs):
                 devices.insert(0, {
-                    "index": -1,
-                    "name": "aaa.wav — Test Audio File",
-                    "device_id": test_wav,
+                    "index": -1 - i,
+                    "name": f"{os.path.basename(wav_path)} — Test Audio File",
+                    "device_id": wav_path,
                     "is_default": False,
                 })
 
