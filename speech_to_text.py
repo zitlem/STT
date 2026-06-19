@@ -2110,6 +2110,7 @@ if multiprocessing.current_process().name == 'MainProcess':
             "audio_level": 0,  # Audio level for histogram (0-100)
             "audio_db": -60,  # Audio level in decibels
             "audio_energy": 0,  # Raw audio energy (RMS)
+            "start_time": 0,  # epoch seconds when transcription became active; 0 = not running
             "live_text": "",  # Live preview text (not yet saved to DB)
             "live_start": 0,  # Start time of the live preview within the session
             "live_end": 0,  # End time of the live preview within the session
@@ -12897,6 +12898,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         transcription_state["status"] = "running"
                         transcription_state["message"] = "Transcription is active and ready"
                         transcription_state["error"] = None
+                        transcription_state["start_time"] = time.time()
                     print("[READY] Transcription system initialized successfully!")
 
                     while True:
