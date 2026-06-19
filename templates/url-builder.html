@@ -95,28 +95,22 @@
             box-shadow: 0 0 0 3px var(--accent-glow);
         }
 
-        .url-output button {
+        .url-output button,
+        #profilesList button {
             padding: 8px 12px;
             border: none;
             border-radius: var(--radius-sm);
             font-weight: 500;
             cursor: pointer;
             font-size: 0.8em;
+            background: var(--accent);
+            color: white;
             transition: background-color 0.3s, color 0.3s, border-color 0.3s;
         }
 
-        .url-output button:first-of-type {
-            background: var(--accent);
-            color: white;
-        }
-
-        .url-output button:first-of-type:hover {
+        .url-output button:hover,
+        #profilesList button:hover {
             background: var(--accent-hover);
-        }
-
-        .url-output button:last-of-type {
-            background: var(--success);
-            color: white;
         }
 
         .preview-section {
@@ -459,14 +453,27 @@
 
             <!-- URL Builder Panel -->
             <div class="url-builder-panel">
+                <!-- Profiles Card -->
+                <div class="settings-card">
+                    <h4>📁 Profiles</h4>
+                    <div class="url-output">
+                        <input type="text" id="profileName" placeholder="Profile name">
+                        <button onclick="saveProfile()">💾 Save as Profile</button>
+                    </div>
+                    <div id="profilesList"></div>
+                    <div class="info-box">
+                        💡 <strong>Recall</strong> loads a profile into the builder. <strong>Set as Root</strong> makes it what the bare <code>/</code> URL shows.
+                    </div>
+                </div>
+
                 <!-- Generated URL Card -->
                 <div class="settings-card">
                     <h4>🔗 Generated URL</h4>
                     <div class="url-output">
-                        <input type="text" id="customURL" readonly onclick="this.select()">
+                        <input type="text" id="customURL" onclick="this.select()" placeholder="Generated URL — or paste one here and click Recall">
                         <button onclick="copyURL()">📋 Copy</button>
                         <button onclick="openURL()">🚀 Open</button>
-                        <button onclick="saveAsDefault()">💾 Save as Default</button>
+                        <button onclick="recallFromURL()" title="Load the settings from the URL in this field into the builder">📥 Recall</button>
                     </div>
                     <div class="info-box">
                         💡 <strong>Tip:</strong> Use generated URL on different screens/browsers with custom styling without changing server settings. Perfect for presentation displays, remote screens, or specific viewing scenarios.
@@ -846,51 +853,150 @@
             window.open(url, '_blank');
         }
 
-        // Save current settings as default
-        function saveAsDefault() {
+        // ---- Profiles: save / recall / activate (root) / delete ----
+        let profilesData = { profiles: [], active: '' };
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // Current builder settings as a plain {param: value} object (from the generated URL).
+        function getCurrentParams() {
             const params = new URLSearchParams(document.getElementById('customURL').value.split('?')[1]);
-            const defaults = {};
+            const obj = {};
+            for (const [key, value] of params.entries()) obj[key] = value;
+            return obj;
+        }
 
-            // Convert URLSearchParams to plain object
-            for (const [key, value] of params.entries()) {
-                defaults[key] = value;
+        // Backup recall: load settings from whatever URL is in the Generated URL field
+        // (paste any generated /?... URL and click Recall).
+        function recallFromURL() {
+            const val = document.getElementById('customURL').value.trim();
+            const qi = val.indexOf('?');
+            const params = new URLSearchParams(qi !== -1 ? val.slice(qi + 1) : val);
+            const obj = {};
+            for (const [key, value] of params.entries()) obj[key] = value;
+            if (!Object.keys(obj).length) {
+                showNotification('❌ No settings found in that URL', 'error');
+                return;
             }
+            applyParametersToForm(obj);   // applies params + regenerates the URL
+            showNotification('📥 Loaded settings from URL', 'success');
+        }
 
-            fetch('/api/url-builder/defaults', {
+        function updateProfiles(data) {
+            profilesData = { profiles: data.profiles || [], active: data.active || '' };
+            renderProfiles();
+        }
+
+        function renderProfiles() {
+            const list = document.getElementById('profilesList');
+            if (!profilesData.profiles.length) {
+                list.innerHTML = '<div style="color:#999;padding:8px 0;">No saved profiles yet.</div>';
+                return;
+            }
+            list.innerHTML = profilesData.profiles.map(p => {
+                const isActive = p.name === profilesData.active;
+                const enc = encodeURIComponent(p.name);
+                return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--border);">
+                    <span style="font-weight:600;">${escapeHtml(p.name)}${isActive ? ' <span style="color:var(--accent);">★ root</span>' : ''}</span>
+                    <code style="flex:1;min-width:120px;color:#999;font-size:0.8em;">/profile/${escapeHtml(p.name)}</code>
+                    <button onclick="recallProfile('${enc}')">📂 Recall</button>
+                    <button onclick="copyProfileURL('${enc}')" title="Copy display URL">📋 Copy</button>
+                    <button onclick="openProfileURL('${enc}')" title="Open display URL">🚀 Open</button>
+                    <button onclick="setAsRoot('${enc}')">🏠 Set as Root</button>
+                    <button onclick="deleteProfile('${enc}')" title="Delete">🗑</button>
+                </div>`;
+            }).join('');
+        }
+
+        // Clipboard copy that works on plain-HTTP LAN origins (no navigator.clipboard).
+        function copyText(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            document.body.removeChild(ta);
+            if (!ok && navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+        }
+
+        function copyProfileURL(enc) {
+            const url = location.origin + '/profile/' + decodeURIComponent(enc);
+            copyText(url);
+            showNotification('📋 Copied ' + url, 'success');
+        }
+
+        function openProfileURL(enc) {
+            window.open(location.origin + '/profile/' + decodeURIComponent(enc), '_blank');
+        }
+
+        function loadProfiles() {
+            fetch('/api/url-builder/profiles')
+                .then(r => r.json())
+                .then(d => { if (d.success) updateProfiles(d); })
+                .catch(() => {});
+        }
+
+        function saveProfile() {
+            const name = document.getElementById('profileName').value.trim();
+            if (!name) { showNotification('❌ Enter a profile name first', 'error'); return; }
+            if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+                showNotification('❌ Profile names can only use letters, numbers, - and _ (no spaces) for clean /profile URLs', 'error');
+                return;
+            }
+            fetch('/api/url-builder/profiles', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(defaults)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, params: getCurrentParams() })
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('✅ Settings saved as default!', 'success');
-                } else {
-                    showNotification('❌ Failed to save defaults: ' + data.error, 'error');
-                }
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) { updateProfiles(d); showNotification('✅ Saved profile "' + name + '"', 'success'); }
+                else showNotification('❌ ' + d.error, 'error');
             })
-            .catch(error => {
-                showNotification('❌ Error saving defaults: ' + error.message, 'error');
-            });
+            .catch(e => showNotification('❌ ' + e.message, 'error'));
         }
 
-        // Load saved defaults
-        function loadSavedDefaults() {
-            fetch('/api/url-builder/defaults')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.defaults && Object.keys(data.defaults).length > 0) {
-                        applyParametersToForm(data.defaults);
-                    }
-                    checkTranslateInProgressEnabled();
-                })
-                .catch(error => {
-                    console.error('Error loading saved defaults:', error);
-                    checkTranslateInProgressEnabled();
-                });
+        function recallProfile(enc) {
+            const name = decodeURIComponent(enc);
+            const p = profilesData.profiles.find(x => x.name === name);
+            if (!p) return;
+            applyParametersToForm(p.params);   // loads params into the form + refreshes URL
+            document.getElementById('profileName').value = name;
+            showNotification('📂 Recalled "' + name + '"', 'success');
         }
+
+        function setAsRoot(enc) {
+            const name = decodeURIComponent(enc);
+            fetch('/api/url-builder/profiles/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) { profilesData.active = d.active; renderProfiles(); showNotification('🏠 "' + name + '" is now the root page', 'success'); }
+                else showNotification('❌ ' + d.error, 'error');
+            })
+            .catch(e => showNotification('❌ ' + e.message, 'error'));
+        }
+
+        function deleteProfile(enc) {
+            const name = decodeURIComponent(enc);
+            if (!confirm('Delete profile "' + name + '"?')) return;
+            fetch('/api/url-builder/profiles/' + encodeURIComponent(name), { method: 'DELETE' })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) { updateProfiles(d); showNotification('🗑 Deleted "' + name + '"', 'success'); }
+                else showNotification('❌ ' + d.error, 'error');
+            })
+            .catch(e => showNotification('❌ ' + e.message, 'error'));
+        }
+
 
         // Apply URL parameters to form. Any field absent from `params` falls back to
         // its value in DEFAULTS, so a partial saved-defaults blob never leaves a field
@@ -1084,8 +1190,13 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
-            // Load saved defaults
-            loadSavedDefaults();
+            // The builder always opens at code defaults (DEFAULTS / the HTML field
+            // defaults). The saved url_builder_defaults blob is intentionally NOT loaded
+            // here — it only drives the root "/" redirect (see the index route). This
+            // keeps "Save as Default" a one-way action: it sets what "/" shows, without
+            // turning the builder into an editor of its own last-saved state.
+            checkTranslateInProgressEnabled();
+            loadProfiles();
 
             updateCustomURL();
             updatePreview();
