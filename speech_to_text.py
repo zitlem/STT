@@ -2117,7 +2117,7 @@ if multiprocessing.current_process().name == 'MainProcess':
             "live_word_confidences": [],  # Word-level confidence for the live preview
             "loaded_model": "",  # Name of the actual model that was loaded
             "audio_stream_enabled": False,  # Whether to stream audio to web clients
-            "audio_type": None,  # "Speaking", "Music", or "Quiet" — detected from Whisper no_speech_prob
+            "audio_type": None,  # "Speaking", "Music", or "Quiet" — PANNs detection (no_speech_prob fallback)
         }
     )
 
@@ -2191,17 +2191,212 @@ db_name = None  # Will be set when database is initialized
 db_initialized = False
 
 
-def classify_audio_type(no_speech_prob, audio_db):
-    """Classify a finalized segment as Speaking, Music, or Quiet.
+# ============== PANNs audio tagger (music / speech detection) ==============
+# Default checkpoint location (kept under APP_DIR so compiled builds stay self-contained)
+PANNS_CHECKPOINT = os.path.join(APP_DIR, "panns_data", "Cnn14_mAP=0.431.pth")
+PANNS_CHECKPOINT_URL = "https://zenodo.org/record/3987831/files/Cnn14_mAP%3D0.431.pth?download=1"
+_audio_tagger = None
+_audio_tagger_failed_key = None  # (device, ckpt) that hit a real load error — don't retry it
+_audio_tagger_key = None  # (device, ckpt) currently loaded
+_panns_label_idx = None  # (music_idx_list, speech_idx_list)
+_panns_missing_logged = False  # avoid spamming the "checkpoint missing" log
 
-    Uses Whisper's no_speech_prob: low = clear speech, high = non-speech audio.
-    When non-speech, audio_db distinguishes audible music from silence.
-    """
-    music_threshold = config.get("speech_type_detection", {}).get("music_threshold", 0.5)
-    quiet_db_threshold = config.get("speech_type_detection", {}).get("quiet_db_threshold", -40)
-    if (no_speech_prob or 0.0) <= music_threshold:
-        return "Speaking"
-    return "Music" if (audio_db or -60) > quiet_db_threshold else "Quiet"
+
+def panns_checkpoint_path(cfg=None):
+    """Resolve the CNN14 checkpoint path (config override or the default location)."""
+    cfg = cfg if cfg is not None else config.get("speech_type_detection", {})
+    custom = (cfg.get("checkpoint_path", "") or "").strip()
+    return custom or PANNS_CHECKPOINT
+
+
+def panns_package_installed():
+    try:
+        import importlib.util
+        return importlib.util.find_spec("panns_inference") is not None
+    except Exception:
+        return False
+
+
+def get_audio_tagger(cfg):
+    """Lazy-load the PANNs CNN14 tagger for the given speech_type_detection cfg.
+    Reloads if device/checkpoint changed. Returns None if unavailable (missing
+    package or checkpoint). MUST be called off the audio-drain path (it can block
+    for seconds on first load)."""
+    global _audio_tagger, _audio_tagger_failed_key, _audio_tagger_key, _panns_label_idx, _panns_missing_logged
+    ckpt = panns_checkpoint_path(cfg)
+    device = cfg.get("device", "cpu") or "cpu"
+    key = (device, ckpt)
+    if _audio_tagger is not None and _audio_tagger_key == key:
+        return _audio_tagger
+    if _audio_tagger_failed_key == key:
+        return None
+    # Missing checkpoint is *transient* (a download in the main process may produce
+    # it later) — recheck cheaply each call instead of failing permanently.
+    if not os.path.exists(ckpt):
+        if not _panns_missing_logged:
+            print(f"[PANNS] Checkpoint not found at {ckpt}; music detection falls back to energy-based until it's downloaded")
+            _panns_missing_logged = True
+        return None
+    # Config changed (device/checkpoint) or first load: drop any stale model.
+    _audio_tagger = None
+    _audio_tagger_key = None
+    try:
+        from panns_inference import AudioTagging, labels
+        tagger = AudioTagging(checkpoint_path=ckpt, device=device)
+        music_idx = [i for i, l in enumerate(labels) if l in ("Music", "Singing")]
+        _panns_label_idx = (music_idx, None)
+        _audio_tagger = tagger
+        _audio_tagger_key = key
+        _audio_tagger_failed_key = None
+        _panns_missing_logged = False
+        print(f"[PANNS] Audio tagger loaded on {device} from {ckpt}")
+        return _audio_tagger
+    except Exception as e:
+        _audio_tagger_failed_key = key
+        print(f"[PANNS] Could not load audio tagger: {e}; falling back to energy-based")
+        return None
+
+
+def unload_audio_tagger():
+    """Release the tagger (called when transcription stops/unloads to free VRAM).
+    The detector reloads it lazily if detection is used again."""
+    global _audio_tagger, _audio_tagger_key, _audio_tagger_failed_key, _panns_missing_logged
+    _audio_tagger = None
+    _audio_tagger_key = None
+    _audio_tagger_failed_key = None
+    _panns_missing_logged = False
+
+
+def compute_music_prob(audio_np, sr, cfg):
+    """Return (music_prob, dominant_tag) for an audio buffer using PANNs, or
+    (None, None) when the tagger is unavailable. audio_np: float32 mono in [-1, 1]."""
+    tagger = get_audio_tagger(cfg)
+    if tagger is None or audio_np is None or len(audio_np) == 0:
+        return None, None
+    try:
+        from panns_inference import labels
+        wav = np.asarray(audio_np, dtype=np.float32)
+        if sr != 32000:
+            import librosa
+            wav = librosa.resample(wav, orig_sr=sr, target_sr=32000)
+        clipwise, _ = tagger.inference(wav[None, :])
+        clip = clipwise[0]
+        music_idx, _ = _panns_label_idx
+        music_prob = float(max((clip[i] for i in music_idx), default=0.0))
+        return music_prob, labels[int(np.argmax(clip))]
+    except Exception as e:
+        print(f"[PANNS] inference error: {e}")
+        return None, None
+
+
+def panns_label_from_prob(smoothed_prob, audio_db, cfg):
+    """Map a (smoothed) music probability to a Speaking/Music/Quiet label."""
+    quiet_db_threshold = cfg.get("quiet_db_threshold", -40)
+    if smoothed_prob > cfg.get("music_prob_threshold", 0.5):
+        return "Music"
+    return "Quiet" if (audio_db or -60) <= quiet_db_threshold else "Speaking"
+
+
+def classify_audio_type(audio_db, cfg=None):
+    """Energy-based fallback label (no PANNs): audible => Speaking, else Quiet.
+    We never claim Music without the PANNs detector."""
+    cfg = cfg if cfg is not None else config.get("speech_type_detection", {})
+    quiet_db_threshold = cfg.get("quiet_db_threshold", -40)
+    return "Speaking" if (audio_db or -60) > quiet_db_threshold else "Quiet"
+
+
+class MusicDetector:
+    """Runs PANNs inference on a dedicated daemon thread so the audio-drain loop
+    never blocks. Latest-buffer / drop-stale: submit() just hands off the newest
+    buffer; the thread loads the model (off the hot path), throttles, smooths, and
+    writes music_prob / audio_tag / audio_type into the shared transcription state.
+    Reads speech_type_detection live from process_config each iteration -> hot-reload."""
+
+    def __init__(self):
+        self.cfg_root = {}      # live process_config (refreshed on each submit)
+        self.state = None       # shared transcription_state
+        self._buf = None
+        self._sr = 16000
+        self._lock = threading.Lock()
+        self._event = threading.Event()
+        self._history = []      # instance-local smoothing buffer (no cross-thread race)
+        self._last_ts = 0.0
+        self._thread = threading.Thread(target=self._run, daemon=True, name="panns-detector")
+        self._thread.start()
+
+    def submit(self, process_config, state, audio_np, sr):
+        """Non-blocking hand-off of the latest raw (pre-VAD) buffer."""
+        self.cfg_root = process_config
+        self.state = state
+        with self._lock:
+            self._buf = audio_np
+            self._sr = sr
+        self._event.set()
+
+    def _run(self):
+        while True:
+            self._event.wait(timeout=1.0)
+            self._event.clear()
+            cfg = (self.cfg_root or {}).get("speech_type_detection", {})
+            if not cfg.get("enabled", True) or cfg.get("method", "panns") != "panns":
+                self._history.clear()
+                # Clear stale PANNs state so the live monitor doesn't keep showing
+                # the last music label after detection is disabled mid-session.
+                st = self.state
+                if st is not None and st.get("music_prob") is not None:
+                    st["music_prob"] = None
+                    st["audio_tag"] = None
+                    st["audio_type"] = None
+                continue
+            now = time.time()
+            if now - self._last_ts < 0.4:  # throttle to ~2-3 runs/sec
+                continue
+            with self._lock:
+                buf = self._buf
+                sr = self._sr
+                self._buf = None  # consume: don't re-run on a stale buffer once audio stops
+            if buf is None:
+                continue
+            self._last_ts = now
+            try:
+                music_prob, tag = compute_music_prob(buf, sr, cfg)
+            except Exception as e:
+                print(f"[PANNS] detector error: {e}")
+                continue
+            if music_prob is None:
+                continue
+            window = max(1, int(cfg.get("smoothing_window", 4) or 1))
+            self._history.append(float(music_prob))
+            del self._history[:-window]
+            smoothed = sum(self._history) / len(self._history)
+            st = self.state
+            if st is not None:
+                st["music_prob"] = music_prob
+                st["audio_tag"] = tag
+                # Live TYPE for the monitor, even when this audio isn't transcribed.
+                st["audio_type"] = panns_label_from_prob(smoothed, st.get("audio_db"), cfg)
+
+
+_music_detector = None
+
+
+def submit_music_detection(process_config, state, audio_np, sr):
+    """Hand the latest pre-VAD buffer to the background detector (non-blocking).
+    Creates/starts the detector thread on first use."""
+    global _music_detector
+    if _music_detector is None:
+        _music_detector = MusicDetector()
+    _music_detector.submit(process_config, state, audio_np, sr)
+
+
+def finalized_audio_type(process_config, state):
+    """Label for a finalized (transcribed) segment: the detector's live PANNs
+    label when active, else the energy-based fallback."""
+    cfg = process_config.get("speech_type_detection", {})
+    if (cfg.get("enabled", True) and cfg.get("method", "panns") == "panns"
+            and state.get("music_prob") is not None):
+        return state.get("audio_type") or "Speaking"
+    return classify_audio_type(state.get("audio_db"), cfg)
 
 
 def initialize_database():
@@ -10462,6 +10657,75 @@ def silero_vad_status():
         return jsonify({"success": False, "error": str(e)})
 
 
+# ============== PANNs music/speech detector status + download ==============
+PANNS_CKPT_SIZE = 327_000_000  # ~312 MB CNN14 checkpoint (approx, for progress %)
+
+
+@app.route("/api/models/panns-status", methods=["GET"])
+def panns_status():
+    """Report whether the PANNs package is installed and the checkpoint downloaded."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+
+    installed = panns_package_installed()
+    ckpt = panns_checkpoint_path()
+    downloaded = os.path.exists(ckpt)
+    if not installed:
+        msg = "panns-inference not installed. Install with: pip install panns-inference"
+    elif not downloaded:
+        msg = "PANNs CNN14 checkpoint not downloaded."
+    else:
+        msg = "PANNs music/speech detector ready."
+    return jsonify({
+        "success": True,
+        "package_installed": installed,
+        "downloaded": bool(installed and downloaded),
+        "checkpoint_path": ckpt,
+        "message": msg,
+    })
+
+
+@app.route("/api/models/panns/download", methods=["POST"])
+def download_panns_model():
+    """Download the PANNs CNN14 checkpoint in the background (progress via the
+    shared download tracker, same as other model downloads)."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+
+    if not panns_package_installed():
+        return jsonify({"success": False, "error": "panns-inference is not installed. Install it first: pip install panns-inference"}), 400
+
+    dest = panns_checkpoint_path()
+    if os.path.exists(dest):
+        return jsonify({"success": True, "message": "Checkpoint already downloaded"})
+
+    key = "panns_cnn14"
+    if not try_register_download(key, total=PANNS_CKPT_SIZE):
+        return jsonify({"success": False, "error": "Download already in progress"}), 409
+
+    def worker():
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            start_download_monitor(key, dest, total=PANNS_CKPT_SIZE)
+            result = download_url_to_file(
+                PANNS_CHECKPOINT_URL, dest,
+                cancel_check=lambda: key in cancelled_downloads,
+            )
+            if result == "cancelled":
+                finish_download(key, cancelled=True)
+                return
+            finish_download(key)
+            # No global reset needed: the detector runs in the worker process and
+            # re-checks the checkpoint each tick, so it picks this up without a restart.
+            print(f"[PANNS] Checkpoint downloaded to {dest}")
+        except Exception as e:
+            finish_download(key, error=e)
+            print(f"[PANNS] Checkpoint download failed: {e}")
+
+    threading.Thread(target=worker, daemon=True, name="dl-panns").start()
+    return jsonify({"success": True, "message": "Download started"})
+
+
 @app.route("/api/models/translation/download", methods=["POST"])
 def download_translation_model():
     """Download any translation model to ./models/ directory"""
@@ -11411,6 +11675,7 @@ def emit_new_entries():
                             "level": audio_level,
                             "db": audio_db,
                             "energy": audio_energy if audio_energy is not None else 0,
+                            "audio_type": transcription_state.get("audio_type"),
                         },
                     )
                 except Exception as emit_error:
@@ -12256,6 +12521,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 pass
                             vad_model = None
                         model_type = None
+                        # Release the PANNs audio tagger too
+                        try:
+                            unload_audio_tagger()
+                        except Exception:
+                            pass
                         # Clean up model cache
                         try:
                             ModelFactory.cleanup_models()
@@ -13344,11 +13614,24 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     transcription_state["audio_level"] = level
                                     transcription_state["audio_db"] = db
                                     transcription_state["audio_energy"] = raw_energy
+
+                                    # Hand the raw pre-VAD buffer to the background
+                                    # PANNs detector (non-blocking; never stalls draining).
+                                    submit_music_detection(process_config, transcription_state, audio_np, source.SAMPLE_RATE)
                                 except Exception as e:
                                     print(f"[WARNING] Audio level calculation failed: {e}")
 
                                 # Check if audio contains speech using VAD
                                 speech_detected = has_speech(accumulated_new_data, source.SAMPLE_RATE)
+
+                                # Optionally let confidently-detected music through to
+                                # transcription even when VAD would drop it.
+                                _std_cfg = process_config.get("speech_type_detection", {})
+                                if (not speech_detected
+                                        and _std_cfg.get("transcribe_detected_music", False)
+                                        and (transcription_state.get("music_prob") or 0.0)
+                                            > _std_cfg.get("music_prob_threshold", 0.5)):
+                                    speech_detected = True
 
                                 # Check if phrase is complete (silence after speech)
                                 phrase_complete = False
@@ -13524,8 +13807,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             segment_end = batch_end
                                             segment_confidence = sum(batch_confidences) / len(batch_confidences) if batch_confidences else None
                                             batch_no_speech_prob = max(batch_no_speech_probs) if batch_no_speech_probs else 0.0
-                                            _seg_audio_db = transcription_state.get('audio_db', -60)
-                                            segment_speech_type = classify_audio_type(batch_no_speech_prob, _seg_audio_db)
+                                            segment_speech_type = finalized_audio_type(process_config, transcription_state)
                                             transcription_state['audio_type'] = segment_speech_type
                                             # Prepend the fragment held from the previous capture so it
                                             # can complete its sentence
@@ -13695,9 +13977,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             if segment_text:  # Check again after overlap removal
                                                 sentences, remainder = split_into_sentences(segment_text)
                                                 MIN_WORDS = min_words_threshold
-                                                _phrase_nsp = (finalized_segment or {}).get('no_speech_prob', 0.0) or 0.0
-                                                _phrase_audio_db = transcription_state.get('audio_db', -60)
-                                                _phrase_speech_type = classify_audio_type(_phrase_nsp, _phrase_audio_db)
+                                                _phrase_speech_type = finalized_audio_type(process_config, transcription_state)
                                                 transcription_state['audio_type'] = _phrase_speech_type
                                                 _phrase_inserted_ids = []
                                                 with _db_lock:

@@ -22,3 +22,6 @@ icon.icns
 icon.png
 icon.iconset/
 .DS_Store
+
+# PANNs audio-tagger checkpoint (downloaded at runtime)
+panns_data/

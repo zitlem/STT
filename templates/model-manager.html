@@ -638,6 +638,20 @@
                             </div>
                         </div>
 
+                        <!-- Music / Speech Detection (PANNs) Section -->
+                        <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <h5 style="margin: 0; color: var(--success);">🎵 Music / Speech Detection (PANNs)</h5>
+                            </div>
+                            <div id="panns_status">
+                                <div class="model-item" style="border-left: 3px solid var(--success);">
+                                    <div class="model-info">
+                                        <div class="model-name" style="color: var(--text-secondary);">Checking PANNs status...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
 
                     <!-- Downloaded Models (separate tab) -->
@@ -1204,6 +1218,7 @@
             loadTranslationConfig(); // Load translation model config
             loadDiskSpace(); // Load disk space information
             loadSileroVADStatus(); // Load Silero VAD status
+            loadPANNsStatus(); // Load PANNs music/speech detector status
             loadTTSModels(); // Load TTS models
 
             // Check transcription status and poll periodically
@@ -2163,6 +2178,90 @@
                         </div>
                     </div>
                 `;
+            }
+        }
+
+        // Load PANNs (music/speech detector) status + download control
+        async function loadPANNsStatus() {
+            const statusEl = document.getElementById('panns_status');
+            try {
+                const response = await fetch('/api/models/panns-status');
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'Unknown error');
+
+                const ready = data.downloaded;
+                const installed = data.package_installed;
+                const statusText = ready ? '✅ Ready' : (installed ? '⬇️ Not downloaded' : '❌ Not installed');
+                const statusColor = ready ? 'var(--success)' : '#fc8181';
+                let action;
+                if (ready) {
+                    action = `<span style="font-size: 0.85em; color: ${statusColor};">${statusText}</span>`;
+                } else if (installed) {
+                    action = `<button class="model-btn download" onclick="downloadPANNsModel(this)">⬇️ Download (~312 MB)</button>`;
+                } else {
+                    action = `<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">pip install panns-inference</span>`;
+                }
+
+                statusEl.innerHTML = `
+                    <div class="model-item" style="border-left: 3px solid ${ready ? 'var(--success)' : '#fc8181'};">
+                        <div class="model-info">
+                            <div class="model-name" style="color: ${ready ? 'var(--success)' : '#fc8181'};">
+                                🎵 PANNs CNN14
+                                <span style="background: var(--success); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.7em; margin-left: 8px;">Music / Speech Detection</span>
+                            </div>
+                            <div class="model-details">Labels each segment as Speaking / Music / Quiet for reliable music handling</div>
+                            <div id="panns_dl_progress" class="model-details" style="margin-top: 4px; display: none;"></div>
+                        </div>
+                        <div class="model-actions">${action}</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading PANNs status:', error);
+                statusEl.innerHTML = `
+                    <div class="model-item" style="border-left: 3px solid #fc8181;">
+                        <div class="model-info">
+                            <div class="model-name" style="color: #fc8181;">Error checking PANNs status</div>
+                            <div class="model-details">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function downloadPANNsModel(btn) {
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Starting…';
+                const resp = await fetch('/api/models/panns/download', { method: 'POST' });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Download failed: ' + (data.error || 'Unknown error'));
+                    loadPANNsStatus();
+                    return;
+                }
+                // Poll the shared download tracker until the checkpoint is ready
+                const progEl = document.getElementById('panns_dl_progress');
+                if (progEl) progEl.style.display = 'block';
+                const poll = setInterval(async () => {
+                    try {
+                        const s = await fetch('/api/models/panns-status').then(r => r.json());
+                        if (s.downloaded) {
+                            clearInterval(poll);
+                            loadPANNsStatus();
+                            return;
+                        }
+                        const dl = await fetch('/api/models/download-status').then(r => r.json()).catch(() => null);
+                        const entry = dl && (dl.active_downloads || []).find(d => d.model === 'panns_cnn14');
+                        if (progEl && entry) {
+                            const pct = entry.percentage != null ? entry.percentage + '%' : Math.round((entry.downloaded || 0) / 1e6) + ' MB';
+                            progEl.textContent = `Downloading… ${pct}`;
+                            if (entry.status === 'failed') { clearInterval(poll); progEl.textContent = 'Download failed: ' + (entry.error || ''); loadPANNsStatus(); }
+                        }
+                    } catch (e) { /* keep polling */ }
+                }, 1500);
+            } catch (error) {
+                alert('Download error: ' + error.message);
+                loadPANNsStatus();
             }
         }
 

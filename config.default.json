@@ -442,7 +442,19 @@
     "music_threshold": 0.5,
     "_music_threshold_comment": "Whisper no_speech_prob above this value = non-speech audio (0.0-1.0)",
     "quiet_db_threshold": -40,
-    "_quiet_db_threshold_comment": "Audio level (dB) below this = Quiet; above = Music (when non-speech detected)"
+    "_quiet_db_threshold_comment": "Audio level (dB) below this = Quiet; above = Music (when non-speech detected)",
+    "method": "panns",
+    "_method_comment": "Detector: 'panns' (dedicated audio tagger, accurate) or 'whisper' (legacy no_speech_prob heuristic). Falls back to 'whisper' if panns-inference / checkpoint is unavailable.",
+    "music_prob_threshold": 0.5,
+    "_music_prob_threshold_comment": "PANNs music/singing probability (0.0-1.0) above which a segment is tagged Music. Lower = more sensitive to music.",
+    "smoothing_window": 4,
+    "_smoothing_window_comment": "Number of recent detections averaged to stop the label flip-flopping (1 = no smoothing).",
+    "device": "cpu",
+    "_device_comment": "Where to run the PANNs tagger: 'cpu' (default, spares GPU VRAM for Whisper) or 'cuda'.",
+    "checkpoint_path": "",
+    "_checkpoint_path_comment": "Optional path to the CNN14 checkpoint. Empty = default ~/.stt/panns_data/Cnn14_mAP=0.431.pth",
+    "transcribe_detected_music": false,
+    "_transcribe_detected_music_comment": "When true, audio PANNs is confident is music is sent to Whisper even if VAD would drop it (attempts lyrics). When false, music is only labelled, not transcribed."
   },
   "watchdog": {
     "update_channel": "stable",
