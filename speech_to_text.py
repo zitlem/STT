@@ -3304,17 +3304,30 @@ def cleanup_expired_sessions():
 def index():
     # Check if URL has any parameters
     if not request.args:
-        # No parameters provided, check for saved defaults
-        defaults = config.get("url_builder_defaults", {})
-        if defaults:
-            # Redirect to root with default parameters
+        # No parameters provided: redirect to the active URL-builder profile (if any)
+        profiles, active = get_url_builder_profiles()
+        params = next((p["params"] for p in profiles if p["name"] == active), None)
+        if params:
             from flask import redirect, url_for
-            return redirect(url_for('index', **defaults))
+            return redirect(url_for('index', **params))
 
     response = make_response(render_template("index.html"))
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     return response
+
+
+@app.route("/profile/<name>")
+def profile_view(name):
+    """Display the page using a named profile's settings, e.g. /profile/lower3rd.
+    Case-insensitive; unknown names fall back to the root view."""
+    from flask import redirect, url_for
+    profiles, _ = get_url_builder_profiles()
+    target = (name or "").strip().lower()
+    params = next((p["params"] for p in profiles if p["name"].strip().lower() == target), None)
+    if params is None:
+        return redirect("/")
+    return redirect(url_for("index", **params))
 
 
 @app.route("/favicon.ico")
@@ -4369,21 +4382,130 @@ def update_profanity_words():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/url-builder/defaults", methods=["POST"])
-def save_url_builder_defaults():
-    """API endpoint to save URL builder default settings"""
+def get_url_builder_profiles():
+    """Return (profiles, active) for the URL builder, migrating the legacy
+    single-blob `url_builder_defaults` into a named-profile list on first access.
+
+    profiles: list of {"name": str, "params": {url param dict}}
+    active:   name of the profile that drives the root "/" redirect ("" = none)
+    """
+    profiles = config.get("url_builder_profiles")
+    if profiles is None:
+        legacy = config.get("url_builder_defaults")
+        if legacy:
+            profiles = [{"name": "Default", "params": legacy}]
+            config["url_builder_active"] = "Default"
+        else:
+            profiles = []
+            config.setdefault("url_builder_active", "")
+        config["url_builder_profiles"] = profiles
+    return profiles, config.get("url_builder_active", "")
+
+
+@app.route("/api/url-builder/profiles", methods=["GET"])
+def get_url_builder_profiles_endpoint():
+    """List all saved URL builder profiles and which one is active (root)."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+
+    profiles, active = get_url_builder_profiles()
+    return jsonify({"success": True, "profiles": profiles, "active": active})
+
+
+@app.route("/api/url-builder/profiles", methods=["POST"])
+def save_url_builder_profile():
+    """Create or update (upsert by name) a URL builder profile."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     global config
     try:
-        data = request.get_json()
-        if "url_builder_defaults" not in config:
-            config["url_builder_defaults"] = {}
+        data = request.get_json() or {}
+        name = (data.get("name") or "").strip()
+        params = data.get("params") or {}
+        if not name:
+            return jsonify({"success": False, "error": "Profile name is required"}), 400
+        if not all(c.isalnum() or c in "-_" for c in name):
+            return jsonify({"success": False, "error": "Profile names can only use letters, numbers, - and _ (no spaces) for clean /profile URLs"}), 400
 
-        config["url_builder_defaults"] = data
+        profiles, _ = get_url_builder_profiles()
+        for p in profiles:
+            if p["name"] == name:
+                p["params"] = params
+                break
+        else:
+            profiles.append({"name": name, "params": params})
+
+        config["url_builder_profiles"] = profiles
         save_config(config)
+        return jsonify({"success": True, "profiles": profiles, "active": config.get("url_builder_active", "")})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
+
+@app.route("/api/url-builder/profiles/activate", methods=["POST"])
+def activate_url_builder_profile():
+    """Set which profile drives the root "/" redirect."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+
+    global config
+    try:
+        data = request.get_json() or {}
+        name = (data.get("name") or "").strip()
+        profiles, _ = get_url_builder_profiles()
+        if not any(p["name"] == name for p in profiles):
+            return jsonify({"success": False, "error": "Profile not found"}), 404
+
+        config["url_builder_active"] = name
+        save_config(config)
+        return jsonify({"success": True, "active": name})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/url-builder/profiles/<name>", methods=["DELETE"])
+def delete_url_builder_profile(name):
+    """Delete a profile by name; clears active if it was the root profile."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+
+    global config
+    try:
+        profiles, active = get_url_builder_profiles()
+        new_profiles = [p for p in profiles if p["name"] != name]
+        if len(new_profiles) == len(profiles):
+            return jsonify({"success": False, "error": "Profile not found"}), 404
+
+        config["url_builder_profiles"] = new_profiles
+        if active == name:
+            config["url_builder_active"] = ""
+        save_config(config)
+        return jsonify({"success": True, "profiles": new_profiles, "active": config.get("url_builder_active", "")})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# Backward-compat shims: map the old single-blob "defaults" API onto the active profile.
+@app.route("/api/url-builder/defaults", methods=["POST"])
+def save_url_builder_defaults():
+    """Legacy endpoint: upsert a 'Default' profile from the posted params and activate it."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+
+    global config
+    try:
+        data = request.get_json() or {}
+        profiles, _ = get_url_builder_profiles()
+        for p in profiles:
+            if p["name"] == "Default":
+                p["params"] = data
+                break
+        else:
+            profiles.append({"name": "Default", "params": data})
+        config["url_builder_profiles"] = profiles
+        config["url_builder_active"] = "Default"
+        save_config(config)
         return jsonify({"success": True, "message": "Default settings saved"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -4391,13 +4513,13 @@ def save_url_builder_defaults():
 
 @app.route("/api/url-builder/defaults", methods=["GET"])
 def get_url_builder_defaults():
-    """API endpoint to get URL builder default settings"""
+    """Legacy endpoint: return the active profile's params as the saved defaults."""
     if not check_ip_whitelist():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
-    global config
-    defaults = config.get("url_builder_defaults", {})
-    return jsonify({"success": True, "defaults": defaults})
+    profiles, active = get_url_builder_profiles()
+    params = next((p["params"] for p in profiles if p["name"] == active), {})
+    return jsonify({"success": True, "defaults": params})
 
 
 # File Transcription Settings Endpoints
