@@ -1144,7 +1144,26 @@
 
 
         async function resetConfig() {
-            if (!confirm('Reset ALL settings to defaults?\n\nThis will reset:\n* Model Configuration (Whisper small)\n* Energy Threshold (100)\n* Phrase Timeout (2s)\n* Active Window Duration (8s)\n* Confirmation Delay (2s)\n* Language (auto)\n* VAD settings (enabled, threshold 0.5)\n* Whisper Decoding (Beam Size 3, Temperature 0, etc.)\n* GPU setting (enabled)\n\nThis will save immediately and may require restarting transcription.')) {
+            // Build the warning from the currently-loaded config so the listed values
+            // can never drift from reality.
+            const c = currentConfig || {};
+            const audio = c.audio || {};
+            const vad = c.vad || {};
+            const dec = (c.whisper_decoding && c.whisper_decoding.live_transcription) || {};
+            const model = c.model?.whisper?.model ?? '(default)';
+            const gpuOn = (c.performance?.use_gpu) !== false;
+            const message =
+                'Reset ALL settings to defaults?\n\n' +
+                'This resets config.json to defaults. Your current values (shown) will be lost:\n' +
+                '* Model: Whisper ' + model + '\n' +
+                '* Energy Threshold: ' + (audio.energy_threshold ?? '(default)') + '\n' +
+                '* Phrase Timeout: ' + (audio.phrase_timeout ?? '(default)') + 's\n' +
+                '* Language: ' + (audio.language || 'auto') + '\n' +
+                '* VAD: ' + (vad.enabled !== false ? 'enabled' : 'disabled') + ', threshold ' + (vad.threshold ?? '(default)') + '\n' +
+                '* Whisper Decoding: beam size ' + (dec.beam_size ?? '(default)') + ', temperature ' + (dec.temperature ?? '(default)') + '\n' +
+                '* GPU: ' + (gpuOn ? 'enabled' : 'disabled') + '\n\n' +
+                'This will save immediately and may require restarting transcription.';
+            if (!confirm(message)) {
                 return;
             }
 
