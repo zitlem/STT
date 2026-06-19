@@ -707,16 +707,20 @@
                     <!-- Stats Bar -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                         <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
-                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">CURRENT</div>
-                            <div id="volume_current" style="color: var(--accent); font-size: 1.4em; font-weight: 700;">0</div>
-                        </div>
-                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
-                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">PEAK</div>
-                            <div id="volume_peak" style="color: #48bb78; font-size: 1.4em; font-weight: 700;">0</div>
+                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">CURRENT / PEAK</div>
+                            <div style="font-size: 1.4em; font-weight: 700;">
+                                <span id="volume_current" style="color: var(--accent);">0</span>
+                                <span style="color: #666;"> / </span>
+                                <span id="volume_peak" style="color: #48bb78;">0</span>
+                            </div>
                         </div>
                         <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
                             <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">TYPE</div>
                             <div id="volume_status" style="font-size: 0.9em; font-weight: 600; color: #999;">Waiting</div>
+                        </div>
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
+                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">RUNNING FOR</div>
+                            <div id="running_timer" style="color: var(--accent); font-size: 1.4em; font-weight: 700;">--:--</div>
                         </div>
                     </div>
 
@@ -1220,6 +1224,13 @@
                     // Update global transcription state for UI locks
                     transcriptionState.running = (state.status === 'running' || state.status === 'starting');
 
+                    // Anchor the running-for timer to the backend start time
+                    if (state.status === 'running' && state.start_time) {
+                        transcriptionStartTime = state.start_time;
+                    } else {
+                        transcriptionStartTime = null;
+                    }
+
                     // Handle different status states
                     if (state.status === 'running') {
                         statusIndicator.className = 'status-indicator running';
@@ -1441,6 +1452,7 @@
         let peakEnergy = 0;
         let peakHoldTime = 0;
         const PEAK_HOLD_DURATION = 2000; // Hold peak for 2 seconds
+        let transcriptionStartTime = null; // epoch seconds from backend; null when not running
 
         // Timeline data - store last 60 seconds (120 samples at 0.5s intervals)
         const timelineData = [];
@@ -1754,7 +1766,20 @@
             setInterval(updateStatus, 2000);
             setInterval(checkAudioDeviceStatus, 5000); // Check audio devices every 5 seconds
             setInterval(checkAndLockAudioDevice, 2000); // Check lock status
+            setInterval(updateRunningTimer, 1000); // Tick the running-for timer every second
         });
+
+        // Render how long transcription has been running (anchored to backend start_time)
+        function updateRunningTimer() {
+            const el = document.getElementById('running_timer');
+            if (!el) return;
+            if (!transcriptionStartTime) { el.textContent = '--:--'; return; }
+            let s = Math.max(0, Math.floor(Date.now() / 1000 - transcriptionStartTime));
+            const h = Math.floor(s / 3600); s %= 3600;
+            const m = Math.floor(s / 60); const sec = s % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+            el.textContent = h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+        }
 
         // Unsaved changes detection
         let unsavedChanges = false;
