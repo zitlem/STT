@@ -491,6 +491,40 @@
 
 {% block scripts %}
     <script>
+        // Single source of truth for every form field's default value.
+        // NOTE: the HTML value=/checked/selected attributes are the fresh-load
+        // fallback and must be kept in sync with these values.
+        const DEFAULTS = {
+            fontSize: '32',
+            bgColor: '#000000',
+            textColor: '#FFFFFF',
+            wordHighlightColor: '#ffff00',
+            alignment: 'left',
+            verticalAlign: 'bottom',
+            fontFamily: 'Arial',
+            fontWeight: '400',
+            lineHeight: '1.5',
+            paddingTop: '20', paddingBottom: '20', paddingLeft: '20', paddingRight: '20',
+            maxWidth: '100',
+            showMenu: true,
+            uppercase: false,
+            enableWordHighlight: true,
+            transparentBg: false,
+            enableWordColorOverride: false,
+            inProgressStyle: 'italic',
+            inProgressOpacity: '0.7',
+            maxLines: '0',
+            translationMode: 'transcribe',
+            translationLayout: 'stacked',   // full select value, incl. any _inverse suffix
+            hideInProgress: false,
+            hideTranslateInProgress: false,
+            dripSpeed: '140',
+            showAll: false,
+            hideMusicSegments: false,
+            audioStream: false,
+            ttsAudio: false,
+        };
+
         // Preset configurations
         function applyPreset(presetName) {
             const presets = {
@@ -546,39 +580,41 @@
 
         // Reset all settings to default values
         function resetToDefaults() {
-            // Reset all form fields to their original default values
-            document.getElementById('url_fontSize').value = 32;
-            document.getElementById('url_bgColor').value = '#000000';
-            document.getElementById('url_bgColor_text').value = '#000000';
-            document.getElementById('url_textColor').value = '#FFFFFF';
-            document.getElementById('url_textColor_text').value = '#FFFFFF';
-            document.getElementById('url_wordHighlightColor').value = '#ffff00';
-            document.getElementById('url_wordHighlightColor_text').value = '#ffff00';
-            document.getElementById('url_alignment').value = 'left';
-            document.getElementById('url_verticalAlign').value = 'bottom';
-            document.getElementById('url_fontFamily').value = 'Arial';
-            document.getElementById('url_fontWeight').value = '400';
-            document.getElementById('url_lineHeight').value = '1.5';
-            document.getElementById('url_paddingTop').value = '20';
-            document.getElementById('url_paddingBottom').value = '20';
-            document.getElementById('url_paddingLeft').value = '20';
-            document.getElementById('url_paddingRight').value = '20';
-            document.getElementById('url_maxWidth').value = '100';
-            document.getElementById('url_showMenu').checked = true;
-            document.getElementById('url_uppercase').checked = false;
-            document.getElementById('url_enableWordHighlight').checked = true;
-            document.getElementById('url_transparentBg').checked = false;
-            document.getElementById('url_enableWordColorOverride').checked = false;
-            document.getElementById('url_inProgressStyle').value = 'italic';
-            document.getElementById('url_inProgressOpacity').value = '0.7';
-            document.getElementById('url_maxLines').value = '0';
-            document.getElementById('url_translationMode').value = 'transcribe';
-            document.getElementById('url_translationLayout').value = 'stacked';
-            document.getElementById('url_hideInProgress').checked = false;
-            document.getElementById('url_hideTranslateInProgress').checked = false;
-            document.getElementById('url_dripSpeed').value = '140';
-            document.getElementById('url_showAll').checked = false;
-            document.getElementById('url_hideMusicSegments').checked = false;
+            // Reset all form fields to their original default values (from DEFAULTS)
+            document.getElementById('url_fontSize').value = DEFAULTS.fontSize;
+            document.getElementById('url_bgColor').value = DEFAULTS.bgColor;
+            document.getElementById('url_bgColor_text').value = DEFAULTS.bgColor;
+            document.getElementById('url_textColor').value = DEFAULTS.textColor;
+            document.getElementById('url_textColor_text').value = DEFAULTS.textColor;
+            document.getElementById('url_wordHighlightColor').value = DEFAULTS.wordHighlightColor;
+            document.getElementById('url_wordHighlightColor_text').value = DEFAULTS.wordHighlightColor;
+            document.getElementById('url_alignment').value = DEFAULTS.alignment;
+            document.getElementById('url_verticalAlign').value = DEFAULTS.verticalAlign;
+            document.getElementById('url_fontFamily').value = DEFAULTS.fontFamily;
+            document.getElementById('url_fontWeight').value = DEFAULTS.fontWeight;
+            document.getElementById('url_lineHeight').value = DEFAULTS.lineHeight;
+            document.getElementById('url_paddingTop').value = DEFAULTS.paddingTop;
+            document.getElementById('url_paddingBottom').value = DEFAULTS.paddingBottom;
+            document.getElementById('url_paddingLeft').value = DEFAULTS.paddingLeft;
+            document.getElementById('url_paddingRight').value = DEFAULTS.paddingRight;
+            document.getElementById('url_maxWidth').value = DEFAULTS.maxWidth;
+            document.getElementById('url_showMenu').checked = DEFAULTS.showMenu;
+            document.getElementById('url_uppercase').checked = DEFAULTS.uppercase;
+            document.getElementById('url_enableWordHighlight').checked = DEFAULTS.enableWordHighlight;
+            document.getElementById('url_transparentBg').checked = DEFAULTS.transparentBg;
+            document.getElementById('url_enableWordColorOverride').checked = DEFAULTS.enableWordColorOverride;
+            document.getElementById('url_inProgressStyle').value = DEFAULTS.inProgressStyle;
+            document.getElementById('url_inProgressOpacity').value = DEFAULTS.inProgressOpacity;
+            document.getElementById('url_maxLines').value = DEFAULTS.maxLines;
+            document.getElementById('url_translationMode').value = DEFAULTS.translationMode;
+            document.getElementById('url_translationLayout').value = DEFAULTS.translationLayout;
+            document.getElementById('url_hideInProgress').checked = DEFAULTS.hideInProgress;
+            document.getElementById('url_hideTranslateInProgress').checked = DEFAULTS.hideTranslateInProgress;
+            document.getElementById('url_dripSpeed').value = DEFAULTS.dripSpeed;
+            document.getElementById('url_showAll').checked = DEFAULTS.showAll;
+            document.getElementById('url_hideMusicSegments').checked = DEFAULTS.hideMusicSegments;
+            document.getElementById('url_audioStream').checked = DEFAULTS.audioStream;
+            document.getElementById('url_ttsAudio').checked = DEFAULTS.ttsAudio;
             toggleWordColorPicker();
             updateOpacityLabel();
 
@@ -645,7 +681,9 @@
             }
             params.append('textColor', textColor.replace('#', ''));
             params.append('alignment', alignment);
-            if (verticalAlign !== 'top') params.append('verticalAlign', verticalAlign);
+            // Always emit verticalAlign: the builder default (bottom) differs from the
+            // player's default (top, see index.html), so it must be explicit.
+            params.append('verticalAlign', verticalAlign);
             params.append('fontFamily', fontFamily);
             params.append('fontWeight', fontWeight);
             params.append('lineHeight', lineHeight);
@@ -660,8 +698,8 @@
             if (uppercase) params.append('uppercase', 'true');
             if (!enableWordHighlight) params.append('disableWordHighlight', 'true');
             if (transparentBg) params.append('transparentBg', 'true');
-            if (inProgressStyle !== 'italic') params.append('inProgressStyle', inProgressStyle);
-            if (inProgressOpacity !== '0.7') params.append('inProgressOpacity', inProgressOpacity);
+            if (inProgressStyle !== DEFAULTS.inProgressStyle) params.append('inProgressStyle', inProgressStyle);
+            if (inProgressOpacity !== DEFAULTS.inProgressOpacity) params.append('inProgressOpacity', inProgressOpacity);
 
             // Add word highlight color override if enabled
             const enableWordColorOverride = document.getElementById('url_enableWordColorOverride').checked;
@@ -683,10 +721,10 @@
             const isInverse = translationLayoutFull.endsWith('_inverse');
             const translationLayout = isInverse ? translationLayoutFull.replace('_inverse', '') : translationLayoutFull;
 
-            if (translationMode !== 'transcribe') {
+            if (translationMode !== DEFAULTS.translationMode) {
                 params.append('mode', translationMode);
             }
-            if (translationLayout !== 'stacked') {
+            if (translationLayout !== DEFAULTS.translationLayout) {
                 params.append('layout', translationLayout);
             }
             if (isInverse) {
@@ -699,7 +737,7 @@
                 params.append('hideTranslateInProgress', 'true');
             }
             const dripSpeed = parseInt(document.getElementById('url_dripSpeed').value) || 0;
-            if (dripSpeed !== 140) {
+            if (dripSpeed !== parseInt(DEFAULTS.dripSpeed)) {
                 params.append('dripSpeed', dripSpeed.toString());
             }
             if (document.getElementById('url_showAll').checked) {
@@ -854,54 +892,40 @@
                 });
         }
 
-        // Apply URL parameters to form
+        // Apply URL parameters to form. Any field absent from `params` falls back to
+        // its value in DEFAULTS, so a partial saved-defaults blob never leaves a field
+        // showing a stale value from a previous load.
         function applyParametersToForm(params) {
-            // Apply all parameters to form fields
-            if (params.fontSize) document.getElementById('url_fontSize').value = params.fontSize;
-            if (params.bgColor) {
-                document.getElementById('url_bgColor').value = '#' + params.bgColor;
-                document.getElementById('url_bgColor_text').value = '#' + params.bgColor;
-            }
-            if (params.textColor) {
-                document.getElementById('url_textColor').value = '#' + params.textColor;
-                document.getElementById('url_textColor_text').value = '#' + params.textColor;
-            }
-            if (params.alignment) document.getElementById('url_alignment').value = params.alignment;
-            if (params.verticalAlign) {
-                document.getElementById('url_verticalAlign').value = params.verticalAlign;
-            } else {
-                document.getElementById('url_verticalAlign').value = 'bottom';
-            }
-            if (params.fontFamily) document.getElementById('url_fontFamily').value = params.fontFamily;
-            if (params.fontWeight) document.getElementById('url_fontWeight').value = params.fontWeight;
-            if (params.lineHeight) document.getElementById('url_lineHeight').value = params.lineHeight;
-            // Handle padding - support both old single value and new individual values
-            const paddingDefault = params.padding || '20';
-            document.getElementById('url_paddingTop').value = params.paddingTop || paddingDefault;
-            document.getElementById('url_paddingBottom').value = params.paddingBottom || paddingDefault;
-            document.getElementById('url_paddingLeft').value = params.paddingLeft || paddingDefault;
-            document.getElementById('url_paddingRight').value = params.paddingRight || paddingDefault;
-            if (params.maxWidth) document.getElementById('url_maxWidth').value = params.maxWidth;
+            // Colors are stored without the leading '#' in params; DEFAULTS keeps it.
+            const bgColor = params.bgColor ? '#' + params.bgColor : DEFAULTS.bgColor;
+            document.getElementById('url_bgColor').value = bgColor;
+            document.getElementById('url_bgColor_text').value = bgColor;
+            const textColor = params.textColor ? '#' + params.textColor : DEFAULTS.textColor;
+            document.getElementById('url_textColor').value = textColor;
+            document.getElementById('url_textColor_text').value = textColor;
 
-            // Apply checkboxes
+            document.getElementById('url_fontSize').value = params.fontSize ?? DEFAULTS.fontSize;
+            document.getElementById('url_alignment').value = params.alignment ?? DEFAULTS.alignment;
+            document.getElementById('url_verticalAlign').value = params.verticalAlign ?? DEFAULTS.verticalAlign;
+            document.getElementById('url_fontFamily').value = params.fontFamily ?? DEFAULTS.fontFamily;
+            document.getElementById('url_fontWeight').value = params.fontWeight ?? DEFAULTS.fontWeight;
+            document.getElementById('url_lineHeight').value = params.lineHeight ?? DEFAULTS.lineHeight;
+            // Padding - support both old single value and new individual values
+            const paddingDefault = params.padding ?? DEFAULTS.paddingTop;
+            document.getElementById('url_paddingTop').value = params.paddingTop ?? paddingDefault;
+            document.getElementById('url_paddingBottom').value = params.paddingBottom ?? paddingDefault;
+            document.getElementById('url_paddingLeft').value = params.paddingLeft ?? paddingDefault;
+            document.getElementById('url_paddingRight').value = params.paddingRight ?? paddingDefault;
+            document.getElementById('url_maxWidth').value = params.maxWidth ?? DEFAULTS.maxWidth;
+
+            // Apply checkboxes (string params parsed to booleans; defaults match DEFAULTS)
             document.getElementById('url_showMenu').checked = params.showMenu !== 'false';
             document.getElementById('url_uppercase').checked = params.uppercase === 'true';
             document.getElementById('url_enableWordHighlight').checked = params.disableWordHighlight !== 'true';
             document.getElementById('url_transparentBg').checked = params.transparentBg === 'true';
 
-            // Apply in-progress style
-            if (params.inProgressStyle) {
-                document.getElementById('url_inProgressStyle').value = params.inProgressStyle;
-            } else {
-                document.getElementById('url_inProgressStyle').value = 'italic';
-            }
-
-            // Apply in-progress opacity
-            if (params.inProgressOpacity) {
-                document.getElementById('url_inProgressOpacity').value = params.inProgressOpacity;
-            } else {
-                document.getElementById('url_inProgressOpacity').value = '0.7';
-            }
+            document.getElementById('url_inProgressStyle').value = params.inProgressStyle ?? DEFAULTS.inProgressStyle;
+            document.getElementById('url_inProgressOpacity').value = params.inProgressOpacity ?? DEFAULTS.inProgressOpacity;
             updateOpacityLabel();
 
             // Apply word highlight color override
@@ -915,19 +939,10 @@
                 toggleWordColorPicker();
             }
 
-            // Apply maxLines (caption mode)
-            if (params.maxLines) {
-                document.getElementById('url_maxLines').value = params.maxLines;
-            } else {
-                document.getElementById('url_maxLines').value = '0';
-            }
+            document.getElementById('url_maxLines').value = params.maxLines ?? DEFAULTS.maxLines;
 
             // Apply translation display parameters
-            if (params.mode) {
-                document.getElementById('url_translationMode').value = params.mode;
-            } else {
-                document.getElementById('url_translationMode').value = 'transcribe';
-            }
+            document.getElementById('url_translationMode').value = params.mode ?? DEFAULTS.translationMode;
             // Reconstruct full layout value from layout + inverse params
             let layoutValue = params.layout || 'stacked';
             if (params.inverse === 'true') {
@@ -936,11 +951,11 @@
             document.getElementById('url_translationLayout').value = layoutValue;
             document.getElementById('url_hideInProgress').checked = params.hideInProgress === 'true';
             document.getElementById('url_hideTranslateInProgress').checked = params.hideTranslateInProgress === 'true';
-            if (params.dripSpeed && params.dripSpeed !== '80') {
-                document.getElementById('url_dripSpeed').value = params.dripSpeed;
-            }
+            document.getElementById('url_dripSpeed').value = params.dripSpeed ?? DEFAULTS.dripSpeed;
             document.getElementById('url_showAll').checked = params.showAll === 'true';
             document.getElementById('url_hideMusicSegments').checked = params.hideMusicSegments === 'true';
+            document.getElementById('url_audioStream').checked = params.audioStream === 'true';
+            document.getElementById('url_ttsAudio').checked = params.ttsAudio === 'true';
 
             // Update URL with loaded defaults
             updateCustomURL();
