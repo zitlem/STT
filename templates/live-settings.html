@@ -522,6 +522,68 @@
                     </div>
                 </div>
 
+                <!-- Music / Speech Detection (PANNs) -->
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--border);">
+                    <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
+                        Music / Speech Detection
+                    </label>
+                    <small style="color: #999; font-size: 0.75em; display: block; margin-bottom: 12px;">
+                        Uses a dedicated audio model (PANNs) to label each segment as Speaking / Music / Quiet. Runs before VAD, so it works without disabling VAD.
+                    </small>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="std_enabled" checked>
+                    <label for="std_enabled">Enable PANNs music detection</label>
+                </div>
+                <div id="panns_not_downloaded_warning" style="display: none; margin-top: 8px; padding: 10px; background: rgba(245, 101, 101, 0.15); border: 1px solid #f56565; border-radius: 6px;">
+                    <span style="color: #fc8181; font-size: 0.85em;">
+                        <strong>PANNs model not downloaded.</strong>
+                        <a href="/model-manager" style="color: #63b3ed; text-decoration: underline;">Download it from the Model Manager</a> to enable music detection. Until then, detection falls back to the basic Whisper heuristic.
+                    </span>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <label for="music_prob_threshold">Music Sensitivity</label>
+                        <span class="slider-value"><span id="musicProbValue">0.5</span></span>
+                    </div>
+                    <input type="range" id="music_prob_threshold" min="0.1" max="0.9" value="0.5" step="0.05" oninput="document.getElementById('musicProbValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            Music/singing probability above which a segment is tagged Music.
+                            <strong>Lower</strong> = more eager to call audio music; <strong>higher</strong> = stricter.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <label for="smoothing_window">Detection Smoothing</label>
+                        <span class="slider-value"><span id="smoothingValue">4</span></span>
+                    </div>
+                    <input type="range" id="smoothing_window" min="1" max="10" value="4" step="1" oninput="document.getElementById('smoothingValue').textContent = this.value">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
+                        <span style="color: var(--text-primary); font-size: 0.75em;">
+                            How many recent detections to average. Higher = steadier label (less choppy), slower to react.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <label for="panns_device">PANNs Device</label>
+                    </div>
+                    <select id="panns_device" style="width: 100%; padding: 8px; border-radius: 4px; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border);">
+                        <option value="cpu">CPU (recommended — spares GPU VRAM)</option>
+                        <option value="cuda">GPU (CUDA)</option>
+                    </select>
+                </div>
+
+                <div class="checkbox-group" style="margin-top: 8px;">
+                    <input type="checkbox" id="transcribe_detected_music">
+                    <label for="transcribe_detected_music">Transcribe detected music (attempt lyrics even if VAD would skip it)</label>
+                </div>
+
                 <!-- Advanced Whisper Decoding -->
                 <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--border);">
                     <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
@@ -805,6 +867,32 @@
             }
         }
 
+        // Check if the PANNs checkpoint is downloaded
+        async function checkPANNsModelStatus() {
+            try {
+                const response = await fetch('/api/models/panns-status');
+                const data = await response.json();
+                return data.success && data.downloaded;
+            } catch (error) {
+                console.error('Error checking PANNs status:', error);
+                return false;
+            }
+        }
+
+        // Update PANNs detection controls based on model status
+        async function updatePANNsAvailability() {
+            const available = await checkPANNsModelStatus();
+            const ids = ['std_enabled', 'music_prob_threshold', 'smoothing_window', 'panns_device', 'transcribe_detected_music'];
+            const warningEl = document.getElementById('panns_not_downloaded_warning');
+            ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !available; });
+            if (!available) {
+                document.getElementById('std_enabled').checked = false;
+                warningEl.style.display = 'block';
+            } else {
+                warningEl.style.display = 'none';
+            }
+        }
+
         // Load settings from server
         async function loadSettings() {
             try {
@@ -850,6 +938,16 @@
             document.getElementById('vad_threshold').value = config.vad?.threshold || 0.5;
             document.getElementById('vadValue').textContent = config.vad?.threshold || 0.5;
             document.getElementById('use_gpu').checked = config.performance?.use_gpu !== false;
+
+            // Music / speech detection (PANNs)
+            const std = config.speech_type_detection || {};
+            document.getElementById('std_enabled').checked = (std.method || 'panns') === 'panns';
+            document.getElementById('music_prob_threshold').value = std.music_prob_threshold ?? 0.5;
+            document.getElementById('musicProbValue').textContent = std.music_prob_threshold ?? 0.5;
+            document.getElementById('smoothing_window').value = std.smoothing_window ?? 4;
+            document.getElementById('smoothingValue').textContent = std.smoothing_window ?? 4;
+            document.getElementById('panns_device').value = std.device || 'cpu';
+            document.getElementById('transcribe_detected_music').checked = std.transcribe_detected_music === true;
 
             // Load Whisper decoding parameters
             const whisperDecoding = config.whisper_decoding?.live_transcription || {};
@@ -1020,6 +1118,13 @@
                     vad: {
                         enabled: document.getElementById('vad_enabled').checked,
                         threshold: parseFloat(document.getElementById('vad_threshold').value)
+                    },
+                    speech_type_detection: {
+                        method: document.getElementById('std_enabled').checked ? 'panns' : 'whisper',
+                        music_prob_threshold: parseFloat(document.getElementById('music_prob_threshold').value),
+                        smoothing_window: parseInt(document.getElementById('smoothing_window').value),
+                        device: document.getElementById('panns_device').value,
+                        transcribe_detected_music: document.getElementById('transcribe_detected_music').checked
                     },
                     performance: {
                         use_gpu: document.getElementById('use_gpu').checked
@@ -1327,6 +1432,9 @@
 
         socket.on('audio_level', (data) => {
             audioLevelCount++;
+
+            // Live TYPE from pre-VAD detection (shows Music even when not transcribing)
+            if (data.audio_type !== undefined) updateAudioType(data.audio_type);
 
             // Detect frozen audio level (same energy for too long)
             if (Math.abs(data.energy - lastAudioEnergy) < 1) {
@@ -1755,6 +1863,7 @@
         window.addEventListener('load', async () => {
             await loadSettings();          // must complete first — sets window.savedAudioDevice
             updateVADAvailability();
+            updatePANNsAvailability();
             loadModelStatus();
             await loadLiveModelConfig();   // already calls loadAvailableFasterWhisperModels internally
             loadAudioDevices().then(() => { // runs after savedAudioDevice is set
