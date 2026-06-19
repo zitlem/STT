@@ -3861,7 +3861,11 @@ def update_config():
         # across reboots (USB vs onboard/GPU HDA enumeration order is not stable).
         try:
             new_mic = new_config.get("audio", {}).get("default_microphone")
-            if new_mic:
+            if new_mic and os.path.isfile(new_mic):
+                # A "Test Audio File" selection is a file path, not hardware. Clear the
+                # stale stable-name so it doesn't keep resolving to a real device.
+                config.setdefault("audio", {})["default_microphone_name"] = ""
+            elif new_mic:
                 from audio_capture import list_audio_devices
                 markers = config.get("audio", {}).get("deprioritize_device_markers", [])
                 devices = list_audio_devices(deprioritize_markers=markers)
@@ -12686,32 +12690,40 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     source = None
                     from audio_capture import create_compatible_audio_source
 
-                    # Resolve saved stable device name (e.g. "UR22mkII") against the CURRENT
-                    # ALSA enumeration first, since plughw:N,0 indices are not stable across
-                    # reboots (USB vs onboard/GPU HDA cards can enumerate in either order).
-                    resolved_device = None
-                    saved_mic_name = audio_config.get("default_microphone_name", "")
-                    if saved_mic_name:
-                        try:
-                            from audio_capture import list_audio_devices, FFmpegAudioCapture
-                            markers = audio_config.get("deprioritize_device_markers", [])
-                            current_devices = list_audio_devices(deprioritize_markers=markers)
-                            matched = FFmpegAudioCapture.resolve_device_by_name(saved_mic_name, current_devices)
-                            if matched:
-                                resolved_device = matched["name"]
-                                print(f"[AUDIO] Resolved saved device name '{saved_mic_name}' -> '{resolved_device}'")
-                            else:
-                                print(f"[AUDIO] WARNING: Saved device name '{saved_mic_name}' not found in current devices; falling back")
-                        except Exception as e:
-                            print(f"[AUDIO] WARNING: Device name resolution failed: {e}")
+                    # A configured file path wins: when default_microphone points at an
+                    # existing file (a "Test Audio File" selection), drive the pipeline from
+                    # that file only. No mic fallback, so a bad/missing file errors visibly
+                    # instead of silently reverting to hardware capture.
+                    if args.default_microphone and os.path.isfile(args.default_microphone):
+                        print(f"[AUDIO] File playback mode: {args.default_microphone}")
+                        audio_devices_to_try = [args.default_microphone]
+                    else:
+                        # Resolve saved stable device name (e.g. "UR22mkII") against the CURRENT
+                        # ALSA enumeration first, since plughw:N,0 indices are not stable across
+                        # reboots (USB vs onboard/GPU HDA cards can enumerate in either order).
+                        resolved_device = None
+                        saved_mic_name = audio_config.get("default_microphone_name", "")
+                        if saved_mic_name:
+                            try:
+                                from audio_capture import list_audio_devices, FFmpegAudioCapture
+                                markers = audio_config.get("deprioritize_device_markers", [])
+                                current_devices = list_audio_devices(deprioritize_markers=markers)
+                                matched = FFmpegAudioCapture.resolve_device_by_name(saved_mic_name, current_devices)
+                                if matched:
+                                    resolved_device = matched["name"]
+                                    print(f"[AUDIO] Resolved saved device name '{saved_mic_name}' -> '{resolved_device}'")
+                                else:
+                                    print(f"[AUDIO] WARNING: Saved device name '{saved_mic_name}' not found in current devices; falling back")
+                            except Exception as e:
+                                print(f"[AUDIO] WARNING: Device name resolution failed: {e}")
 
-                    # Try multiple audio devices in order of preference
-                    audio_devices_to_try = [
-                        resolved_device,           # Name-resolved device (correct card, current index)
-                        args.default_microphone,  # Configured device (e.g., plughw:1,0)
-                        "default",                 # System default
-                        "plughw:0,0"              # First hardware device
-                    ]
+                        # Try multiple audio devices in order of preference
+                        audio_devices_to_try = [
+                            resolved_device,           # Name-resolved device (correct card, current index)
+                            args.default_microphone,  # Configured device (e.g., plughw:1,0)
+                            "default",                 # System default
+                            "plughw:0,0"              # First hardware device
+                        ]
 
                     last_error = None
                     for device in audio_devices_to_try:
