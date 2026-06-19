@@ -289,7 +289,7 @@
                     <select id="url_verticalAlign" oninput="updateCustomURL()">
                         <option value="top">Top</option>
                         <option value="middle">Middle</option>
-                        <option value="bottom">Bottom</option>
+                        <option value="bottom" selected>Bottom</option>
                     </select>
                 </div>
 
@@ -555,7 +555,7 @@
             document.getElementById('url_wordHighlightColor').value = '#ffff00';
             document.getElementById('url_wordHighlightColor_text').value = '#ffff00';
             document.getElementById('url_alignment').value = 'left';
-            document.getElementById('url_verticalAlign').value = 'top';
+            document.getElementById('url_verticalAlign').value = 'bottom';
             document.getElementById('url_fontFamily').value = 'Arial';
             document.getElementById('url_fontWeight').value = '400';
             document.getElementById('url_lineHeight').value = '1.5';
@@ -870,7 +870,7 @@
             if (params.verticalAlign) {
                 document.getElementById('url_verticalAlign').value = params.verticalAlign;
             } else {
-                document.getElementById('url_verticalAlign').value = 'top';
+                document.getElementById('url_verticalAlign').value = 'bottom';
             }
             if (params.fontFamily) document.getElementById('url_fontFamily').value = params.fontFamily;
             if (params.fontWeight) document.getElementById('url_fontWeight').value = params.fontWeight;
