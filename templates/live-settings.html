@@ -853,8 +853,8 @@
 
             // Load Whisper decoding parameters
             const whisperDecoding = config.whisper_decoding?.live_transcription || {};
-            document.getElementById('beam_size').value = whisperDecoding.beam_size || 1;
-            document.getElementById('beamSizeValue').textContent = whisperDecoding.beam_size || 1;
+            document.getElementById('beam_size').value = whisperDecoding.beam_size || 3;
+            document.getElementById('beamSizeValue').textContent = whisperDecoding.beam_size || 3;
             document.getElementById('temperature').value = whisperDecoding.temperature || 0.0;
             document.getElementById('temperatureValue').textContent = whisperDecoding.temperature || 0.0;
             document.getElementById('compression_ratio').value = whisperDecoding.compression_ratio_threshold || 1.8;
