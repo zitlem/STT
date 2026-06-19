@@ -4077,7 +4077,7 @@ def calibration_results():
             "success": True,
             "current_settings": {
                 "energy_threshold": config.get("audio", {}).get("energy_threshold", 3500),
-                "phrase_timeout": config.get("audio", {}).get("phrase_timeout", 2.5),
+                "phrase_timeout": config.get("audio", {}).get("phrase_timeout", 2),
                 "active_window_duration": config.get("audio", {}).get("active_window_duration", 5.0),
                 "confirmation_delay": config.get("audio", {}).get("confirmation_delay", 1.5),
                 "stride_length": config.get("audio", {}).get("stride_length", 2.0),
@@ -11440,7 +11440,7 @@ def emit_translated_entries():
             # Check if corrections features are enabled for translation confidence
             corrections_cfg = config.get("corrections", {})
             want_confidence = corrections_cfg.get("enabled", True) and corrections_cfg.get("confidence_highlighting", True)
-            n_alternatives = corrections_cfg.get("n_best_alternatives", {}).get("translation_count", 0) if corrections_cfg.get("enabled", True) else 0
+            n_alternatives = corrections_cfg.get("n_best_alternatives", {}).get("translation_count", 3) if corrections_cfg.get("enabled", True) else 0
 
             context_window = max(1, min(10, int(trans_config.get("context_window", 1) or 1)))
 
