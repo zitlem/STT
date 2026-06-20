@@ -2544,6 +2544,12 @@ def initialize_database():
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added speech_type column)")
 
+            if "denied" not in columns:
+                print("[DB] Migrating database: adding denied column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN denied INTEGER DEFAULT 0")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added denied column)")
+
             # Insert a blank first entry with default values
             default_timestamp = " "
             default_text = " "
@@ -7872,7 +7878,7 @@ def get_review_queue():
             cursor.execute(
                 """SELECT id, timestamp, text, COALESCE(start_time, 0), COALESCE(end_time, 0), confidence
                    FROM transcriptions
-                   WHERE needs_review = 1
+                   WHERE needs_review = 1 AND COALESCE(denied, 0) = 0
                    ORDER BY id DESC
                    LIMIT 50"""
             )
@@ -11106,7 +11112,13 @@ def handle_request_all_entries():
     """Send all historical transcription entries to the requesting client only"""
     entries = get_new_entries(limit_override=0)  # 0 = no limit
     segments = [
-        {"id": e[0], "timestamp": e[1], "text": e[2], "start": e[3], "end": e[4], "completed": True}
+        {
+            "id": e[0], "timestamp": e[1], "text": e[2], "start": e[3], "end": e[4],
+            "completed": True,
+            "needs_review": bool(e[6]) if len(e) > 6 and e[6] is not None else False,
+            "speech_type": e[9] if len(e) > 9 else None,
+            "denied": bool(e[10]) if len(e) > 10 and e[10] is not None else False,
+        }
         for e in entries
     ]
     emit("transcription_update", {
@@ -11165,7 +11177,8 @@ def handle_request_all_translation_entries():
             "translated_text": translated_text,
             "start": entry[3],
             "end": entry[4],
-            "completed": True
+            "completed": True,
+            "denied": bool(entry[10]) if len(entry) > 10 and entry[10] is not None else False,
         })
 
     emit("translation_update", {
@@ -11486,6 +11499,44 @@ def handle_discard_staged(data):
         print(f"[STAGING] Discard failed: {e}")
 
 
+@socketio.on("set_segment_denied")
+def handle_set_segment_denied(data):
+    """Toggle the 'denied' flag on one or more segments.
+
+    Denied segments are hidden from the output display (index.html filters them
+    client-side) but kept in the DB and still shown — struck-through — on the
+    corrections page so they can be restored. Broadcasts the new state to every
+    connected client so open displays update live without a reload.
+    """
+    if not data:
+        return
+
+    segment_ids = data.get("segment_ids", [])
+    if not segment_ids:
+        return
+    denied_val = 1 if data.get("denied", True) else 0
+
+    current_db_name = transcription_state.get("db_name")
+    if not current_db_name or not os.path.exists(current_db_name):
+        return
+
+    try:
+        with sqlite3.connect(current_db_name) as conn:
+            placeholders = ",".join("?" for _ in segment_ids)
+            conn.execute(
+                f"UPDATE transcriptions SET denied = ? WHERE id IN ({placeholders})",
+                [denied_val, *segment_ids],
+            )
+            conn.commit()
+
+        _invalidate_entries_cache()
+
+        # Broadcast to all clients (no room) so open index/corrections pages react live
+        socketio.emit("segment_denied", {"segment_ids": segment_ids, "denied": bool(denied_val)})
+    except Exception as e:
+        print(f"[DENY] set_segment_denied failed: {e}")
+
+
 def get_new_entries(limit_override=None):
     """Get recent transcriptions with caching and efficient querying
 
@@ -11530,7 +11581,7 @@ def get_new_entries(limit_override=None):
                 cursor.execute(
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                           confidence, needs_review, translated_text, translation_language, speech_type
+                           confidence, needs_review, translated_text, translation_language, speech_type, COALESCE(denied, 0)
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
                     ORDER BY id ASC
@@ -11541,9 +11592,9 @@ def get_new_entries(limit_override=None):
                 # Use subquery to get last N entries by id DESC, then re-order ASC for display
                 cursor.execute(
                     """
-                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type FROM (
+                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied FROM (
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                               confidence, needs_review, translated_text, translation_language, speech_type
+                               confidence, needs_review, translated_text, translation_language, speech_type, COALESCE(denied, 0) as denied
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
                         ORDER BY id DESC
@@ -11589,7 +11640,7 @@ def emit_new_entries():
 
 
         # Convert entries to segment format with temporal data
-        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type)
+        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied)
         segments = []
         for entry in entries:
             seg = {
@@ -11606,6 +11657,8 @@ def emit_new_entries():
                 seg["needs_review"] = bool(entry[6]) if entry[6] is not None else False
             if len(entry) > 9:
                 seg["speech_type"] = entry[9]
+            if len(entry) > 10:
+                seg["denied"] = bool(entry[10]) if entry[10] is not None else False
             segments.append(seg)
 
         # Build in-progress segment if there's text
@@ -12018,6 +12071,15 @@ def emit_translated_entries():
                         "end": transcription_state.get("live_end", 0),
                         "completed": False
                     }
+
+            # Tag denied state per segment (so the output can hide denied rows and the
+            # corrections page can show them struck-through). Built from the DB rows above.
+            _denied_by_id = {
+                e[0]: (bool(e[10]) if len(e) > 10 and e[10] is not None else False)
+                for e in entries
+            }
+            for _seg in translated_segments:
+                _seg["denied"] = _denied_by_id.get(_seg["id"], False)
 
             # Emit translation update
             socketio.emit("translation_update", {
