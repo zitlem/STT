@@ -7572,9 +7572,13 @@ def start_transcription():
         )
         transcription_state["error"] = None  # Clear any previous errors
 
-        # Tell remote Machine B to preload its translation model
-        remote_cfg = config.get("live_translation", {}).get("remote", {})
-        if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
+        # Warm up the translation model so the first translated segment doesn't
+        # pay the load cost. Remote setups preload on Machine B; otherwise, for a
+        # local seq2seq model (not Whisper-based translation), preload here.
+        trans_cfg = config.get("live_translation", {})
+        remote_cfg = trans_cfg.get("remote", {})
+        remote_active = bool(remote_cfg.get("enabled") and remote_cfg.get("endpoint"))
+        if remote_active:
             def _notify_remote_preload():
                 try:
                     ep = _get_remote_endpoint()
@@ -7587,6 +7591,19 @@ def start_transcription():
                     print(f"[START] Remote translation preload failed: {e}")
             import threading
             threading.Thread(target=_notify_remote_preload, daemon=True).start()
+        elif trans_cfg.get("enabled") and trans_cfg.get("translation_method", "nllb") not in (
+            "whisper_translate", "whisper_forced_lang"
+        ):
+            def _preload_local_translation():
+                try:
+                    use_gpu = trans_cfg.get("use_gpu", True)
+                    model_id = trans_cfg.get("translation_model")
+                    get_live_translation_model(use_gpu, model_id=model_id)
+                    print("[START] Local translation model preloaded")
+                except Exception as e:
+                    print(f"[START] Local translation preload failed: {e}")
+            import threading
+            threading.Thread(target=_preload_local_translation, daemon=True).start()
 
         return jsonify(
             {
