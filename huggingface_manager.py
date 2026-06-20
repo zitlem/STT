@@ -25,7 +25,7 @@ class HuggingFaceManager:
         if not self.token:
             raise ValueError("No Hugging Face token provided. Use --token or run `huggingface-cli login`")
 
-        print(f"✓ Logged in to Hugging Face")
+        print("✓ Logged in to Hugging Face")
         return self.token
     
     def download_model(self, model_id, local_dir=None, cache_dir=None):

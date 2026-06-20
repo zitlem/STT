@@ -65,7 +65,7 @@ class FFmpegAudioCapture:
             print(f"[DEBUG-TS-INIT] Backup dir: {self.backup_dir}", flush=True)
             print(f"[DEBUG-TS-INIT] Filename format: {self.filename_format}, prefix: '{self.filename_prefix}'", flush=True)
         else:
-            print(f"[DEBUG-TS-INIT] .ts backup DISABLED", flush=True)
+            print("[DEBUG-TS-INIT] .ts backup DISABLED", flush=True)
 
     def flush_buffer(self):
         """Signal capture thread to flush any remaining buffered audio data.
@@ -428,7 +428,7 @@ class FFmpegAudioCapture:
         Args:
             callback: Optional callback function. If None, uses queue mode (set data_queue first)
         """
-        print(f"[DEBUG-TS-START] Starting audio capture", flush=True)
+        print("[DEBUG-TS-START] Starting audio capture", flush=True)
         print(f"[DEBUG-TS-START] Device: {self.device_name}, Sample rate: {self.sample_rate}", flush=True)
 
         # Reset file count for new session
@@ -451,7 +451,7 @@ class FFmpegAudioCapture:
         self.thread = threading.Thread(target=self._capture_loop, args=(callback if callback else lambda x: None,))
         self.thread.start()
 
-        print(f"[DEBUG-TS-START] Capture thread started", flush=True)
+        print("[DEBUG-TS-START] Capture thread started", flush=True)
 
         # Log the backup file location
         if self.backup_file:
@@ -459,7 +459,7 @@ class FFmpegAudioCapture:
 
     def stop(self):
         """Stop capturing audio"""
-        print(f"[DEBUG-TS-STOP] Stopping audio capture", flush=True)
+        print("[DEBUG-TS-STOP] Stopping audio capture", flush=True)
         if self.backup_file:
             if os.path.exists(self.backup_file):
                 size = os.path.getsize(self.backup_file)
@@ -477,20 +477,20 @@ class FFmpegAudioCapture:
                 self.process.terminate()
                 try:
                     self.process.wait(timeout=2)
-                    print(f"[DEBUG-TS-STOP] ffmpeg process terminated gracefully", flush=True)
+                    print("[DEBUG-TS-STOP] ffmpeg process terminated gracefully", flush=True)
                 except subprocess.TimeoutExpired:
-                    print(f"[DEBUG-TS-STOP] ffmpeg not responding, sending SIGKILL", flush=True)
+                    print("[DEBUG-TS-STOP] ffmpeg not responding, sending SIGKILL", flush=True)
                     self.process.kill()
                     try:
                         self.process.wait(timeout=2)
-                        print(f"[DEBUG-TS-STOP] ffmpeg process killed", flush=True)
+                        print("[DEBUG-TS-STOP] ffmpeg process killed", flush=True)
                     except subprocess.TimeoutExpired:
                         # Last resort: use os.kill with SIGKILL
                         print(f"[DEBUG-TS-STOP] Force killing via os.kill({pid}, 9)", flush=True)
                         try:
                             os.kill(pid, 9)  # SIGKILL
                         except ProcessLookupError:
-                            print(f"[DEBUG-TS-STOP] Process already dead", flush=True)
+                            print("[DEBUG-TS-STOP] Process already dead", flush=True)
                         except Exception as e:
                             print(f"[DEBUG-TS-STOP] os.kill failed: {e}", flush=True)
             except Exception as e:
@@ -502,9 +502,9 @@ class FFmpegAudioCapture:
         if self.thread:
             self.thread.join(timeout=3)
             if self.thread.is_alive():
-                print(f"[DEBUG-TS-STOP] WARNING: Capture thread still alive after join timeout", flush=True)
+                print("[DEBUG-TS-STOP] WARNING: Capture thread still alive after join timeout", flush=True)
 
-        print(f"[DEBUG-TS-STOP] Audio capture stopped", flush=True)
+        print("[DEBUG-TS-STOP] Audio capture stopped", flush=True)
         if self._ts_file_count > 1:
             print(f"[DEBUG-TS-SPLIT] *** SESSION HAD {self._ts_file_count} BACKUP FILES (recording was split {self._ts_file_count - 1} time(s)) ***", flush=True)
 
@@ -540,7 +540,6 @@ class FFmpegAudioCapture:
                             if match:
                                 card_num = match.group(1).strip()
                                 card_id = match.group(2).strip()
-                                card_type = match.group(3).strip()
                                 card_desc = match.group(4).strip()
 
                                 # Use card description as the display name
@@ -557,8 +556,22 @@ class FFmpegAudioCapture:
                                     'index': len(devices),
                                     'display_name': display_name,
                                     'card_id': card_id,
-                                    'is_default': (len(devices) == 0) and not is_deprioritized
+                                    'is_deprioritized': is_deprioritized,
+                                    'is_default': False,
                                 })
+
+                        # Pick the default after enumerating all cards: prefer the
+                        # first non-deprioritized device, else fall back to the
+                        # first device. (Selecting in-loop left no default when the
+                        # first card was deprioritized.)
+                        if devices:
+                            default_dev = next(
+                                (d for d in devices if not d['is_deprioritized']),
+                                devices[0],
+                            )
+                            default_dev['is_default'] = True
+                        for d in devices:
+                            d.pop('is_deprioritized', None)
                     except Exception as e:
                         print(f"[FFMPEG] Error reading /proc/asound/cards: {e}")
 
@@ -566,7 +579,7 @@ class FFmpegAudioCapture:
                 if not devices:
                     try:
                         cmd = ['arecord', '-L']
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
                         for line in result.stdout.split('\n'):
                             line = line.strip()
                             if line and not line.startswith(' '):
@@ -602,7 +615,7 @@ class FFmpegAudioCapture:
             elif sys.platform == 'darwin':
                 # List macOS devices
                 cmd = ['ffmpeg', '-f', 'avfoundation', '-list_devices', 'true', '-i', '']
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
                 # Parse ffmpeg output for audio devices
                 # Each audio device line looks like:
                 #   [AVFoundation indev @ 0x...] [0] Built-in Microphone
@@ -639,7 +652,7 @@ class FFmpegAudioCapture:
             elif sys.platform.startswith('win'):
                 # List Windows devices
                 cmd = ['ffmpeg', '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy']
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
                 devices = []
                 for line in result.stderr.split('\n'):
                     if '"' in line and 'audio' in line.lower():

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # SMB/CIFS direct access (no mounting required)
 try:
     from smbclient import register_session, open_file, mkdir, remove as smb_remove
-    from smbclient.path import exists as smb_exists, isdir as smb_isdir
+    from smbclient.path import exists as smb_exists
     SMB_AVAILABLE = True
 except ImportError:
     SMB_AVAILABLE = False
@@ -128,7 +128,7 @@ def mount_smb_share(smb_path, username, password, domain=''):
             # same exposure), and unlike /proc on Linux it's only visible to
             # administrators.
             cmd = ['net', 'use', smb_path, f'/user:{user_str}', password]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
 
             if result.returncode == 0 or 'already in use' in result.stdout.lower():
                 logger.info(f"SMB share mounted successfully: {smb_path}")
@@ -183,7 +183,7 @@ def mount_smb_share(smb_path, username, password, domain=''):
                     cmd.extend(['-o', f'credentials={creds_file}'])
 
                 # Try to mount
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
             finally:
                 if creds_file:
                     try:
@@ -490,7 +490,7 @@ def execute_file_move(config_getter):
         base_dirs = get_base_directories_from_patterns(patterns, working_dir)
 
         # Test destination accessibility
-        print(f"[EXECUTE] Testing destination accessibility...", flush=True)
+        print("[EXECUTE] Testing destination accessibility...", flush=True)
         if not test_destination_accessible(dest_path, username, password, domain):
             return {
                 'success': False,
@@ -500,7 +500,7 @@ def execute_file_move(config_getter):
                 'message': f'Destination not accessible: {dest_path}'
             }
 
-        print(f"[EXECUTE] Destination accessible", flush=True)
+        print("[EXECUTE] Destination accessible", flush=True)
 
         # Find files to move
         files_to_move = find_files_to_move(patterns, working_dir)
