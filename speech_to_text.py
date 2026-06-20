@@ -69,8 +69,7 @@ import shutil
 import statistics
 from pathlib import Path
 from datetime import timedelta, datetime
-from queue import Queue
-from tempfile import NamedTemporaryFile
+from queue import Queue, Empty, Full
 from time import sleep
 import time
 from sys import platform
@@ -189,12 +188,39 @@ FILE_TRANSCRIPTION_PARAMS = {
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 CONFIG_TEMPLATE_FILE = os.path.join(BUNDLE_DIR, "config.default.json")
 
+# Serializes all writers to config.json so concurrent endpoint saves cannot
+# interleave and corrupt the file.
+_config_file_lock = threading.Lock()
+
+
+def _atomic_write_json(path, data, *, ensure_ascii=True):
+    """Write JSON to ``path`` atomically.
+
+    Dumps to a temp file in the same directory, flushes+fsyncs it, then
+    os.replace()s it into place. os.replace is atomic on POSIX and Windows, so
+    a crash or concurrent reader never sees a truncated/half-written file.
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=ensure_ascii)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
 
 def save_config(config_to_save):
-    """Save configuration to config.json with error handling"""
+    """Save configuration to config.json atomically with error handling."""
     try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config_to_save, f, indent=2)
+        with _config_file_lock:
+            _atomic_write_json(CONFIG_FILE, config_to_save)
         print(f"[OK] Configuration saved to '{CONFIG_FILE}'")
         return True
     except Exception as e:
@@ -220,8 +246,7 @@ def load_word_highlighting():
 def save_word_highlighting(data):
     """Save word highlighting configuration to separate file"""
     try:
-        with open(WORD_HIGHLIGHTING_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        _atomic_write_json(WORD_HIGHLIGHTING_FILE, data, ensure_ascii=False)
         return True
     except Exception as e:
         print(f"[ERROR] Failed to save word highlighting config: {e}")
@@ -314,8 +339,8 @@ def load_config():
     # Save migrated config
     if migrated:
         try:
-            with open(CONFIG_FILE, "w") as f:
-                json.dump(config, f, indent=2)
+            with _config_file_lock:
+                _atomic_write_json(CONFIG_FILE, config)
             print("[MIGRATION] Config file updated and saved")
         except Exception as e:
             print(f"[MIGRATION] Warning: Could not save migrated config: {e}")
@@ -2635,7 +2660,7 @@ def extract_audio_from_file(file_path):
                 os.unlink(temp_wav.name)
             except OSError:
                 pass
-        raise Exception(f"Failed to extract audio: {str(e)}")
+        raise Exception(f"Failed to extract audio: {str(e)}") from e
 
 
 def format_transcription(segments, format_type):
@@ -3882,8 +3907,8 @@ def update_config():
             app_logger.warning(f"Could not derive stable microphone name: {e}")
 
         # Write to config file
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2)
+        with _config_file_lock:
+            _atomic_write_json(CONFIG_FILE, config)
 
         # Send config update through queue for hot-reload
         try:
@@ -6216,8 +6241,8 @@ def file_transcription_settings_endpoint():
 
             # Save config to file
             try:
-                with open(CONFIG_FILE, "w") as f:
-                    json.dump(config, f, indent=2)
+                with _config_file_lock:
+                    _atomic_write_json(CONFIG_FILE, config)
                 print(
                     "[OK] File transcription settings updated and saved to config.json"
                 )
@@ -10650,7 +10675,9 @@ def silero_vad_status():
 
     try:
         # Check if silero-vad pip package is installed
-        from silero_vad import load_silero_vad
+        import importlib.util
+        if importlib.util.find_spec("silero_vad") is None:
+            raise ImportError("silero_vad not installed")
         return jsonify({
             "success": True,
             "downloaded": True,
@@ -12134,8 +12161,10 @@ def emit_audio_stream():
         try:
             data = audio_stream_queue.get(timeout=0.5)
             socketio.emit("audio_chunk", data, room="audio_stream")
-        except Exception:
-            pass  # Queue.Empty on timeout or other errors
+        except Empty:
+            pass  # No audio queued within the timeout window
+        except Exception as e:
+            print(f"[AUDIO-STREAM] emit error: {e}", flush=True)
 
 
 _tts_last_spoken_id = 0
@@ -12530,8 +12559,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                 command = None
                 try:
                     command = control_queue.get_nowait()
-                except Exception:
-                    pass
+                except Empty:
+                    pass  # No pending control command
                 if command is not None:
                     if command["command"] == "start" and not is_running:
                         is_running = True
@@ -13285,12 +13314,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             print(f"[WARNING] Failed to save audio backup: {e}")
                             return None
 
-                    # Use in-memory temp file instead of disk I/O for better performance
-                    temp_file = NamedTemporaryFile(delete=False).name
-                    transcription = [""]
-                    current_phrase_db_id = (
-                        None  # Track current phrase's database row ID
-                    )
+                    # Scratch path for per-chunk audio. Use mkstemp + close so we
+                    # don't leak the open file descriptor that NamedTemporaryFile
+                    # would keep alive.
+                    _temp_fd, temp_file = tempfile.mkstemp(suffix=".wav")
+                    os.close(_temp_fd)
 
                     # ffmpeg backend doesn't need ambient noise adjustment
                     print(
@@ -13639,7 +13667,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             if transcription_state.get("audio_stream_enabled", False):
                                                 try:
                                                     audio_stream_queue.put_nowait(data)
-                                                except Exception:
+                                                except Full:
                                                     pass  # Queue full, drop chunk to prevent lag
 
                                             # Add audio to WhisperLive transcriber buffer (replaces old dual-buffer approach)
@@ -13871,7 +13899,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         batch_start = None
                                         batch_end = 0
                                         batch_confidences = []
-                                        batch_no_speech_probs = []
                                         for segment in result['completed_segments']:
                                             segment_text = segment.get('text', '').strip()
                                             # Compute average word confidence for this segment
@@ -13880,9 +13907,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 probs = [w.get('probability') for w in word_confidences if w.get('probability') is not None]
                                                 if probs:
                                                     batch_confidences.append(sum(probs) / len(probs))
-                                            nsp = segment.get('no_speech_prob')
-                                            if nsp is not None:
-                                                batch_no_speech_probs.append(nsp)
                                             if not segment_text:
                                                 continue
                                             # Remove overlapping prefix from previous saved text
@@ -13904,7 +13928,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             segment_start = batch_start if batch_start is not None else 0
                                             segment_end = batch_end
                                             segment_confidence = sum(batch_confidences) / len(batch_confidences) if batch_confidences else None
-                                            batch_no_speech_prob = max(batch_no_speech_probs) if batch_no_speech_probs else 0.0
                                             segment_speech_type = finalized_audio_type(process_config, transcription_state)
                                             transcription_state['audio_type'] = segment_speech_type
                                             # Prepend the fragment held from the previous capture so it
@@ -13992,8 +14015,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         if rem_word_count >= MIN_WORDS and not rem_is_dup:
                                                             needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review) VALUES (?, ?, ?, ?, ?, ?)",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             saved_sentences.append(remainder)
@@ -14203,10 +14226,6 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     # Fix WAV header for session audio file (update file size in header)
                     if session_audio_file and session_audio_written:
                         try:
-
-                            # Get current file size
-                            file_size = os.path.getsize(session_audio_file)
-
                             # Read all data
                             with open(session_audio_file, "rb") as f:
                                 data = f.read()
