@@ -8,6 +8,8 @@ Real-time speech transcription platform with a modern web interface, powered by 
 - **File transcription** - Upload and transcribe audio/video files in batch
 - **Translation** - Real-time translation to 200+ languages using Facebook NLLB-200
 - **Text-to-Speech** - Edge-TTS (cloud) and Piper-TTS (local) with auto voice switching per language
+- **Music/speech detection** - PANNs-based classification that runs off-thread and is hot-reloadable
+- **Display profiles** - Named, recallable output layouts served at `/profile/<name>`
 - **Corrections workflow** - Edit transcriptions with a review queue and approval system
 - **Word highlighting** - Mark and emphasize specific words or phrases in transcriptions
 - **Custom glossary** - Domain-specific term mapping for improved accuracy
@@ -106,6 +108,7 @@ Run once at startup via Task Scheduler:
 | `/server-settings` | Network, database, backup configuration |
 | `/model-manager` | Download and manage AI models |
 | `/file-manager` | File browser and SMB/NAS settings |
+| `/profile/<name>` | Named display profile output layout |
 
 ## Documentation
 
