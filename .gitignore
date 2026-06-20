@@ -22,6 +22,7 @@ icon.icns
 icon.png
 icon.iconset/
 .DS_Store
+CLAUDE-FABLE-*.md
 
 # PANNs audio-tagger checkpoint (downloaded at runtime)
 panns_data/
