@@ -540,6 +540,24 @@
           }
         });
 
+        // Handle deny/restore toggle — hide (or re-show) the segment's text in the output.
+        // Broadcast from the corrections page; updates every connected display live.
+        socket.on("segment_denied", function (data) {
+          const ids = (data && data.segment_ids) || [];
+          const denied = !!(data && data.denied);
+          ids.forEach(function (id) {
+            const a = allSegments.find(s => s.id === id);
+            if (a) a.denied = denied;
+            const t = allTranslatedSegments.find(s => s.id === id);
+            if (t) t.denied = denied;
+          });
+          // Instant transcription refresh; force a clean rebuild of both views on the
+          // next periodic update (re-grabs element refs, avoids stale nodes).
+          if (typeof forceHighlightRerender === 'function') forceHighlightRerender();
+          _transcriptionStructureBuilt = false; _lastFinalizedHTML = ''; lastSegmentCount = -1;
+          _translationStructureBuilt = false; _lastTranslationFinalizedHTML = ''; lastTranslatedSegmentCount = -1;
+        });
+
       });
     </script>
 
@@ -1206,9 +1224,8 @@
          const tableBody = $("#transcription-table-body");
 
          // Build display text from existing segments
-         const _rerenderSegs = window.displayConfig?.hideMusicSegments
-           ? allSegments.filter(s => s.speech_type !== 'Music')
-           : allSegments;
+         const _rerenderSegs = allSegments.filter(s =>
+           !s.denied && (!window.displayConfig?.hideMusicSegments || s.speech_type !== 'Music'));
          let displayText = _rerenderSegs.map(s => s.text).join(' ');
          let inProgressHTML = '';
 
@@ -1430,12 +1447,20 @@
                  start: parseFloat(seg.start) || 0,
                  end: parseFloat(seg.end) || 0,
                  speech_type: seg.speech_type || null,
+                 denied: !!seg.denied,
                });
                segmentsChanged = true;
-             } else if (allSegments[existingIdx].text !== seg.text) {
-               // Update text if it changed (e.g., after correction)
-               allSegments[existingIdx].text = seg.text;
-               segmentsChanged = true;
+             } else {
+               if (allSegments[existingIdx].text !== seg.text) {
+                 // Update text if it changed (e.g., after correction)
+                 allSegments[existingIdx].text = seg.text;
+                 segmentsChanged = true;
+               }
+               if (seg.denied !== undefined && allSegments[existingIdx].denied !== !!seg.denied) {
+                 // Deny/restore toggled — re-render so the text is hidden/shown
+                 allSegments[existingIdx].denied = !!seg.denied;
+                 segmentsChanged = true;
+               }
              }
            }
          });
@@ -1470,9 +1495,8 @@
 
          // Update finalized text only when segments changed
          if (segmentsChanged || !_lastFinalizedHTML) {
-           const _visibleSegs = window.displayConfig?.hideMusicSegments
-             ? allSegments.filter(s => s.speech_type !== 'Music')
-             : allSegments;
+           const _visibleSegs = allSegments.filter(s =>
+             !s.denied && (!window.displayConfig?.hideMusicSegments || s.speech_type !== 'Music'));
            const fullText = _visibleSegs.map(s => s.text).join(' ');
            const highlightedText = applyWordHighlighting(fullText);
            if (highlightedText !== _lastFinalizedHTML) {
@@ -1608,14 +1632,19 @@
                original_text: seg.original_text,
                translated_text: seg.translated_text,
                start: parseFloat(seg.start) || 0,
-               end: parseFloat(seg.end) || 0
+               end: parseFloat(seg.end) || 0,
+               denied: !!seg.denied
              });
              segmentsChanged = true;
            } else {
-             // Update existing segment if translation changed
+             // Update existing segment if translation or denied state changed
              const existingIdx = allTranslatedSegments.findIndex(s => s.id === seg.id);
              if (existingIdx >= 0 && allTranslatedSegments[existingIdx].translated_text !== seg.translated_text) {
                allTranslatedSegments[existingIdx].translated_text = seg.translated_text;
+               segmentsChanged = true;
+             }
+             if (existingIdx >= 0 && seg.denied !== undefined && allTranslatedSegments[existingIdx].denied !== !!seg.denied) {
+               allTranslatedSegments[existingIdx].denied = !!seg.denied;
                segmentsChanged = true;
              }
            }
@@ -1660,7 +1689,7 @@
 
            // Update finalized text only when segments changed
            if (segmentsChanged || !_lastTranslationFinalizedHTML) {
-             const fullText = allTranslatedSegments.map(s => s.translated_text).join(' ');
+             const fullText = allTranslatedSegments.filter(s => !s.denied).map(s => s.translated_text).join(' ');
              const highlightedText = applyWordHighlighting(fullText);
              if (highlightedText !== _lastTranslationFinalizedHTML) {
                const prevHTML = _lastTranslationFinalizedHTML;

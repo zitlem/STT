@@ -47,6 +47,20 @@
         background: rgba(255,165,0,0.03);
         opacity: 0.8;
       }
+      /* Denied segments stay visible here (struck-through) so they can be restored,
+         but are hidden from the live output display. */
+      .seg-card.denied { opacity: 0.45; border-left: 3px solid var(--danger); }
+      .seg-card.denied .seg-original,
+      .seg-card.denied .seg-translated { text-decoration: line-through; }
+
+      /* Per-card actions row (Deny / Restore on finalized segments) */
+      .seg-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+      .seg-actions .seg-btn {
+        font-size: 0.73em; padding: 2px 10px; border: 1px solid #444;
+        border-radius: 4px; cursor: pointer; background: var(--bg-base); color: var(--text-primary);
+      }
+      .seg-actions .seg-btn.deny { color: var(--danger); border-color: var(--danger); }
+      .seg-actions .seg-btn.restore { color: var(--success); border-color: var(--success); }
 
       /* Original text row */
       .seg-original {
@@ -148,6 +162,22 @@
       }
       .review-item .rv-actions .btn-approve { color: var(--success); border-color: var(--success); }
       .review-item .rv-actions .btn-edit { color: #8ab4f8; border-color: #8ab4f8; }
+      .review-item .rv-actions .btn-deny { color: var(--danger); border-color: var(--danger); }
+
+      /* Jump-to-latest pill (shown when auto-scroll is paused) */
+      #jump-latest-btn {
+        position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+        z-index: 50; display: none; align-items: center; gap: 6px;
+        padding: 6px 16px; border: 1px solid orange; border-radius: 18px;
+        background: var(--bg-card); color: orange; cursor: pointer;
+        font-size: 0.82em; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      }
+      #jump-latest-btn:hover { background: rgba(255,165,0,0.12); }
+      #jump-latest-count {
+        background: orange; color: #000; border-radius: 10px;
+        padding: 0 7px; font-weight: 600; font-size: 0.9em;
+      }
+      #jump-latest-count:empty { display: none; }
 
       /* Shortcuts bar */
       .shortcuts-hint {
@@ -175,6 +205,11 @@
         </div>
         <div id="segments-container"></div>
     </div>
+
+    <!-- Appears when the user scrolls up (auto-scroll paused) -->
+    <button id="jump-latest-btn" onclick="jumpToLatest()" style="display:none;">
+        <span id="jump-latest-count"></span> Jump to latest &#9660;
+    </button>
 
     <!-- Review queue bottom bar -->
     <div class="review-bar collapsed" id="review-bar">
@@ -216,6 +251,8 @@
         let editingOrigId = null;
         let editingTransId = null;
         let reviewSegments = [];
+        let autoScroll = true;        // stick to bottom; paused when user scrolls up
+        let pendingNew = 0;           // new segments arrived while paused (for the pill badge)
 
         // === Socket: Transcription ===
         socket.on("transcription_update", function(data) {
@@ -229,12 +266,14 @@
             let changed = false;
             segs.forEach(s => {
                 if (!segments[s.id]) {
-                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null };
+                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null, denied: !!s.denied };
                     changed = true;
+                    if (!autoScroll) pendingNew++;  // arrived while user is reading above
                 } else {
                     if (segments[s.id].text !== s.text) { segments[s.id].text = s.text; changed = true; }
                     if (s.confidence != null) segments[s.id].confidence = s.confidence;
                     if (s.speech_type != null) segments[s.id].speech_type = s.speech_type;
+                    if (s.denied !== undefined && segments[s.id].denied !== !!s.denied) { segments[s.id].denied = !!s.denied; changed = true; }
                 }
             });
             segOrder = Object.keys(segments).map(Number).sort((a, b) => a - b);
@@ -340,6 +379,7 @@
 
                 let cardCls = 'seg-card';
                 if (s.confidence != null && s.confidence < confidenceThreshold) cardCls += ' low-confidence';
+                if (s.denied) cardCls += ' denied';
 
                 let confHtml = '';
                 if (s.confidence != null) {
@@ -373,9 +413,13 @@
                     metaHtml = `<div class="seg-meta">${confHtml}${altsHtml}</div>`;
                 }
 
+                const denyHtml = s.denied
+                    ? `<div class="seg-actions"><button class="seg-btn restore" onclick="toggleDenied(${id}, false)">Restore</button></div>`
+                    : `<div class="seg-actions"><button class="seg-btn deny" onclick="toggleDenied(${id}, true)">Deny</button></div>`;
+
                 html += `<div class="${cardCls}" data-seg-id="${id}">` +
                     `<div class="seg-original" data-seg-id="${id}">${esc(s.text)}</div>` +
-                    transHtml + metaHtml +
+                    transHtml + metaHtml + denyHtml +
                     `</div>`;
             });
 
@@ -416,9 +460,13 @@
 
             container.innerHTML = html;
 
-            // Auto-scroll
+            // Auto-scroll — only when the user is parked at the bottom. While paused
+            // (scrolled up to read/edit), leave the viewport alone and surface a pill.
             const main = document.getElementById('main-scroll');
-            main.scrollTop = main.scrollHeight;
+            if (autoScroll) {
+                main.scrollTop = main.scrollHeight;
+            }
+            updateJumpBtn();
         }
 
         function esc(t) { const d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
@@ -522,6 +570,52 @@
         window.approveStaged = function(id) { socket.emit('approve_staged', { staging_id: id }); };
         window.discardStaged = function(id) { socket.emit('discard_staged', { staging_id: id }); };
 
+        // === Auto-scroll pause/resume ===
+        // Pause auto-scroll when the user scrolls up; resume once they return to the
+        // bottom. A pill offers a one-click jump back to the latest.
+        const mainScrollEl = document.getElementById('main-scroll');
+        mainScrollEl.addEventListener('scroll', function() {
+            const atBottom = mainScrollEl.scrollHeight - mainScrollEl.scrollTop - mainScrollEl.clientHeight < 40;
+            if (atBottom && !autoScroll) pendingNew = 0;  // caught up
+            autoScroll = atBottom;
+            updateJumpBtn();
+        });
+        function updateJumpBtn() {
+            const btn = document.getElementById('jump-latest-btn');
+            if (!btn) return;
+            const countEl = document.getElementById('jump-latest-count');
+            if (countEl) countEl.textContent = pendingNew > 0 ? pendingNew : '';
+            btn.style.display = autoScroll ? 'none' : 'flex';
+        }
+        window.jumpToLatest = function() {
+            autoScroll = true;
+            pendingNew = 0;
+            const main = document.getElementById('main-scroll');
+            main.scrollTop = main.scrollHeight;
+            updateJumpBtn();
+        };
+
+        // === Deny / Restore (toggle) ===
+        window.toggleDenied = function(id, denied) {
+            socket.emit('set_segment_denied', { segment_ids: [id], denied: denied });
+            // Optimistic local update so the initiating page reacts instantly
+            if (segments[id]) segments[id].denied = denied;
+            if (denied) reviewSegments = reviewSegments.filter(s => s.id !== id);
+            render();
+            renderReview();
+        };
+
+        socket.on("segment_denied", function(d) {
+            const ids = (d && d.segment_ids) || [];
+            const denied = !!(d && d.denied);
+            ids.forEach(id => {
+                if (segments[id]) segments[id].denied = denied;
+                if (denied) reviewSegments = reviewSegments.filter(s => s.id !== id);
+            });
+            render();
+            renderReview();
+        });
+
         // === Review queue ===
         function loadReview() {
             fetch('/api/transcription/review-queue')
@@ -546,6 +640,7 @@
                     <div class="rv-actions">
                         <button class="btn-edit" onclick="editRv(${s.id})">Edit</button>
                         <button class="btn-approve" onclick="approveRv([${s.id}])">Approve</button>
+                        <button class="btn-deny" onclick="toggleDenied(${s.id}, true)">Deny</button>
                     </div>
                 </div>
             `).join('');
