@@ -250,7 +250,7 @@ def load_config():
     if not os.path.exists(CONFIG_FILE):
         if _restore_config_from_template("create config.json"):
             print(f"[OK] Created '{CONFIG_FILE}' from config.default.json")
-            print(f"[NOTE] Edit this file to configure your settings.")
+            print("[NOTE] Edit this file to configure your settings.")
         else:
             raise FileNotFoundError(
                 f"Neither '{CONFIG_FILE}' nor template '{CONFIG_TEMPLATE_FILE}' exist; cannot start."
@@ -777,7 +777,7 @@ def get_live_translation_model(use_gpu=True, model_id=None):
         # Don't load model if transcription is actively stopping (to prevent GPU memory leak)
         status = transcription_state.get("status", "")
         if _live_translation_model is None and status == "stopping":
-            print(f"[LIVE-TRANSLATION] Skipping model load - transcription is stopping")
+            print("[LIVE-TRANSLATION] Skipping model load - transcription is stopping")
             return None, None
 
         # If model_id changed, unload the stale model so it reloads with the correct one
@@ -2735,7 +2735,7 @@ def convert_db_to_srt(db_path):
             entries = cursor.fetchall()
 
         if not entries:
-            print(f"[SRT] No valid entries found in database")
+            print("[SRT] No valid entries found in database")
             return None
 
         # Parse timestamps and calculate durations
@@ -2773,7 +2773,7 @@ def convert_db_to_srt(db_path):
                 continue
 
         if not segments:
-            print(f"[SRT] No valid segments after parsing")
+            print("[SRT] No valid segments after parsing")
             return None
 
         # Format as SRT using existing function
@@ -2979,7 +2979,7 @@ def convert_db_to_html(db_path):
             entries = cursor.fetchall()
 
         if not entries:
-            print(f"[HTML] No valid entries found in database")
+            print("[HTML] No valid entries found in database")
             return None
 
         # Parse timestamps and build segments
@@ -3014,7 +3014,7 @@ def convert_db_to_html(db_path):
                 continue
 
         if not segments_html:
-            print(f"[HTML] No valid segments after parsing")
+            print("[HTML] No valid segments after parsing")
             return None
 
         # Get the date for the title
@@ -5315,7 +5315,7 @@ def translate_preload():
     def _preload():
         print(f"[PRELOAD] Loading translation model for remote client {client_ip}...")
         get_live_translation_model(use_gpu, model_id)
-        print(f"[PRELOAD] Translation model loaded and ready")
+        print("[PRELOAD] Translation model loaded and ready")
 
     import threading
     threading.Thread(target=_preload, daemon=True).start()
@@ -6219,7 +6219,7 @@ def file_transcription_settings_endpoint():
                 with open(CONFIG_FILE, "w") as f:
                     json.dump(config, f, indent=2)
                 print(
-                    f"[OK] File transcription settings updated and saved to config.json"
+                    "[OK] File transcription settings updated and saved to config.json"
                 )
             except Exception as e:
                 print(f"[WARNING] Failed to save config to file: {e}")
@@ -7648,7 +7648,7 @@ def stop_transcription():
                     f.write(msg + "\n")
                     f.flush()
 
-            log(f"[STOP-CLEANUP] Thread started")
+            log("[STOP-CLEANUP] Thread started")
 
             time.sleep(2)  # Wait for graceful shutdown of transcription loop
 
@@ -8855,10 +8855,10 @@ def download_model():
                         for chunk in iter(lambda: f.read(8192), b""):
                             sha256_hash.update(chunk)
                     if sha256_hash.hexdigest() == expected_sha256:
-                        print(f"[OK] Existing file checksum matches")
+                        print("[OK] Existing file checksum matches")
                         model_path = download_target
                     else:
-                        print(f"[WARN] Existing file checksum mismatch, re-downloading")
+                        print("[WARN] Existing file checksum mismatch, re-downloading")
                         os.remove(download_target)
                         model_path = None
                 else:
@@ -8902,7 +8902,7 @@ def download_model():
                         )
 
                     model_path = download_target
-                    print(f"[OK] Download complete, checksum verified")
+                    print("[OK] Download complete, checksum verified")
 
                 message = f"Whisper {model_name} model downloaded to {model_path}"
 
@@ -10787,9 +10787,9 @@ def download_translation_model():
             dl_logger.addHandler(file_handler)
 
             start_time = time.time()
-            dl_logger.info(f"=" * 60)
+            dl_logger.info("=" * 60)
             dl_logger.info(f"Starting download of {model_id}")
-            dl_logger.info(f"=" * 60)
+            dl_logger.info("=" * 60)
 
             try:
                 models_dir = MODELS_DIR
@@ -10954,10 +10954,10 @@ def download_translation_model():
                                     model_bin = os.path.join(model_path, "pytorch_model.bin")
                                     model_safetensors = os.path.join(model_path, "model.safetensors")
                                     if not os.path.exists(model_bin) and not os.path.exists(model_safetensors):
-                                        dl_logger.info(f"Copying incomplete file to pytorch_model.bin")
+                                        dl_logger.info("Copying incomplete file to pytorch_model.bin")
                                         import shutil
                                         shutil.copy2(incomplete_path, model_bin)
-                                        dl_logger.info(f"Copy completed")
+                                        dl_logger.info("Copy completed")
                     # Clean up cache
                     dl_logger.info("Cleaning up cache directory")
                     import shutil
@@ -10971,7 +10971,7 @@ def download_translation_model():
 
                 total_elapsed = time.time() - start_time
                 dl_logger.info(f"Download complete! Total time: {total_elapsed:.1f} seconds")
-                dl_logger.info(f"=" * 60)
+                dl_logger.info("=" * 60)
 
                 nllb_download_progress = {"status": "complete", "progress": 100, "message": "Download complete!"}
                 finish_download(model_id)
@@ -11274,23 +11274,22 @@ def handle_mark_reviewed(data):
     if not segment_ids:
         return
 
-    current_db_name = transcription_state.get("db_name")
-    if not current_db_name or not os.path.exists(current_db_name):
-        return
-
     try:
-        with sqlite3.connect(current_db_name) as conn:
-            cursor = conn.cursor()
-            placeholders = ",".join("?" for _ in segment_ids)
-            cursor.execute(
-                f"UPDATE transcriptions SET needs_review = 0 WHERE id IN ({placeholders})",
-                segment_ids,
-            )
-            conn.commit()
+        with _db_lock:
+            conn = _open_db_writer()
+            if conn is None:
+                return
+            try:
+                placeholders = ",".join("?" for _ in segment_ids)
+                conn.execute(
+                    f"UPDATE transcriptions SET needs_review = 0 WHERE id IN ({placeholders})",
+                    segment_ids,
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
-        with _cache_lock:
-            _db_cache["last_entries"] = []
-            _db_cache["last_fetch_time"] = 0
+        _invalidate_entries_cache()
 
     except Exception as e:
         print(f"[MARK REVIEWED SOCKET ERROR] {e}")
@@ -11420,6 +11419,23 @@ def _invalidate_entries_cache():
         _db_cache["last_fetch_time"] = 0
 
 
+def _open_db_writer():
+    """Open a short-lived writer connection to the active session database.
+
+    The caller MUST hold ``_db_lock`` so these UI-triggered writes serialize
+    against the transcription thread's persistent-connection writes instead of
+    racing them. A long ``busy_timeout`` is also set as defense-in-depth so a
+    concurrent writer waits rather than failing immediately with
+    "database is locked". Returns ``None`` if there is no active DB.
+    """
+    current_db_name = transcription_state.get("db_name")
+    if not current_db_name or not os.path.exists(current_db_name):
+        return None
+    conn = sqlite3.connect(current_db_name, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
 @socketio.on("toggle_delay")
 def handle_toggle_delay(data):
     """Toggle the output delay on/off"""
@@ -11447,20 +11463,23 @@ def handle_set_delay_seconds(data):
 def _backdate_staged_rows(seg_id=None):
     """Publish staged row(s) immediately by backdating their timestamp past
     the delay window. seg_id None = all rows still inside the window."""
-    current_db_name = transcription_state.get("db_name")
-    if not current_db_name or not os.path.exists(current_db_name):
-        return
     delay_seconds = config.get("corrections", {}).get("output_delay", {}).get("delay_seconds", 7)
     # Match the emit-time age check, which compares against datetime.now()
     backdated = (datetime.now() - timedelta(seconds=delay_seconds + 1)).strftime("%Y-%m-%d %H:%M:%S")
     try:
-        with sqlite3.connect(current_db_name) as conn:
-            if seg_id is not None:
-                conn.execute("UPDATE transcriptions SET timestamp = ? WHERE id = ?", (backdated, int(seg_id)))
-            else:
-                cutoff = (datetime.now() - timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
-                conn.execute("UPDATE transcriptions SET timestamp = ? WHERE timestamp > ?", (backdated, cutoff))
-            conn.commit()
+        with _db_lock:
+            conn = _open_db_writer()
+            if conn is None:
+                return
+            try:
+                if seg_id is not None:
+                    conn.execute("UPDATE transcriptions SET timestamp = ? WHERE id = ?", (backdated, int(seg_id)))
+                else:
+                    cutoff = (datetime.now() - timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+                    conn.execute("UPDATE transcriptions SET timestamp = ? WHERE timestamp > ?", (backdated, cutoff))
+                conn.commit()
+            finally:
+                conn.close()
         _invalidate_entries_cache()
     except Exception as e:
         print(f"[STAGING] Approve failed: {e}")
@@ -11487,13 +11506,16 @@ def handle_discard_staged(data):
     staging_id = data.get("staging_id")
     if staging_id is None:
         return
-    current_db_name = transcription_state.get("db_name")
-    if not current_db_name or not os.path.exists(current_db_name):
-        return
     try:
-        with sqlite3.connect(current_db_name) as conn:
-            conn.execute("DELETE FROM transcriptions WHERE id = ?", (int(staging_id),))
-            conn.commit()
+        with _db_lock:
+            conn = _open_db_writer()
+            if conn is None:
+                return
+            try:
+                conn.execute("DELETE FROM transcriptions WHERE id = ?", (int(staging_id),))
+                conn.commit()
+            finally:
+                conn.close()
         _invalidate_entries_cache()
     except Exception as e:
         print(f"[STAGING] Discard failed: {e}")
@@ -11516,18 +11538,20 @@ def handle_set_segment_denied(data):
         return
     denied_val = 1 if data.get("denied", True) else 0
 
-    current_db_name = transcription_state.get("db_name")
-    if not current_db_name or not os.path.exists(current_db_name):
-        return
-
     try:
-        with sqlite3.connect(current_db_name) as conn:
-            placeholders = ",".join("?" for _ in segment_ids)
-            conn.execute(
-                f"UPDATE transcriptions SET denied = ? WHERE id IN ({placeholders})",
-                [denied_val, *segment_ids],
-            )
-            conn.commit()
+        with _db_lock:
+            conn = _open_db_writer()
+            if conn is None:
+                return
+            try:
+                placeholders = ",".join("?" for _ in segment_ids)
+                conn.execute(
+                    f"UPDATE transcriptions SET denied = ? WHERE id IN ({placeholders})",
+                    [denied_val, *segment_ids],
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
         _invalidate_entries_cache()
 
@@ -12462,7 +12486,7 @@ def remove_overlapping_prefix(new_text, previous_text, min_overlap_words=3):
                 return remaining
             else:
                 # Entire new text was overlap - return empty
-                print(f"[OVERLAP] Entire text was overlap, skipping", flush=True)
+                print("[OVERLAP] Entire text was overlap, skipping", flush=True)
                 return ""
 
     return new_text
@@ -13371,7 +13395,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         try:
                             # Check if we should exit the loop
                             if not is_running:
-                                print(f"[LOOP] is_running is False, exiting main loop")
+                                print("[LOOP] is_running is False, exiting main loop")
                                 break
 
                             # Check for stop commands and calibration commands with non-blocking operations
@@ -13515,12 +13539,12 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     # No noise samples collected - use conservative defaults
                                                                     calibration_step1_data["avg_noise"] = 300.0
                                                                     calibration_step1_data["max_noise"] = 500.0
-                                                                    print(f"[CALIBRATION] Step 1 complete - WARNING: No noise samples collected, using defaults", flush=True)
+                                                                    print("[CALIBRATION] Step 1 complete - WARNING: No noise samples collected, using defaults", flush=True)
 
                                                                 # Mark step 1 as complete but DON'T auto-transition
                                                                 # Wait for user to click "Start Step 2" button
                                                                 calibration_state["step1_complete"] = True
-                                                                print(f"[CALIBRATION] Set step1_complete = True", flush=True)
+                                                                print("[CALIBRATION] Set step1_complete = True", flush=True)
                                                                 # DON'T set step = 2 yet - user must manually continue
 
                                                     elif current_step == 2:
@@ -13645,7 +13669,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 f.write(temp_wav)
                                             session_audio_written = True
                                             print(
-                                                f"[BACKUP] Started session audio file"
+                                                "[BACKUP] Started session audio file"
                                             )
                                         else:
                                             # Append PCM data only (skip WAV header)
@@ -14308,9 +14332,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             print(f"[SRT] Converting session database to SRT: {session_db_name}")
                             srt_result = convert_db_to_srt(session_db_name)
                             if srt_result:
-                                print(f"[SRT] Successfully created SRT file")
+                                print("[SRT] Successfully created SRT file")
                             else:
-                                print(f"[SRT] No SRT file created (no valid entries or error)")
+                                print("[SRT] No SRT file created (no valid entries or error)")
                         except Exception as e:
                             print(f"[SRT] Error during SRT conversion: {e}")
                     else:
@@ -14330,9 +14354,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             print(f"[SRT-TRANSLATION] Converting translations to SRT: {session_db_name}")
                             trans_srt_result = convert_db_to_translation_srt(session_db_name)
                             if trans_srt_result:
-                                print(f"[SRT-TRANSLATION] Successfully created translation SRT file")
+                                print("[SRT-TRANSLATION] Successfully created translation SRT file")
                             else:
-                                print(f"[SRT-TRANSLATION] No translation SRT created (no translated entries)")
+                                print("[SRT-TRANSLATION] No translation SRT created (no translated entries)")
                         except Exception as e:
                             print(f"[SRT-TRANSLATION] Error: {e}")
 
@@ -14370,7 +14394,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         print("[FILE MOVER] Waiting 10 seconds for all file handles to close...")
                         sleep(10)
                         print("[FILE MOVER] Executing file move after final cleanup...")
-                        result = execute_file_move_now(lambda: current_config)
+                        result = execute_file_move_now(lambda cfg=current_config: cfg)
                         if result['success']:
                             print(f"[FILE MOVER] OK: Moved {result['moved']} files")
                             if result['failed'] > 0:
