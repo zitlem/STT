@@ -24,5 +24,7 @@ icon.iconset/
 .DS_Store
 CLAUDE-FABLE-*.md
 
-# PANNs audio-tagger checkpoint (downloaded at runtime)
-panns_data/
+# PANNs audio-tagger checkpoint (downloaded at runtime), but ship the small
+# AudioSet label CSV so music detection works self-contained / offline.
+panns_data/*
+!panns_data/class_labels_indices.csv

@@ -2188,6 +2188,7 @@ if multiprocessing.current_process().name == 'MainProcess':
             "loaded_model": "",  # Name of the actual model that was loaded
             "audio_stream_enabled": False,  # Whether to stream audio to web clients
             "audio_type": None,  # "Speaking", "Music", or "Quiet" — PANNs detection (no_speech_prob fallback)
+            "detection_mode": None,  # "panns" (tagger live) or "energy" (fallback) — which detector is actually running
         }
     )
 
@@ -2265,6 +2266,18 @@ db_initialized = False
 # Default checkpoint location (kept under APP_DIR so compiled builds stay self-contained)
 PANNS_CHECKPOINT = os.path.join(APP_DIR, "panns_data", "Cnn14_mAP=0.431.pth")
 PANNS_CHECKPOINT_URL = "https://zenodo.org/record/3987831/files/Cnn14_mAP%3D0.431.pth?download=1"
+# AudioSet class labels. panns_inference loads these at IMPORT TIME from a hardcoded
+# ~/panns_data/class_labels_indices.csv and (over plain http) tries to wget them if
+# absent. When that fetch is blocked/offline it leaves an empty file, which is never
+# retried -> labels=[] -> classes_num=0 -> the 527-class CNN14 checkpoint fails to load
+# -> music detection silently falls back to energy-only ("Speaking"/"Quiet", never
+# "Music"). We ship the CSV under APP_DIR and place a valid copy before importing the
+# library (with an https fallback) so detection works self-contained / offline.
+PANNS_LABELS_FILENAME = "class_labels_indices.csv"
+PANNS_LABELS_BUNDLED = os.path.join(APP_DIR, "panns_data", PANNS_LABELS_FILENAME)
+PANNS_LABELS_URL = "https://storage.googleapis.com/us_audioset/youtube_corpus/v1/csv/class_labels_indices.csv"
+_PANNS_LABELS_MIN_BYTES = 1024  # a valid 527-row CSV is ~14 KB; smaller == missing/poisoned
+_panns_labels_ready = False  # only need to repair the on-disk CSV once per process
 _audio_tagger = None
 _audio_tagger_failed_key = None  # (device, ckpt) that hit a real load error — don't retry it
 _audio_tagger_key = None  # (device, ckpt) currently loaded
@@ -2277,6 +2290,48 @@ def panns_checkpoint_path(cfg=None):
     cfg = cfg if cfg is not None else config.get("speech_type_detection", {})
     custom = (cfg.get("checkpoint_path", "") or "").strip()
     return custom or PANNS_CHECKPOINT
+
+
+def panns_labels_home_path():
+    """The path panns_inference.config hardcodes for the AudioSet label CSV."""
+    return os.path.join(os.path.expanduser("~"), "panns_data", PANNS_LABELS_FILENAME)
+
+
+def ensure_panns_labels_csv():
+    """Guarantee a valid class_labels_indices.csv exists where panns_inference expects
+    it, BEFORE the library is imported. Repairs the missing/empty (0-byte) file that
+    a failed import-time download leaves behind. Best-effort: never raises."""
+    global _panns_labels_ready
+    if _panns_labels_ready:
+        return
+    try:
+        home_csv = panns_labels_home_path()
+        if os.path.exists(home_csv) and os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES:
+            _panns_labels_ready = True
+            return
+        os.makedirs(os.path.dirname(home_csv), exist_ok=True)
+        # Prefer the bundled copy (offline-safe); fall back to an https download
+        # (the library only tries plain http, which is often blocked).
+        if os.path.exists(PANNS_LABELS_BUNDLED) and os.path.getsize(PANNS_LABELS_BUNDLED) >= _PANNS_LABELS_MIN_BYTES:
+            shutil.copyfile(PANNS_LABELS_BUNDLED, home_csv)
+            print(f"[PANNS] Installed AudioSet labels from bundled copy -> {home_csv}")
+        else:
+            import urllib.request
+            urllib.request.urlretrieve(PANNS_LABELS_URL, home_csv)
+            print(f"[PANNS] Downloaded AudioSet labels -> {home_csv}")
+            # Cache for future offline starts (root can write under APP_DIR).
+            try:
+                if os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES:
+                    os.makedirs(os.path.dirname(PANNS_LABELS_BUNDLED), exist_ok=True)
+                    shutil.copyfile(home_csv, PANNS_LABELS_BUNDLED)
+            except OSError:
+                pass
+        if os.path.exists(home_csv) and os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES:
+            _panns_labels_ready = True
+        else:
+            print("[PANNS] AudioSet labels still missing after repair attempt; music detection will be unavailable")
+    except Exception as e:
+        print(f"[PANNS] Could not install AudioSet labels: {e}")
 
 
 def panns_package_installed():
@@ -2293,6 +2348,10 @@ def get_audio_tagger(cfg):
     package or checkpoint). MUST be called off the audio-drain path (it can block
     for seconds on first load)."""
     global _audio_tagger, _audio_tagger_failed_key, _audio_tagger_key, _panns_label_idx, _panns_missing_logged
+    # Make sure the AudioSet label CSV is valid before panns_inference is imported
+    # below (it loads labels once at import time). Without this the checkpoint fails
+    # to load and detection silently degrades to energy-only.
+    ensure_panns_labels_csv()
     ckpt = panns_checkpoint_path(cfg)
     device = cfg.get("device", "cpu") or "cpu"
     key = (device, ckpt)
@@ -2413,10 +2472,12 @@ class MusicDetector:
                 # Clear stale PANNs state so the live monitor doesn't keep showing
                 # the last music label after detection is disabled mid-session.
                 st = self.state
-                if st is not None and st.get("music_prob") is not None:
-                    st["music_prob"] = None
-                    st["audio_tag"] = None
-                    st["audio_type"] = None
+                if st is not None:
+                    st["detection_mode"] = "energy"
+                    if st.get("music_prob") is not None:
+                        st["music_prob"] = None
+                        st["audio_tag"] = None
+                        st["audio_type"] = None
                 continue
             now = time.time()
             if now - self._last_ts < 0.4:  # throttle to ~2-3 runs/sec
@@ -2434,6 +2495,11 @@ class MusicDetector:
                 print(f"[PANNS] detector error: {e}")
                 continue
             if music_prob is None:
+                # PANNs enabled but the tagger is unavailable (missing/failed load):
+                # finalized_audio_type falls back to the energy-based label.
+                st = self.state
+                if st is not None:
+                    st["detection_mode"] = "energy"
                 continue
             window = max(1, int(cfg.get("smoothing_window", 4) or 1))
             self._history.append(float(music_prob))
@@ -2441,6 +2507,7 @@ class MusicDetector:
             smoothed = sum(self._history) / len(self._history)
             st = self.state
             if st is not None:
+                st["detection_mode"] = "panns"
                 st["music_prob"] = music_prob
                 st["audio_tag"] = tag
                 # Live TYPE for the monitor, even when this audio isn't transcribed.
@@ -10775,17 +10842,25 @@ def panns_status():
     installed = panns_package_installed()
     ckpt = panns_checkpoint_path()
     downloaded = os.path.exists(ckpt)
+    # Self-heal the AudioSet label CSV so a missing/0-byte file doesn't silently
+    # break detection; then report whether labels are present.
+    ensure_panns_labels_csv()
+    labels_csv = panns_labels_home_path()
+    labels_ok = os.path.exists(labels_csv) and os.path.getsize(labels_csv) >= _PANNS_LABELS_MIN_BYTES
     if not installed:
         msg = "panns-inference not installed. Install with: pip install panns-inference"
     elif not downloaded:
         msg = "PANNs CNN14 checkpoint not downloaded."
+    elif not labels_ok:
+        msg = "PANNs AudioSet labels missing; detection will not classify music."
     else:
         msg = "PANNs music/speech detector ready."
     return jsonify({
         "success": True,
         "package_installed": installed,
-        "downloaded": bool(installed and downloaded),
+        "downloaded": bool(installed and downloaded and labels_ok),
         "checkpoint_path": ckpt,
+        "labels_present": bool(labels_ok),
         "message": msg,
     })
 
@@ -10802,6 +10877,7 @@ def download_panns_model():
 
     dest = panns_checkpoint_path()
     if os.path.exists(dest):
+        ensure_panns_labels_csv()  # checkpoint present but labels may still be missing
         return jsonify({"success": True, "message": "Checkpoint already downloaded"})
 
     key = "panns_cnn14"
@@ -10811,6 +10887,9 @@ def download_panns_model():
     def worker():
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
+            # The checkpoint is useless without the AudioSet label CSV, so make sure
+            # it's in place too (the detector loads labels at import time).
+            ensure_panns_labels_csv()
             start_download_monitor(key, dest, total=PANNS_CKPT_SIZE)
             result = download_url_to_file(
                 PANNS_CHECKPOINT_URL, dest,
@@ -11828,6 +11907,7 @@ def emit_new_entries():
             "in_progress": in_progress,  # Current incomplete text or ""
             "is_running": is_running,
             "audio_type": transcription_state.get("audio_type"),  # "Speaking", "Music", or "Quiet"
+            "detection_mode": transcription_state.get("detection_mode"),  # "panns" or "energy"
         }
         if staged_segments:
             emit_data["staged_segments"] = staged_segments
@@ -11852,6 +11932,7 @@ def emit_new_entries():
                             "db": audio_db,
                             "energy": audio_energy if audio_energy is not None else 0,
                             "audio_type": transcription_state.get("audio_type"),
+                            "detection_mode": transcription_state.get("detection_mode"),
                         },
                     )
                 except Exception as emit_error:
