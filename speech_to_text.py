@@ -75,6 +75,51 @@ import time
 from sys import platform
 from file_mover import execute_file_move_now, execute_file_move
 
+# Tracks the most recent file mover run so the UI can show live activity/status.
+# Updated by both the automatic (transcription-stop) path and the manual trigger.
+_file_mover_runtime_lock = threading.Lock()
+file_mover_runtime = {
+    "state": "idle",      # idle | running | success | error
+    "trigger": None,      # "auto" | "manual"
+    "started_at": None,   # ISO timestamp
+    "finished_at": None,  # ISO timestamp
+    "moved": 0,
+    "failed": 0,
+    "message": "",
+}
+
+
+def set_file_mover_running(trigger):
+    """Mark the file mover as actively running (so the UI shows a live indicator)."""
+    with _file_mover_runtime_lock:
+        file_mover_runtime.update({
+            "state": "running",
+            "trigger": trigger,
+            "started_at": datetime.now().isoformat(),
+            "finished_at": None,
+            "message": "File move in progress...",
+        })
+
+
+def set_file_mover_result(trigger, result):
+    """Record the outcome of a completed file mover run."""
+    with _file_mover_runtime_lock:
+        file_mover_runtime.update({
+            "state": "success" if result.get("success") else "error",
+            "trigger": trigger,
+            "finished_at": datetime.now().isoformat(),
+            "moved": result.get("moved", 0),
+            "failed": result.get("failed", 0),
+            "message": result.get("message", ""),
+        })
+
+
+def get_file_mover_runtime():
+    """Return a thread-safe copy of the current file mover runtime status."""
+    with _file_mover_runtime_lock:
+        return dict(file_mover_runtime)
+
+
 from flask import Flask, render_template, jsonify, request, redirect, send_from_directory, make_response
 from flask_socketio import SocketIO, emit
 import speech_recognition as sr
@@ -7286,7 +7331,11 @@ def get_file_mover_status():
 
     try:
         mover_config = config.get("file_manager", {}).get("file_mover", {})
-        return jsonify({"success": True, "config": mover_config})
+        return jsonify({
+            "success": True,
+            "config": mover_config,
+            "runtime": get_file_mover_runtime(),
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -7377,7 +7426,9 @@ def trigger_file_mover_endpoint():
 
     try:
         # Use the core file move function for consistency
+        set_file_mover_running("manual")
         result = execute_file_move(lambda: config)
+        set_file_mover_result("manual", result)
 
         if not result['success']:
             return jsonify({
@@ -14428,9 +14479,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     mover_config = current_config.get("file_manager", {}).get("file_mover", {})
                     if mover_config.get("move_on_transcription_stop", True):
                         print("[FILE MOVER] Waiting 10 seconds for all file handles to close...")
+                        set_file_mover_running("auto")
                         sleep(10)
                         print("[FILE MOVER] Executing file move after final cleanup...")
                         result = execute_file_move_now(lambda cfg=current_config: cfg)
+                        set_file_mover_result("auto", result)
                         if result['success']:
                             print(f"[FILE MOVER] OK: Moved {result['moved']} files")
                             if result['failed'] > 0:

@@ -316,6 +316,22 @@
             border: none;
         }
 
+        /* Live "running" indicator for the file mover */
+        .fm-running-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            margin-right: 4px;
+            vertical-align: middle;
+            animation: fmPulse 1s ease-in-out infinite;
+        }
+        @keyframes fmPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.6); }
+        }
+
         /* Responsive file mover layout */
         @media (max-width: 768px) {
             #fileMoverForm {
@@ -389,7 +405,7 @@
             <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 12px 15px; margin-top: 10px; border-radius: 6px; border-left: 3px solid var(--accent);">
                 <details id="fileMoverDetails">
                     <summary style="cursor: pointer; font-weight: 600; color: var(--accent); font-size: 0.9em; user-select: none; display: flex; justify-content: space-between; align-items: center;">
-                        <span>📤 Automatic File Mover <span id="fileMoverStatus" style="font-size: 0.8em; color: var(--text-secondary); font-weight: normal;">(Disabled)</span></span>
+                        <span>📤 Automatic File Mover <span id="fileMoverStatus" style="font-size: 0.8em; color: var(--text-secondary); font-weight: normal;">(Disabled)</span> <span id="fileMoverActivity" style="font-size: 0.8em; font-weight: normal; margin-left: 6px;"></span></span>
                         <button type="button" class="btn btn-success" onclick="event.stopPropagation(); triggerFileMover();" style="padding: 4px 12px; font-size: 0.8em;">▶️ Run Now</button>
                     </summary>
                     <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
@@ -461,6 +477,10 @@
                                 </div>
 
                                 <div id="fileMoverMessage" style="margin-top: 10px; display: none;"></div>
+                                <div id="fileMoverRuntime" style="margin-top: 8px; padding: 8px; background: var(--bg-base); border-radius: 4px; border: 1px solid var(--border); font-size: 0.8em; color: var(--text-secondary);">
+                                    <span style="font-weight: 600; color: var(--accent);">Last run:</span>
+                                    <span id="fileMoverRuntimeText">No runs recorded yet</span>
+                                </div>
                                 <div id="pendingMoves" style="margin-top: 8px; padding: 8px; background: var(--bg-base); border-radius: 4px; border: 1px solid var(--border); display: none;">
                                     <span style="color: var(--warning); font-size: 0.8em;">⚠️ Pending moves: <span id="pendingCount">0</span> files waiting to be moved</span>
                                 </div>
@@ -1148,9 +1168,81 @@
 
                     // Update status display
                     updateFileMoverStatus();
+
+                    // Update live runtime/activity display
+                    renderFileMoverRuntime(data.runtime);
                 }
             } catch (error) {
                 console.error('Failed to load file mover config:', error);
+            }
+        }
+
+        function formatRuntimeTime(iso) {
+            if (!iso) return '';
+            try {
+                const d = new Date(iso);
+                return d.toLocaleString();
+            } catch (e) {
+                return iso;
+            }
+        }
+
+        function renderFileMoverRuntime(runtime) {
+            const activitySpan = document.getElementById('fileMoverActivity');
+            const textSpan = document.getElementById('fileMoverRuntimeText');
+            if (!runtime) {
+                if (activitySpan) activitySpan.innerHTML = '';
+                return;
+            }
+
+            const triggerLabel = runtime.trigger === 'auto' ? 'auto (on stop)'
+                : runtime.trigger === 'manual' ? 'manual' : '';
+
+            if (runtime.state === 'running') {
+                // Live indicator visible even when the panel is collapsed
+                if (activitySpan) {
+                    activitySpan.innerHTML = '<span class="fm-running-dot"></span> Running…';
+                    activitySpan.style.color = 'var(--accent)';
+                }
+                if (textSpan) {
+                    textSpan.textContent = `Running now (${triggerLabel})` +
+                        (runtime.started_at ? ` — started ${formatRuntimeTime(runtime.started_at)}` : '');
+                }
+                return;
+            }
+
+            // Not running — clear the header badge
+            if (activitySpan) activitySpan.innerHTML = '';
+
+            if (!textSpan) return;
+            if (runtime.state === 'idle' || !runtime.finished_at) {
+                textSpan.textContent = 'No runs recorded yet';
+                return;
+            }
+
+            const when = formatRuntimeTime(runtime.finished_at);
+            const moved = runtime.moved || 0;
+            const failed = runtime.failed || 0;
+            if (runtime.state === 'success') {
+                textSpan.innerHTML = `<span style="color: var(--success);">✓</span> ${when} — ${triggerLabel}: moved ${moved}` +
+                    (failed > 0 ? `, <span style="color: var(--warning);">${failed} failed</span>` : '');
+            } else {
+                textSpan.innerHTML = `<span style="color: var(--danger, #e74c3c);">✗</span> ${when} — ${triggerLabel}: ` +
+                    (runtime.message || 'failed');
+            }
+        }
+
+        // Poll runtime status so the UI reflects automatic moves triggered
+        // in the background (e.g. when live transcription is stopped).
+        async function pollFileMoverRuntime() {
+            try {
+                const response = await fetch('/api/file-mover/status');
+                const data = await response.json();
+                if (data.success) {
+                    renderFileMoverRuntime(data.runtime);
+                }
+            } catch (error) {
+                // Silent — polling failures shouldn't spam the console
             }
         }
 
@@ -1279,6 +1371,8 @@
         // Load file mover config on page load
         document.addEventListener('DOMContentLoaded', () => {
             loadFileMoverConfig();
+            // Poll every 5s so background/auto moves show up live in the UI
+            setInterval(pollFileMoverRuntime, 5000);
         });
     </script>
 {% endblock %}
