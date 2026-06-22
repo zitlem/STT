@@ -1702,6 +1702,9 @@ class ModelFactory:
                             "end": seg.end,
                             "no_speech_prob": getattr(seg, "no_speech_prob", 0),
                             "avg_logprob": getattr(seg, "avg_logprob", 0),
+                            # Detected source language (ISO code) so rows can record source_language
+                            # even when audio.language is 'auto'. Same for every seg in the chunk.
+                            "language": getattr(info, "language", None),
                         }
                         # Extract word-level confidence if available
                         if hasattr(seg, 'words') and seg.words:
@@ -2015,6 +2018,8 @@ class WhisperLiveTranscriber:
                     completed['avg_logprob'] = seg['avg_logprob']
                 if 'no_speech_prob' in seg:
                     completed['no_speech_prob'] = seg['no_speech_prob']
+                if seg.get('language'):
+                    completed['language'] = seg['language']
                 self.transcript.append(completed)
                 result['completed_segments'].append(completed)
                 # print(f"[SEGMENT] Finalized: '{text[:50]}...' ({seg.get('start', 0):.1f}s-{seg.get('end', 0):.1f}s)" if len(text) > 50 else f"[SEGMENT] Finalized: '{text}'", flush=True)
@@ -2025,7 +2030,7 @@ class WhisperLiveTranscriber:
         self.current_out = last_seg.get('text', '').strip()
         # Store last segment's confidence data for finalization
         self._last_seg_confidence = {
-            k: last_seg[k] for k in ('words', 'avg_logprob', 'no_speech_prob') if k in last_seg
+            k: last_seg[k] for k in ('words', 'avg_logprob', 'no_speech_prob', 'language') if k in last_seg
         }
         result['current_text'] = self.current_out
 
@@ -2056,6 +2061,8 @@ class WhisperLiveTranscriber:
                     completed['avg_logprob'] = last_seg['avg_logprob']
                 if 'no_speech_prob' in last_seg:
                     completed['no_speech_prob'] = last_seg['no_speech_prob']
+                if last_seg.get('language'):
+                    completed['language'] = last_seg['language']
                 self.transcript.append(completed)
                 result['completed_segments'].append(completed)
                 result['is_finalized'] = True
@@ -2536,6 +2543,35 @@ def finalized_audio_type(process_config, state):
     return classify_audio_type(state.get("audio_db"), cfg)
 
 
+def build_words_json(words, row_start):
+    """Serialize per-word timing/confidence for the `words_json` column.
+
+    `words` is the faster-whisper word list ({word, probability, start, end} with
+    chunk-relative-second timing). Word spans are anchored so the first word begins
+    at `row_start` (the row's start_time, in seconds) and relative spacing is
+    preserved, keeping every span inside the row's start_time..end_time window.
+    Returns a JSON array string, or None when there is no usable per-word data
+    (NULL = "no per-word data, fall back to segment-level confidence").
+    """
+    if not words:
+        return None
+    try:
+        starts = [w.get('start') for w in words if w.get('start') is not None]
+        base = row_start - (starts[0] if starts else 0)
+        out = []
+        for w in words:
+            entry = {"w": w.get('word', ''), "c": w.get('probability')}
+            ws, we = w.get('start'), w.get('end')
+            if ws is not None:
+                entry["s_ms"] = round((base + ws) * 1000)
+            if we is not None:
+                entry["e_ms"] = round((base + we) * 1000)
+            out.append(entry)
+        return json.dumps(out, ensure_ascii=False)
+    except Exception:
+        return None
+
+
 def initialize_database():
     """Initialize database only when transcription starts (lazy loading)"""
     global db_name, db_initialized
@@ -2682,10 +2718,50 @@ def initialize_database():
                 print("[DB] OK: Migration complete (added speech_type column)")
 
             if "denied" not in columns:
+                # `denied` is a UI visibility/hide flag (0 = visible, 1 = hidden from
+                # the transcript view); toggled by handle_set_segment_denied.
                 print("[DB] Migrating database: adding denied column...")
                 db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN denied INTEGER DEFAULT 0")
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added denied column)")
+
+            # Schema v2: additive columns for the downstream consumer (epoch-ms ordering,
+            # per-word timing/confidence, partial/final flag, source language, segment pairing).
+            # All nullable / defaulted so old .db files and readers keep working unchanged.
+            db_cursor.execute("PRAGMA table_info(transcriptions)")
+            columns = [row[1] for row in db_cursor.fetchall()]
+            if "ts_ms" not in columns:
+                print("[DB] Migrating database: adding ts_ms column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN ts_ms INTEGER DEFAULT NULL")
+                db_cursor.execute("CREATE INDEX IF NOT EXISTS idx_ts_ms ON transcriptions(ts_ms)")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added ts_ms column)")
+            if "words_json" not in columns:
+                print("[DB] Migrating database: adding words_json column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN words_json TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added words_json column)")
+            if "is_final" not in columns:
+                print("[DB] Migrating database: adding is_final column...")
+                # 1 = finalized (all existing rows are finals); 0 = partial hypothesis
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN is_final INTEGER DEFAULT 1")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added is_final column)")
+            if "partial_seq" not in columns:
+                print("[DB] Migrating database: adding partial_seq column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN partial_seq INTEGER DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added partial_seq column)")
+            if "source_language" not in columns:
+                print("[DB] Migrating database: adding source_language column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN source_language TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added source_language column)")
+            if "segment_id" not in columns:
+                print("[DB] Migrating database: adding segment_id column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN segment_id TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added segment_id column)")
 
             # Insert a blank first entry with default values
             default_timestamp = " "
@@ -14079,6 +14155,10 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             segment_confidence = sum(batch_confidences) / len(batch_confidences) if batch_confidences else None
                                             segment_speech_type = finalized_audio_type(process_config, transcription_state)
                                             transcription_state['audio_type'] = segment_speech_type
+                                            # Source language ISO code: configured value, or Whisper's
+                                            # detected language when audio.language is 'auto'.
+                                            _detected_lang = next((s.get('language') for s in result['completed_segments'] if s.get('language')), None)
+                                            src_lang = live_language if (live_language and live_language != "auto") else _detected_lang
                                             # Prepend the fragment held from the previous capture so it
                                             # can complete its sentence
                                             if pending_remainder:
@@ -14114,19 +14194,22 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             with _db_lock:
                                                 try:
                                                     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+                                                    ts_ms = int(now.timestamp() * 1000)
                                                     for sentence in sentences:
                                                         # Skip known Whisper hallucinations
                                                         if is_whisper_hallucination(sentence):
                                                             print(f"[SKIP HALLUCINATION] '{sentence[:40]}'", flush=True)
                                                             continue
+                                                        # Verbatim ASR text (before profanity normalization) for original_text
+                                                        _verbatim = sentence
                                                         sentence = apply_profanity_filter(sentence)
                                                         word_count = len(sentence.split())
                                                         is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                         if word_count >= MIN_WORDS and not is_dup:
                                                             needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             saved_sentences.append(sentence)
@@ -14158,14 +14241,15 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         print(f"[PENDING FLUSH] Run-on fragment hit cap: '{remainder[:50]}'", flush=True)
                                                     # Save substantial remainder (run-on flush, or pending buffer disabled)
                                                     if remainder and not is_whisper_hallucination(remainder):
+                                                        _verbatim_rem = remainder
                                                         remainder = apply_profanity_filter(remainder)
                                                         rem_word_count = len(remainder.split())
                                                         rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                         if rem_word_count >= MIN_WORDS and not rem_is_dup:
                                                             needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             saved_sentences.append(remainder)
@@ -14174,6 +14258,13 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             print(f"[SKIP SHORT REMAINDER] '{remainder}' ({rem_word_count} words)", flush=True)
                                                         elif rem_is_dup:
                                                             print(f"[SKIP DUP REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[SKIP DUP REMAINDER] '{remainder}'", flush=True)
+                                                    # segment_id links a transcript row to its translation
+                                                    # (same row here); populate it equal to the row id.
+                                                    if _newly_inserted_ids:
+                                                        persistent_db_cursor.executemany(
+                                                            "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                                            [(str(_rid), _rid) for _rid in _newly_inserted_ids],
+                                                        )
                                                     persistent_db_conn.commit()
                                                     # Cache Whisper translation for newly inserted rows
                                                     if _whisper_translated_text and _newly_inserted_ids:
@@ -14227,6 +14318,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             segment_text = (finalized_segment or {}).get('text', '').strip()
                                             segment_start = (finalized_segment or {}).get('start', 0)
                                             segment_end = (finalized_segment or {}).get('end', 0)
+                                            # Captured before any overlap-strip / fragment-prepend below, so
+                                            # we only attach words_json when the segment maps 1:1 to one row.
+                                            _phrase_orig_text = segment_text
+                                            _phrase_had_fragment = bool(pending_remainder)
+                                            _phrase_words = (finalized_segment or {}).get('words') or []
                                             # Remove overlapping prefix from previous saved text
                                             if segment_text and saved_sentences:
                                                 segment_text = remove_overlapping_prefix(segment_text, saved_sentences[-1])
@@ -14249,22 +14345,41 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 MIN_WORDS = min_words_threshold
                                                 _phrase_speech_type = finalized_audio_type(process_config, transcription_state)
                                                 transcription_state['audio_type'] = _phrase_speech_type
+                                                # Segment-level confidence from per-word probabilities
+                                                _phrase_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
+                                                _phrase_probs = [w.get('probability') for w in _phrase_words if w.get('probability') is not None]
+                                                _phrase_conf = (sum(_phrase_probs) / len(_phrase_probs)) if _phrase_probs else None
+                                                _phrase_needs_review = 1 if (_phrase_conf is not None and _phrase_conf < _phrase_threshold) else 0
+                                                # Source language (configured, or Whisper-detected when 'auto')
+                                                _phrase_src = live_language if (live_language and live_language != "auto") else (finalized_segment or {}).get('language')
+                                                # words_json is only safe when this segment maps 1:1 to a single
+                                                # row: no fragment prepended, no overlap stripped, one sentence.
+                                                _words_clean = (
+                                                    bool(_phrase_words)
+                                                    and not _phrase_had_fragment
+                                                    and segment_text == _phrase_orig_text
+                                                    and len(sentences) == 1
+                                                    and not remainder
+                                                )
+                                                _phrase_words_json = build_words_json(_phrase_words, segment_start) if _words_clean else None
                                                 _phrase_inserted_ids = []
                                                 with _db_lock:
                                                     try:
                                                         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+                                                        ts_ms = int(now.timestamp() * 1000)
                                                         for sentence in sentences:
                                                             # Skip known Whisper hallucinations
                                                             if is_whisper_hallucination(sentence):
                                                                 print(f"[SKIP HALLUCINATION PHRASE] '{sentence[:40]}'", flush=True)
                                                                 continue
+                                                            _verbatim = sentence
                                                             sentence = apply_profanity_filter(sentence)
                                                             word_count = len(sentence.split())
                                                             is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                             if word_count >= MIN_WORDS and not is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type) VALUES (?, ?, ?, ?, ?)",
-                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(sentence)
@@ -14275,16 +14390,22 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 print(f"[SKIP DUP PHRASE] '{sentence[:40]}'", flush=True)
                                                         # Also save substantial remainder from phrase_complete
                                                         if remainder and not is_whisper_hallucination(remainder):
+                                                            _verbatim_rem = remainder
                                                             remainder = apply_profanity_filter(remainder)
                                                             rem_word_count = len(remainder.split())
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                             if rem_word_count >= MIN_WORDS and not rem_is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type) VALUES (?, ?, ?, ?, ?)",
-                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(remainder)
+                                                        if _phrase_inserted_ids:
+                                                            persistent_db_cursor.executemany(
+                                                                "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                                                [(str(_rid), _rid) for _rid in _phrase_inserted_ids],
+                                                            )
                                                         persistent_db_conn.commit()
                                                         # Cache Whisper translation for phrase-completed rows
                                                         if _whisper_translated_text and _phrase_inserted_ids:
@@ -14346,13 +14467,29 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     # Flush any held sentence fragment so it isn't lost on stop
                     if pending_remainder and not is_whisper_hallucination(pending_remainder):
                         try:
+                            _verbatim_flush = pending_remainder
                             _flush_text = apply_profanity_filter(pending_remainder)
                             if len(_flush_text.split()) >= min_words_threshold and not is_fuzzy_duplicate(_flush_text, saved_sentences, fuzzy_threshold):
                                 _flush_start, _flush_end, _flush_conf = pending_remainder_meta if pending_remainder_meta else (0, 0, None)
+                                _flush_now = datetime.now(configured_timezone)
+                                _flush_ts_ms = int(_flush_now.timestamp() * 1000)
+                                _flush_speech_type = finalized_audio_type(process_config, transcription_state)
+                                _flush_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
+                                _flush_needs_review = 1 if (_flush_conf is not None and _flush_conf < _flush_threshold) else 0
+                                try:
+                                    _ll = live_language
+                                except NameError:
+                                    _ll = None
+                                _flush_src = _ll if (_ll and _ll != "auto") else None
                                 with _db_lock:
                                     persistent_db_cursor.execute(
-                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence) VALUES (?, ?, ?, ?, ?)",
-                                        (datetime.now(configured_timezone).strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf),
+                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush),
+                                    )
+                                    _flush_row_id = persistent_db_cursor.lastrowid
+                                    persistent_db_cursor.execute(
+                                        "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                        (str(_flush_row_id), _flush_row_id),
                                     )
                                     persistent_db_conn.commit()
                                 saved_sentences.append(_flush_text)
