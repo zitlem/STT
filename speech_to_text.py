@@ -34,6 +34,63 @@ def _seed_from_bundle(filename):
             print(f"[INIT] Could not seed {filename} from bundle: {e}")
     return dst
 
+
+def _chmod_quiet(path, mode):
+    """Best-effort chmod; ignore failures (not owner, fs without unix perms, etc.)."""
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+
+
+def make_db_world_readable(db_path):
+    """Make a DB file and its WAL/SHM/journal sidecars world-readable (a+r, 0644),
+    so databases written by the service (often as root) can be read by all users
+    and downstream consumers."""
+    if not db_path:
+        return
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        p = db_path + suffix
+        if os.path.exists(p):
+            _chmod_quiet(p, 0o644)
+
+
+def make_dirs_world_readable(leaf_dir, base_dir=None):
+    """Make leaf_dir world-readable and traversable (a+rx, 0755). When base_dir is
+    given and contains leaf_dir, every directory from base_dir down to leaf_dir is
+    updated too, so DB files written inside are reachable by all users."""
+    if not leaf_dir:
+        return
+    leaf = os.path.abspath(leaf_dir)
+    if not base_dir:
+        _chmod_quiet(leaf, 0o755)
+        return
+    base = os.path.abspath(base_dir)
+    _chmod_quiet(base, 0o755)
+    if leaf == base:
+        return
+    if leaf.startswith(base + os.sep):
+        cur = base
+        for part in os.path.relpath(leaf, base).split(os.sep):
+            cur = os.path.join(cur, part)
+            _chmod_quiet(cur, 0o755)
+    else:
+        _chmod_quiet(leaf, 0o755)
+
+
+def make_tree_world_readable(root):
+    """Recursively make every directory (a+rx, 0755) and file (a+r, 0644) under
+    root readable by all users. Best-effort; skips entries it cannot chmod. Used to
+    sweep the whole DB/backup folder, including files created during stop cleanup."""
+    if not root or not os.path.isdir(root):
+        return
+    _chmod_quiet(root, 0o755)
+    for dirpath, dirnames, filenames in os.walk(root):
+        for d in dirnames:
+            _chmod_quiet(os.path.join(dirpath, d), 0o755)
+        for f in filenames:
+            _chmod_quiet(os.path.join(dirpath, f), 0o644)
+
 # Suppress NNPACK warnings from PyTorch (harmless but spammy)
 # These are C++ warnings so we need to disable at the PyTorch level
 os.environ['NNPACK_DISABLE'] = '1'
@@ -2608,6 +2665,8 @@ def initialize_database():
 
     # Create the folder if it doesn't exist
     os.makedirs(folder_name, exist_ok=True)
+    # Make the DB directory tree readable/traversable by all users (consumers read these)
+    make_dirs_world_readable(folder_name, custom_db_path or BACKUP_DIR)
 
     # Create database file path with configurable format (using Python strftime format)
     filename_format = config.get("database", {}).get(
@@ -2784,6 +2843,8 @@ def initialize_database():
             db_connection.commit()
 
         db_initialized = True
+        # Make the DB file (and any WAL/SHM sidecars) readable by all users
+        make_db_world_readable(db_name)
         # Store database name in shared state for web server access
         transcription_state["db_name"] = db_name
         print("[OK] Database initialized successfully")
@@ -12787,6 +12848,16 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
     calibration_step1_data = cal_step1
     audio_stream_queue = asq
 
+    # Make every file/dir this subprocess creates readable by all users (a+r files,
+    # a+rx dirs): the session DB, its WAL/SHM sidecars, SRT/HTML exports, audio
+    # backups, and file-mover output — including everything written during stop
+    # cleanup. This is a separate process from the web server, so config writes
+    # (which may hold secrets) are unaffected.
+    try:
+        os.umask(0o022)
+    except Exception:
+        pass
+
     # Initialize state variables
     is_running = False
     audio_model = None
@@ -13333,6 +13404,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         persistent_db_cursor.execute(
                             "PRAGMA busy_timeout=30000"
                         )  # 30 second timeout
+                        # WAL/SHM sidecars are (re)created here by this connection —
+                        # keep them readable by all users alongside the .db file.
+                        make_db_world_readable(db_path)
 
                         print(f"[OK] Database initialized: {db_path}")
                     except Exception as e:
@@ -14736,6 +14810,18 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             print(f"[FILE MOVER] FAIL: Error: {result.get('message', 'Unknown error')}")
                 except Exception as e:
                     print(f"[FILE MOVER] Error executing file mover: {e}")
+
+                # Final safety net: make the whole DB/backup folder readable by all
+                # users — covering every file produced during stop cleanup (SRT/HTML
+                # exports, the checkpointed DB, audio) and any pre-existing files.
+                try:
+                    make_tree_world_readable(BACKUP_DIR)
+                    _custom_db_base = (load_config().get("database", {}).get("path", "") or "").strip()
+                    if _custom_db_base and os.path.abspath(_custom_db_base) != os.path.abspath(BACKUP_DIR):
+                        make_tree_world_readable(_custom_db_base)
+                    print("[PERMS] DB/backup folder made world-readable", flush=True)
+                except Exception as _perm_err:
+                    print(f"[PERMS] Failed to update DB folder permissions: {_perm_err}", flush=True)
     except KeyboardInterrupt:
         print("Thread 1 received KeyboardInterrupt")
         os._exit(0)
