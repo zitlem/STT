@@ -838,6 +838,17 @@ _live_translation_model_id = None  # Track which model is loaded to detect confi
 _live_translation_target_lang = None
 
 
+def is_live_translation_ready():
+    """True when a live translation can actually be produced right now: a remote
+    endpoint is configured, or the local NLLB model has finished loading. Used to
+    avoid persisting a warmup echo (the source text returned unchanged while the
+    model is still loading)."""
+    remote_cfg = config.get("live_translation", {}).get("remote", {})
+    if remote_cfg.get("enabled") and remote_cfg.get("endpoint") and not _trusted_translation_clients:
+        return True
+    return _live_translation_model_loaded
+
+
 def get_live_translation_model(use_gpu=True, model_id=None):
     """Get or load the live translation model (singleton pattern).
     If model_id differs from the currently loaded model, unloads and reloads."""
@@ -12117,7 +12128,9 @@ def emit_translated_entries():
                 "target_language": trans_config.get("target_language", "en"),
                 "source_language": trans_config.get("source_language", "auto"),
                 "enabled": False,
-                "is_running": transcription_state.get("running", False)
+                "is_running": transcription_state.get("running", False),
+                "model_loaded": is_live_translation_ready(),
+                "model_loading": _live_translation_model_loading,
             })
             # Sleep longer when translation is disabled
             socketio.sleep(update_interval * 2)
@@ -12133,7 +12146,9 @@ def emit_translated_entries():
                     "target_language": trans_config.get("target_language", "en"),
                     "source_language": trans_config.get("source_language", "auto"),
                     "enabled": True,
-                    "is_running": False
+                    "is_running": False,
+                    "model_loaded": is_live_translation_ready(),
+                    "model_loading": _live_translation_model_loading,
                 })
                 socketio.sleep(update_interval)
                 continue
@@ -12279,14 +12294,22 @@ def emit_translated_entries():
                                 )
                         translated_text = result["text"]
                         extras = {"confidence": result.get("confidence"), "alternatives": result.get("alternatives", [])}
-                        cache.set_with_extras(seg_id, original_text, translated_text, target_lang,
-                                              confidence=extras["confidence"], alternatives=extras["alternatives"])
                     else:
                         translated_text = translate_live_text(text_to_translate, source_lang, target_lang)
                         if num_ctx_sentences and isinstance(translated_text, str):
                             extracted = extract_context_translation(translated_text, num_ctx_sentences)
                             translated_text = extracted if extracted else translate_live_text(original_text, source_lang, target_lang)
                         extras = None
+
+                    # Warmup guard: while the local model is still loading, translate_live_text
+                    # returns the source unchanged. Don't cache/persist that echo — leave the row
+                    # NULL so it retries next cycle and translates correctly once the model is up.
+                    if not is_live_translation_ready():
+                        continue
+                    if extras is not None:
+                        cache.set_with_extras(seg_id, original_text, translated_text, target_lang,
+                                              confidence=extras.get("confidence"), alternatives=extras.get("alternatives", []))
+                    else:
                         cache.set(seg_id, original_text, translated_text, target_lang)
 
                     # Save translation to database
@@ -12365,7 +12388,9 @@ def emit_translated_entries():
                 "target_language_name": TRANSLATION_LANGUAGES.get(target_lang, target_lang),
                 "source_language": source_lang,
                 "enabled": True,
-                "is_running": is_running
+                "is_running": is_running,
+                "model_loaded": is_live_translation_ready(),
+                "model_loading": _live_translation_model_loading,
             })
 
         except Exception as e:

@@ -518,6 +518,8 @@
 
         // Listen for translation updates (live translation feature)
         socket.on("translation_update", function (data) {
+          // Status badge updates regardless of display mode
+          updateTranslationStatus(data);
           const mode = window.displayConfig?.translationMode || 'transcribe';
           if (mode === 'translate' || mode === 'both') {
             updateTranslationDisplay(data);
@@ -1050,6 +1052,10 @@
             <div class="status-dot" id="transcription-status-dot"></div>
             <span id="transcription-status-text">Transcription</span>
           </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <div class="status-dot" id="translation-status-dot"></div>
+            <span id="translation-status-text">Translation</span>
+          </div>
           <div id="disk-status-container" style="display: flex; align-items: center; gap: 6px; display: none;">
             <div class="status-dot" id="disk-status-dot"></div>
             <span id="disk-status-text">Disk Space</span>
@@ -1211,6 +1217,31 @@
       // Legacy function for compatibility
       function updateStatus(isActive) {
         updateServerStatus(isActive);
+      }
+
+      // Update the live-translation status badge from translation_update payloads
+      function updateTranslationStatus(data) {
+        const dot = document.getElementById('translation-status-dot');
+        const text = document.getElementById('translation-status-text');
+        if (!dot || !text) return;
+        dot.classList.remove('active', 'starting', 'inactive', 'error');
+        const enabled = !!(data && data.enabled);
+        const loaded = !!(data && data.model_loaded);
+        const loading = !!(data && data.model_loading);
+        const running = !!(data && data.is_running);
+        if (!enabled) {
+          dot.classList.add('inactive');
+          text.textContent = 'Translation: Disabled';
+        } else if (!running) {
+          dot.classList.add('inactive');
+          text.textContent = 'Translation: Stopped';
+        } else if (loading || !loaded) {
+          dot.classList.add('starting');
+          text.textContent = 'Translation: Loading...';
+        } else {
+          dot.classList.add('active');
+          text.textContent = 'Translation: Running';
+        }
       }
 
        // Force re-render of transcription to apply word highlighting
