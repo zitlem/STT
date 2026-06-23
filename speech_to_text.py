@@ -14183,7 +14183,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             # Source language ISO code: configured value, or Whisper's
                                             # detected language when audio.language is 'auto'.
                                             _detected_lang = next((s.get('language') for s in result['completed_segments'] if s.get('language')), None)
-                                            src_lang = live_language if (live_language and live_language != "auto") else _detected_lang
+                                            # Never NULL on a non-blank row: configured -> detected -> 'und' (ISO 639 undetermined)
+                                            src_lang = (live_language if (live_language and live_language != "auto") else _detected_lang) or "und"
                                             # Prepend the fragment held from the previous capture so it
                                             # can complete its sentence
                                             if pending_remainder:
@@ -14376,7 +14377,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 _phrase_conf = (sum(_phrase_probs) / len(_phrase_probs)) if _phrase_probs else None
                                                 _phrase_needs_review = 1 if (_phrase_conf is not None and _phrase_conf < _phrase_threshold) else 0
                                                 # Source language (configured, or Whisper-detected when 'auto')
-                                                _phrase_src = live_language if (live_language and live_language != "auto") else (finalized_segment or {}).get('language')
+                                                _phrase_src = (live_language if (live_language and live_language != "auto") else (finalized_segment or {}).get('language')) or "und"
                                                 # words_json is only safe when this segment maps 1:1 to a single
                                                 # row: no fragment prepended, no overlap stripped, one sentence.
                                                 _words_clean = (
@@ -14505,7 +14506,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     _ll = live_language
                                 except NameError:
                                     _ll = None
-                                _flush_src = _ll if (_ll and _ll != "auto") else None
+                                _flush_src = _ll if (_ll and _ll != "auto") else "und"
                                 with _db_lock:
                                     persistent_db_cursor.execute(
                                         "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
