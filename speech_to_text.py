@@ -2252,6 +2252,7 @@ if multiprocessing.current_process().name == 'MainProcess':
             "message": "Transcription not started",
             "error": None,  # Error message if status == "error"
             "db_name": None,  # Shared database name for cross-process access
+            "session_id": None,  # Stable per-session id (.db filename stem); cross-process
             "audio_level": 0,  # Audio level for histogram (0-100)
             "audio_db": -60,  # Audio level in decibels
             "audio_energy": 0,  # Raw audio energy (RMS)
@@ -2335,6 +2336,7 @@ current_month = datetime.now().strftime("%Y-%m")
 # Database will be created lazily when transcription starts
 db_name = None  # Will be set when database is initialized
 db_initialized = False
+live_session_id = None  # Stable per-session id (the .db filename stem); set in initialize_database
 
 
 # ============== PANNs audio tagger (music / speech detection) ==============
@@ -2709,7 +2711,7 @@ def words_json_or_none(word_objs):
 
 def initialize_database():
     """Initialize database only when transcription starts (lazy loading)"""
-    global db_name, db_initialized
+    global db_name, db_initialized, live_session_id
 
     if db_initialized:
         return db_name
@@ -2907,6 +2909,13 @@ def initialize_database():
                 db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN words_source TEXT DEFAULT NULL")
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added words_source column)")
+            if "session_id" not in columns:
+                # Stable per-session id (the .db filename stem) on every row, so the
+                # consumer can anchor socket<->db and group rows by session.
+                print("[DB] Migrating database: adding session_id column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN session_id TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added session_id column)")
 
             # Insert a blank first entry with default values
             default_timestamp = " "
@@ -2920,8 +2929,13 @@ def initialize_database():
         db_initialized = True
         # Make the DB file (and any WAL/SHM sidecars) readable by all users
         make_db_world_readable(db_name)
-        # Store database name in shared state for web server access
+        # Stable per-session id = the .db filename stem (e.g. 2026-06-22_183007).
+        # Stored on every row and emitted top-level on every socket payload so the
+        # consumer can anchor socket<->db by exact match; re-derived each session.
+        live_session_id = os.path.splitext(os.path.basename(db_name))[0]
+        # Store database name + session id in shared state for web server access
         transcription_state["db_name"] = db_name
+        transcription_state["session_id"] = live_session_id
         print("[OK] Database initialized successfully")
 
         return db_name
@@ -8132,6 +8146,7 @@ def force_reset_transcription():
         transcription_state["live_start"] = 0
         transcription_state["live_end"] = 0
         transcription_state["db_name"] = None
+        transcription_state["session_id"] = None
 
         # Clear database cache immediately so clients get empty data
         with _cache_lock:
@@ -11524,7 +11539,8 @@ def handle_request_all_entries():
         "in_progress_segment": None,
         "entries": [(e[1], e[2]) for e in entries],
         "in_progress": "",
-        "is_running": transcription_state.get("running", False)
+        "is_running": transcription_state.get("running", False),
+        "session_id": transcription_state.get("session_id"),
     })
 
 
@@ -11540,7 +11556,8 @@ def handle_request_all_translation_entries():
             "target_language": trans_config.get("target_language", "en"),
             "source_language": trans_config.get("source_language", "auto"),
             "enabled": False,
-            "is_running": transcription_state.get("running", False)
+            "is_running": transcription_state.get("running", False),
+            "session_id": transcription_state.get("session_id"),
         })
         return
 
@@ -11587,7 +11604,8 @@ def handle_request_all_translation_entries():
         "target_language_name": TRANSLATION_LANGUAGES.get(target_lang, target_lang),
         "source_language": source_lang,
         "enabled": True,
-        "is_running": transcription_state.get("running", False)
+        "is_running": transcription_state.get("running", False),
+        "session_id": transcription_state.get("session_id"),
     })
 
 
@@ -12149,6 +12167,7 @@ def emit_new_entries():
             "is_running": is_running,
             "audio_type": transcription_state.get("audio_type"),  # "Speaking", "Music", or "Quiet"
             "detection_mode": transcription_state.get("detection_mode"),  # "panns" or "energy"
+            "session_id": transcription_state.get("session_id"),  # stable per-session anchor
         }
         if staged_segments:
             emit_data["staged_segments"] = staged_segments
@@ -12285,6 +12304,7 @@ def emit_translated_entries():
                 "is_running": transcription_state.get("running", False),
                 "model_loaded": is_live_translation_ready(),
                 "model_loading": _live_translation_model_loading,
+                "session_id": transcription_state.get("session_id"),
             })
             # Sleep longer when translation is disabled
             socketio.sleep(update_interval * 2)
@@ -12303,6 +12323,7 @@ def emit_translated_entries():
                     "is_running": False,
                     "model_loaded": is_live_translation_ready(),
                     "model_loading": _live_translation_model_loading,
+                    "session_id": transcription_state.get("session_id"),
                 })
                 socketio.sleep(update_interval)
                 continue
@@ -12547,6 +12568,7 @@ def emit_translated_entries():
                 "is_running": is_running,
                 "model_loaded": is_live_translation_ready(),
                 "model_loading": _live_translation_model_loading,
+                "session_id": transcription_state.get("session_id"),
             })
 
         except Exception as e:
@@ -14415,8 +14437,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
                                                             _words_json = words_json_or_none(_sentence_word_groups[_sidx] if _sidx < len(_sentence_word_groups) else None)
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             saved_sentences.append(sentence)
@@ -14457,8 +14479,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             # words_json NULL: the remainder is the trailing fragment, not one of
                                                             # the attributed `sentences` (and may be carried text with no words).
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             saved_sentences.append(remainder)
@@ -14579,8 +14601,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             if word_count >= MIN_WORDS and not is_dup:
                                                                 _phrase_words_json = words_json_or_none(_phrase_word_groups[_sidx] if _sidx < len(_phrase_word_groups) else None)
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(sentence)
@@ -14597,8 +14619,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                             if rem_word_count >= MIN_WORDS and not rem_is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 saved_sentences.append(remainder)
@@ -14689,8 +14711,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 with _db_lock:
                                     # words_json NULL: carried fragment, no per-word data retained.
                                     persistent_db_cursor.execute(
-                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush, _flush_words_source),
+                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush, _flush_words_source, live_session_id),
                                     )
                                     _flush_row_id = persistent_db_cursor.lastrowid
                                     persistent_db_cursor.execute(
@@ -14751,6 +14773,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             # web server thread (emit_new_entries) from opening new connections
                             with _transcription_state_lock:
                                 transcription_state["db_name"] = None
+                                transcription_state["session_id"] = None
                             print("[DB-CLEANUP] Cleared db_name from state (prevents new connections)", flush=True)
 
                             # Wait for any in-flight emit_new_entries() iterations to complete
