@@ -11443,6 +11443,7 @@ def handle_request_all_entries():
         }
         for e in entries
     ]
+    _attach_segment_ids(segments)
     emit("transcription_update", {
         "segments": segments,
         "in_progress_segment": None,
@@ -11503,6 +11504,7 @@ def handle_request_all_translation_entries():
             "denied": bool(entry[10]) if len(entry) > 10 and entry[10] is not None else False,
         })
 
+    _attach_segment_ids(translated_segments)
     emit("translation_update", {
         "segments": translated_segments,
         "in_progress": None,
@@ -11963,6 +11965,17 @@ def get_new_entries(limit_override=None):
         return []
 
 
+def _attach_segment_ids(segments):
+    """Add segment_id (string form of the db id) to each emitted segment so the
+    socket key matches the db.segment_id TEXT column exactly. None when there is no
+    id (e.g. a not-yet-persisted in_progress segment)."""
+    for s in segments:
+        if isinstance(s, dict):
+            sid = s.get("id")
+            s["segment_id"] = str(sid) if sid is not None else None
+    return segments
+
+
 def emit_new_entries():
     """Emit combined transcription updates and audio levels to web clients"""
     update_interval = config.get("web_server", {}).get("update_interval", 0.5)
@@ -12007,6 +12020,10 @@ def emit_new_entries():
                 seg["denied"] = bool(entry[10]) if entry[10] is not None else False
             segments.append(seg)
 
+        # Stable key matching db.segment_id (TEXT). Done before the output-delay split
+        # below so live + staged segments (same dict refs) both carry it.
+        _attach_segment_ids(segments)
+
         # Build in-progress segment if there's text
         in_progress_segment = None
         if in_progress and in_progress.strip():
@@ -12015,6 +12032,7 @@ def emit_new_entries():
                 "start": in_progress_start,
                 "end": in_progress_end,
                 "completed": False,
+                "segment_id": None,  # not yet persisted — no db row/segment_id
             }
             # Include word-level confidence for in-progress text
             live_words = transcription_state.get("live_word_confidences")
@@ -12429,7 +12447,8 @@ def emit_translated_entries():
                         "is_translated": should_translate_ip,
                         "start": transcription_state.get("live_start", 0),
                         "end": transcription_state.get("live_end", 0),
-                        "completed": False
+                        "completed": False,
+                        "segment_id": None,  # not yet persisted — no db row/segment_id
                     }
 
             # Tag denied state per segment (so the output can hide denied rows and the
@@ -12440,6 +12459,7 @@ def emit_translated_entries():
             }
             for _seg in translated_segments:
                 _seg["denied"] = _denied_by_id.get(_seg["id"], False)
+            _attach_segment_ids(translated_segments)
 
             # Emit translation update
             socketio.emit("translation_update", {
