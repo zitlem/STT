@@ -23,17 +23,17 @@
       /* Toolbar */
       .toolbar {
         display: flex; align-items: center; gap: 12px;
-        padding: 8px 16px; background: var(--bg-base); border-bottom: 1px solid #333; flex-shrink: 0;
+        padding: 8px 16px; background: var(--bg-base); border-bottom: 1px solid var(--border); flex-shrink: 0;
       }
       .toolbar button {
-        padding: 5px 14px; border: 1px solid #444; border-radius: 16px;
+        padding: 5px 14px; border: 1px solid var(--border); border-radius: 16px;
         background: var(--bg-card); color: var(--text-primary); cursor: pointer; font-size: 0.8em; transition: background-color 0.2s, color 0.2s, border-color 0.2s;
       }
-      .toolbar button:hover { background: #333; }
-      .toolbar button.active { border-color: orange; color: orange; background: rgba(255,165,0,0.1); }
+      .toolbar button:hover { background: var(--bg-elevated); }
+      .toolbar button.active { border-color: var(--warning); color: var(--warning); background: var(--warning-bg); }
       .corrections-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
       .corrections-status-dot.active { background: var(--success); }
-      .corrections-status-dot.inactive { background: #666; }
+      .corrections-status-dot.inactive { background: var(--text-muted); }
 
       /* Main content */
       .corrections-main-content {
@@ -47,11 +47,11 @@
         border: 1px solid var(--border); border-radius: 8px;
         background: var(--bg-base); transition: border-color 0.15s;
       }
-      .seg-card:hover { border-color: #444; }
+      .seg-card:hover { border-color: var(--border-hover); }
       .seg-card.low-confidence { border-color: var(--warning); background: rgba(245,158,11,0.04); }
       .seg-card.staged {
-        border: 1px dashed rgba(255,165,0,0.5);
-        background: rgba(255,165,0,0.03);
+        border: 1px dashed rgba(245,158,11,0.5);
+        background: rgba(245,158,11,0.03);
         opacity: 0.8;
       }
       /* Denied segments stay visible here (struck-through) so they can be restored,
@@ -63,7 +63,7 @@
       /* Per-card actions row (Deny / Restore on finalized segments) */
       .seg-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
       .seg-actions .seg-btn {
-        font-size: 0.73em; padding: 2px 10px; border: 1px solid #444;
+        font-size: 0.73em; padding: 2px 10px; border: 1px solid var(--border);
         border-radius: 4px; cursor: pointer; background: var(--bg-base); color: var(--text-primary);
       }
       .seg-actions .seg-btn.deny { color: var(--danger); border-color: var(--danger); }
@@ -74,23 +74,23 @@
         line-height: 1.5; cursor: pointer; border-radius: 3px;
         transition: background-color 0.15s; padding: 2px 4px; margin: -2px -4px;
       }
-      .seg-original:hover { background: rgba(100,149,237,0.1); }
+      .seg-original:hover { background: var(--accent-subtle); }
       .seg-original.editing {
-        outline: 2px solid var(--accent); background: rgba(187,134,252,0.08);
+        outline: 2px solid var(--accent); background: rgba(124,107,240,0.08);
       }
       .seg-original[contenteditable="true"]:focus { outline: 2px solid var(--accent); }
 
       /* Translated text row */
       .seg-translated {
         margin-top: 4px; line-height: 1.4; cursor: pointer;
-        color: #8ab4f8; font-size: 0.92em; padding: 2px 4px; margin-left: -4px; margin-right: -4px;
+        color: var(--info); font-size: 0.92em; padding: 2px 4px; margin-left: -4px; margin-right: -4px;
         border-radius: 3px; transition: background-color 0.15s;
       }
-      .seg-translated:hover { background: rgba(138,180,248,0.08); }
+      .seg-translated:hover { background: var(--info-bg); }
       .seg-translated.editing {
-        outline: 2px solid #8ab4f8; background: rgba(138,180,248,0.08);
+        outline: 2px solid var(--info); background: var(--info-bg);
       }
-      .seg-translated[contenteditable="true"]:focus { outline: 2px solid #8ab4f8; }
+      .seg-translated[contenteditable="true"]:focus { outline: 2px solid var(--info); }
 
       /* Meta row */
       .seg-meta {
@@ -100,32 +100,32 @@
         font-size: 0.7em; color: var(--text-muted); background: var(--bg-card);
         padding: 1px 6px; border-radius: 8px;
       }
-      .seg-confidence.low { color: orange; background: rgba(255,165,0,0.1); }
+      .seg-confidence.low { color: var(--warning); background: var(--warning-bg); }
 
       .speech-type-pill {
         font-size: 0.7em; padding: 1px 7px; border-radius: 8px;
         font-weight: 600; letter-spacing: 0.02em; border: 1px solid transparent;
       }
-      .speech-type-pill.Speaking { color: #48bb78; background: rgba(72,187,120,0.12); border-color: rgba(72,187,120,0.3); }
-      .speech-type-pill.Music    { color: #9f7aea; background: rgba(159,122,234,0.12); border-color: rgba(159,122,234,0.3); }
-      .speech-type-pill.Quiet    { color: #a0aec0; background: rgba(160,174,192,0.1); border-color: rgba(160,174,192,0.25); }
+      .speech-type-pill.Speaking { color: var(--success); background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); }
+      .speech-type-pill.Music    { color: var(--accent); background: rgba(124,107,240,0.12); border-color: rgba(124,107,240,0.3); }
+      .speech-type-pill.Quiet    { color: var(--text-secondary); background: rgba(138,143,152,0.1); border-color: rgba(138,143,152,0.25); }
 
       /* Alternatives */
       .seg-alts { display: flex; flex-wrap: wrap; gap: 4px; }
       .alt-pill {
         font-size: 0.73em; padding: 2px 10px;
-        border: 1px solid #444; border-radius: 14px;
-        background: #222; color: #aaa; cursor: pointer; transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+        border: 1px solid var(--border); border-radius: 14px;
+        background: var(--bg-elevated); color: var(--text-muted); cursor: pointer; transition: background-color 0.15s, color 0.15s, border-color 0.15s;
       }
-      .alt-pill:hover { background: #333; color: var(--text-primary); border-color: #8ab4f8; }
+      .alt-pill:hover { background: var(--bg-card); color: var(--text-primary); border-color: var(--info); }
 
       /* Staged extras */
       .staged-info {
         display: flex; align-items: center; gap: 8px; margin-top: 4px;
       }
-      .staged-countdown { font-size: 0.75em; color: orange; font-weight: 600; }
+      .staged-countdown { font-size: 0.75em; color: var(--warning); font-weight: 600; }
       .staged-btn {
-        font-size: 0.73em; padding: 2px 10px; border: 1px solid #444;
+        font-size: 0.73em; padding: 2px 10px; border: 1px solid var(--border);
         border-radius: 4px; cursor: pointer; background: var(--bg-base); color: var(--text-primary);
       }
       .staged-btn.approve { color: var(--success); border-color: var(--success); }
@@ -139,7 +139,7 @@
 
       /* Review queue bottom bar */
       .review-bar {
-        background: var(--bg-base); border-top: 1px solid #333;
+        background: var(--bg-base); border-top: 1px solid var(--border);
         flex-shrink: 0;
       }
       .review-bar-collapsible {
@@ -154,9 +154,9 @@
         padding: 6px 14px; display: flex; justify-content: space-between;
         align-items: center; cursor: pointer; font-size: 0.85em;
       }
-      .review-bar-header:hover { background: #222; }
+      .review-bar-header:hover { background: var(--bg-elevated); }
       .review-badge {
-        background: orange; color: #000; border-radius: 10px;
+        background: var(--warning); color: #000; border-radius: 10px;
         padding: 1px 8px; font-size: 0.8em; font-weight: 600; margin-left: 6px;
       }
       .review-bar-items {
@@ -167,50 +167,50 @@
         display: flex; flex-wrap: wrap; gap: 6px;
       }
       .review-item {
-        padding: 6px 10px; border: 1px solid #333; border-radius: 6px;
+        padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
         background: var(--bg-card); font-size: 0.8em; flex: 0 0 auto; max-width: 350px;
       }
       .review-item .rv-text { margin-bottom: 4px; line-height: 1.3; }
       .review-item .rv-meta { font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px; }
       .review-item .rv-actions { display: flex; gap: 4px; }
       .review-item .rv-actions button {
-        padding: 2px 8px; border: 1px solid #444; border-radius: 3px;
+        padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px;
         background: var(--bg-base); color: var(--text-primary); cursor: pointer; font-size: 0.8em;
       }
       .review-item .rv-actions .btn-approve { color: var(--success); border-color: var(--success); }
-      .review-item .rv-actions .btn-edit { color: #8ab4f8; border-color: #8ab4f8; }
+      .review-item .rv-actions .btn-edit { color: var(--info); border-color: var(--info); }
       .review-item .rv-actions .btn-deny { color: var(--danger); border-color: var(--danger); }
 
       /* Jump-to-latest pill (shown when auto-scroll is paused) */
       #jump-latest-btn {
         position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
         z-index: 50; display: none; align-items: center; gap: 6px;
-        padding: 6px 16px; border: 1px solid orange; border-radius: 18px;
-        background: var(--bg-card); color: orange; cursor: pointer;
+        padding: 6px 16px; border: 1px solid var(--warning); border-radius: 18px;
+        background: var(--bg-card); color: var(--warning); cursor: pointer;
         font-size: 0.82em; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
       }
-      #jump-latest-btn:hover { background: rgba(255,165,0,0.12); }
+      #jump-latest-btn:hover { background: var(--warning-bg); }
       #jump-latest-count {
-        background: orange; color: #000; border-radius: 10px;
+        background: var(--warning); color: #000; border-radius: 10px;
         padding: 0 7px; font-weight: 600; font-size: 0.9em;
       }
       #jump-latest-count:empty { display: none; }
 
       /* Shortcuts bar */
       .shortcuts-hint {
-        padding: 4px 12px; font-size: 0.7em; color: #555;
-        background: var(--bg-base); border-top: 1px solid #282828; flex-shrink: 0;
+        padding: 4px 12px; font-size: 0.7em; color: var(--text-muted);
+        background: var(--bg-base); border-top: 1px solid var(--border); flex-shrink: 0;
       }
-      .shortcuts-hint kbd { background: #333; padding: 1px 5px; border-radius: 3px; }
+      .shortcuts-hint kbd { background: var(--bg-elevated); padding: 1px 5px; border-radius: 3px; }
 {% endblock %}
 
 {% block content %}
     <div class="toolbar">
         <span id="status-indicator"><span class="corrections-status-dot inactive"></span> Stopped</span>
         <button id="delay-toggle-btn" onclick="toggleDelay()">Delay: OFF</button>
-        <label style="font-size:0.8em; color:#aaa; display:flex; align-items:center; gap:4px;">
+        <label style="font-size:0.8em; color:var(--text-muted); display:flex; align-items:center; gap:4px;">
             <input type="number" id="delay-seconds-input" min="2" max="30" value="7"
-                   style="width:42px; padding:2px 4px; background:var(--bg-elevated); border:1px solid #444; border-radius:4px; color:#eee; font-size:0.9em; text-align:center;"
+                   style="width:42px; padding:2px 4px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.9em; text-align:center;"
                    onchange="setDelaySeconds(this.value)">s
         </label>
     </div>
