@@ -322,11 +322,8 @@
             <!-- Model Manager Panel -->
             <div class="model-manager-panel">
 
-            <!-- Alert Display (moved up) -->
+            <!-- Alert Display -->
             <div id="alert_message" class="alert"></div>
-
-            <!-- Model Manager Panel -->
-            <div class="model-manager-panel">
                 <div class="loading" id="loading">
                     <div class="spinner"></div>
                     <p>Processing...</p>
@@ -473,7 +470,7 @@
                         <button class="sync-btn secondary" onclick="loadModelManager()">
                             ↻ Reload
                         </button>
-                        <button class="sync-btn" style="background: #f59e0b;" onclick="restartApplication()">
+                        <button class="sync-btn" style="background: var(--warning); color: var(--text-primary);" onclick="restartApplication()">
                             🔄 Restart Application
                         </button>
                     </div>
@@ -547,12 +544,6 @@
 
                     <!-- Whisper Models -->
                     <div id="whisper_models" class="model-list">
-                        <div class="model-item model-item--header">
-                            <div class="model-info" style="flex: 1;">
-                                <div class="model-name" style="color: var(--accent);">🤖 Whisper Models</div>
-                                <div class="model-details">OpenAI Whisper models for file transcription.</div>
-                            </div>
-                        </div>
                         <div id="whisper_models_list">
                             <div class="model-item">
                                 <div class="model-info">
@@ -564,12 +555,6 @@
 
                     <!-- Faster Whisper Models -->
                     <div id="faster_whisper_models" class="model-list" style="display: none;">
-                        <div class="model-item model-item--header">
-                            <div class="model-info" style="flex: 1;">
-                                <div class="model-name" style="color: var(--warning);">⚡ Faster Whisper Models</div>
-                                <div class="model-details">Models for live transcription.</div>
-                            </div>
-                        </div>
                         <div id="faster_whisper_models_list">
                             <div class="model-item">
                                 <div class="model-info">
@@ -671,12 +656,6 @@
 
                     <!-- Downloaded Models (separate tab) -->
                     <div id="my_downloaded_models" class="model-list" style="display: none;">
-                        <div class="model-item model-item--header">
-                            <div class="model-info" style="flex: 1;">
-                                <div class="model-name" style="color: var(--accent);">📦 Downloaded Models</div>
-                                <div class="model-details">All downloaded and uploaded models on this system</div>
-                            </div>
-                        </div>
                         <div id="downloaded_models_list">
                             <div class="model-item">
                                 <div class="model-info">
@@ -693,7 +672,6 @@
                 </div>
 
             </div>
-        </div>
 
     <!-- Upload Local Model Modal -->
     <div id="uploadModal" class="download-modal">
