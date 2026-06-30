@@ -2916,6 +2916,13 @@ def initialize_database():
                 db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN session_id TEXT DEFAULT NULL")
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added session_id column)")
+            if "denied_reason" not in columns:
+                # Why the row was denied: 'hallucination', 'cjk', 'cjk_shadow', 'short', 'dup'.
+                # NULL means the row is a normal visible segment.
+                print("[DB] Migrating database: adding denied_reason column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN denied_reason TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added denied_reason column)")
 
             # Insert a blank first entry with default values
             default_timestamp = " "
@@ -3103,6 +3110,7 @@ def convert_db_to_srt(db_path):
                 SELECT timestamp, text FROM transcriptions
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND text IS NOT NULL AND TRIM(text) != '' AND TRIM(text) != ' '
+                AND COALESCE(denied, 0) = 0
                 ORDER BY id ASC
             """
             )
@@ -3195,6 +3203,7 @@ def convert_db_to_translation_srt(db_path):
                 SELECT timestamp, translated_text FROM transcriptions
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND translated_text IS NOT NULL AND TRIM(translated_text) != ''
+                AND COALESCE(denied, 0) = 0
                 ORDER BY id ASC
             """
             )
@@ -3347,6 +3356,7 @@ def convert_db_to_html(db_path):
                 SELECT timestamp, text FROM transcriptions
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND text IS NOT NULL AND TRIM(text) != '' AND TRIM(text) != ' '
+                AND COALESCE(denied, 0) = 0
                 ORDER BY id ASC
             """
             )
@@ -12738,14 +12748,13 @@ def filter_hallucinated_text(text, language="auto"):
 
 # Default Whisper hallucinations - phantom subtitle credits from training data
 # These are common phrases Whisper hallucinates from YouTube videos in its training set
+# Matching is substring-based (phrase anywhere in the sentence, case/punctuation insensitive),
+# so one entry catches all surface variants (e.g. "DimaTorzok" catches all 3 Russian credit lines).
 # User can override/extend this list via config.json hallucination_filter.phrases
 DEFAULT_WHISPER_HALLUCINATIONS = [
-    "Субтитры сделал DimaTorzok",
-    "Субтитры делал DimaTorzok",
-    "Субтитры подготовил DimaTorzok",
-    "Продолжение следует...",
-    "Thank you for watching",
-    "Thanks for watching",
+    "DimaTorzok",           # catches all Субтитры * DimaTorzok variants
+    "Продолжение следует",
+    "for watching",         # catches "thank you for watching", "thanks for watching", etc.
     "Please subscribe",
     "Like and subscribe",
     "Don't forget to subscribe",
@@ -12803,7 +12812,7 @@ def is_whisper_hallucination(text):
 
     text_normalized = normalize_for_hallucination_check(text)
     for hallucination in phrases:
-        if normalize_for_hallucination_check(hallucination) == text_normalized:
+        if normalize_for_hallucination_check(hallucination) in text_normalized:
             return True
     return False
 
@@ -14321,15 +14330,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         except Exception as _wt_err:
                                             print(f"[WHISPER-TRANSLATE] Pass 2 error: {_wt_err}", flush=True)
 
-                                    # Filter out hallucinated foreign characters from each segment
-                                    if segments and config.get("hallucination_filter", {}).get("cjk_filter_enabled", True):
-                                        for seg in segments:
-                                            if seg.get('text'):
-                                                seg['text'] = filter_hallucinated_text(seg['text'], live_language)
-
                                     # Update segments using Whisper-Live's approach
                                     # This finalizes all segments except the last one immediately
                                     result = live_transcriber.update_segments(segments, chunk_duration)
+
+                                    _cjk_filter_enabled = config.get("hallucination_filter", {}).get("cjk_filter_enabled", True)
 
                                     # Handle completed segments (save to DB)
                                     if result['completed_segments']:
@@ -14421,39 +14426,65 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
                                                     ts_ms = int(now.timestamp() * 1000)
                                                     for _sidx, sentence in enumerate(sentences):
-                                                        # Skip known Whisper hallucinations
-                                                        if is_whisper_hallucination(sentence):
-                                                            print(f"[SKIP HALLUCINATION] '{sentence[:40]}'", flush=True)
-                                                            continue
+                                                        # CJK filter: applied here so we have both versions for shadow row
+                                                        _cjk_deny = False
+                                                        _cjk_shadow = None
+                                                        if _cjk_filter_enabled:
+                                                            _cjk_stripped = filter_hallucinated_text(sentence, live_language)
+                                                            if not _cjk_stripped.strip():
+                                                                _cjk_deny = True
+                                                                print(f"[CJK→DENIED] '{sentence[:40]}'", flush=True)
+                                                            elif _cjk_stripped != sentence:
+                                                                _cjk_shadow = sentence  # original with CJK → shadow row
+                                                                sentence = _cjk_stripped
+
+                                                        _is_hallucination = is_whisper_hallucination(sentence)
+                                                        if _is_hallucination:
+                                                            print(f"[HALLUCINATION→DENIED] '{sentence[:40]}'", flush=True)
+
+                                                        _denied = 1 if (_is_hallucination or _cjk_deny) else 0
+                                                        _denied_reason = ('hallucination' if _is_hallucination else 'cjk') if _denied else None
+
                                                         # original_text = verbatim ASR before profanity normalization
-                                                        # (so text<->original_text diffs the profanity cleanup). Note the
-                                                        # CJK-hallucination filter ran earlier on seg['text']; the words_json
-                                                        # `w` tokens are the fullest-raw form (words[] is never filtered).
+                                                        # (words_json `w` tokens are the fullest-raw form, never filtered)
                                                         _verbatim = sentence
                                                         sentence = apply_profanity_filter(sentence)
                                                         word_count = len(sentence.split())
                                                         is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
-                                                        if word_count >= MIN_WORDS and not is_dup:
-                                                            needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
-                                                            _words_json = words_json_or_none(_sentence_word_groups[_sidx] if _sidx < len(_sentence_word_groups) else None)
+                                                        needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
+                                                        _words_json = words_json_or_none(_sentence_word_groups[_sidx] if _sidx < len(_sentence_word_groups) else None)
+                                                        if _is_hallucination or _cjk_deny or (word_count >= MIN_WORDS and not is_dup):
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id, _denied, _denied_reason),
+                                                            )
+                                                            _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            if not _denied:
+                                                                saved_sentences.append(sentence)
+                                                                conf_str = f", conf={segment_confidence:.2f}" if segment_confidence is not None else ""
+                                                                print(f"[DB INSERT] '{sentence[:50]}...'{conf_str}" if len(sentence) > 50 else f"[DB INSERT] '{sentence}'{conf_str}", flush=True)
+                                                            # Shadow row: full original sentence with CJK preserved, denied
+                                                            if _cjk_shadow:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                    (timestamp, _cjk_shadow, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _cjk_shadow, _words_json, _words_source, live_session_id),
+                                                                )
+                                                                _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                print(f"[CJK SHADOW→DENIED] '{_cjk_shadow[:40]}'", flush=True)
+                                                        elif word_count < MIN_WORDS:
+                                                            persistent_db_cursor.execute(
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
                                                                 (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                            saved_sentences.append(sentence)
-                                                            conf_str = f", conf={segment_confidence:.2f}" if segment_confidence is not None else ""
-                                                            print(f"[DB INSERT] '{sentence[:50]}...'{conf_str}" if len(sentence) > 50 else f"[DB INSERT] '{sentence}'{conf_str}", flush=True)
-                                                        elif word_count < MIN_WORDS:
-                                                            print(f"[SKIP SHORT] '{sentence}' ({word_count} words, min={MIN_WORDS})", flush=True)
+                                                            print(f"[SHORT→DENIED] '{sentence}' ({word_count} words)", flush=True)
                                                         elif is_dup:
-                                                            # Find which saved sentence it matched
-                                                            from difflib import SequenceMatcher
-                                                            for saved in saved_sentences[-5:]:  # Check last 5
-                                                                ratio = SequenceMatcher(None, sentence.lower(), saved.lower()).ratio()
-                                                                if ratio >= fuzzy_threshold:
-                                                                    print(f"[SKIP DUP] '{sentence[:40]}' matched '{saved[:40]}' (ratio={ratio:.2f})", flush=True)
-                                                                    break
+                                                            persistent_db_cursor.execute(
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
+                                                            )
+                                                            _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            print(f"[DUP→DENIED] '{sentence[:40]}'", flush=True)
                                                     # Run-on safety valve: flush a held fragment that never
                                                     # completes a sentence (word cap or age cap exceeded)
                                                     if pending_buffer_enabled and pending_remainder and (
@@ -14469,26 +14500,60 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         pending_remainder_meta = None
                                                         print(f"[PENDING FLUSH] Run-on fragment hit cap: '{remainder[:50]}'", flush=True)
                                                     # Save substantial remainder (run-on flush, or pending buffer disabled)
-                                                    if remainder and not is_whisper_hallucination(remainder):
+                                                    if remainder:
+                                                        # CJK filter on remainder
+                                                        _rem_cjk_deny = False
+                                                        _rem_cjk_shadow = None
+                                                        if _cjk_filter_enabled:
+                                                            _rem_stripped = filter_hallucinated_text(remainder, live_language)
+                                                            if not _rem_stripped.strip():
+                                                                _rem_cjk_deny = True
+                                                                print(f"[CJK REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
+                                                            elif _rem_stripped != remainder:
+                                                                _rem_cjk_shadow = remainder
+                                                                remainder = _rem_stripped
+                                                        _rem_is_hallucination = is_whisper_hallucination(remainder)
+                                                        if _rem_is_hallucination:
+                                                            print(f"[HALLUCINATION REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
+                                                        _rem_denied = 1 if (_rem_is_hallucination or _rem_cjk_deny) else 0
+                                                        _rem_denied_reason = ('hallucination' if _rem_is_hallucination else 'cjk') if _rem_denied else None
                                                         _verbatim_rem = remainder
                                                         remainder = apply_profanity_filter(remainder)
                                                         rem_word_count = len(remainder.split())
                                                         rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
-                                                        if rem_word_count >= MIN_WORDS and not rem_is_dup:
-                                                            needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
+                                                        rem_needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
+                                                        if _rem_is_hallucination or _rem_cjk_deny or (rem_word_count >= MIN_WORDS and not rem_is_dup):
                                                             # words_json NULL: the remainder is the trailing fragment, not one of
                                                             # the attributed `sentences` (and may be carried text with no words).
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id, _rem_denied, _rem_denied_reason),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                            saved_sentences.append(remainder)
-                                                            print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
+                                                            if not _rem_denied:
+                                                                saved_sentences.append(remainder)
+                                                                print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
+                                                            if _rem_cjk_shadow:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                    (timestamp, _rem_cjk_shadow, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _rem_cjk_shadow, _words_source, live_session_id),
+                                                                )
+                                                                _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                print(f"[CJK SHADOW REMAINDER→DENIED] '{_rem_cjk_shadow[:40]}'", flush=True)
                                                         elif rem_word_count < MIN_WORDS:
-                                                            print(f"[SKIP SHORT REMAINDER] '{remainder}' ({rem_word_count} words)", flush=True)
+                                                            persistent_db_cursor.execute(
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
+                                                            )
+                                                            _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            print(f"[SHORT REMAINDER→DENIED] '{remainder}' ({rem_word_count} words)", flush=True)
                                                         elif rem_is_dup:
-                                                            print(f"[SKIP DUP REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[SKIP DUP REMAINDER] '{remainder}'", flush=True)
+                                                            persistent_db_cursor.execute(
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
+                                                            )
+                                                            _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            print(f"[DUP REMAINDER→DENIED] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DUP REMAINDER→DENIED] '{remainder}'", flush=True)
                                                     # segment_id links a transcript row to its translation
                                                     # (same row here); populate it equal to the row id.
                                                     if _newly_inserted_ids:
@@ -14590,40 +14655,109 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
                                                         ts_ms = int(now.timestamp() * 1000)
                                                         for _sidx, sentence in enumerate(sentences):
-                                                            # Skip known Whisper hallucinations
-                                                            if is_whisper_hallucination(sentence):
-                                                                print(f"[SKIP HALLUCINATION PHRASE] '{sentence[:40]}'", flush=True)
-                                                                continue
+                                                            # CJK filter: applied here so we have both versions for shadow row
+                                                            _cjk_deny = False
+                                                            _cjk_shadow = None
+                                                            if _cjk_filter_enabled:
+                                                                _cjk_stripped = filter_hallucinated_text(sentence, live_language)
+                                                                if not _cjk_stripped.strip():
+                                                                    _cjk_deny = True
+                                                                    print(f"[CJK→DENIED] '{sentence[:40]}'", flush=True)
+                                                                elif _cjk_stripped != sentence:
+                                                                    _cjk_shadow = sentence
+                                                                    sentence = _cjk_stripped
+
+                                                            _is_hallucination = is_whisper_hallucination(sentence)
+                                                            if _is_hallucination:
+                                                                print(f"[HALLUCINATION→DENIED] '{sentence[:40]}'", flush=True)
+
+                                                            _denied = 1 if (_is_hallucination or _cjk_deny) else 0
+                                                            _denied_reason = ('hallucination' if _is_hallucination else 'cjk') if _denied else None
+
                                                             _verbatim = sentence
                                                             sentence = apply_profanity_filter(sentence)
                                                             word_count = len(sentence.split())
                                                             is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
-                                                            if word_count >= MIN_WORDS and not is_dup:
-                                                                _phrase_words_json = words_json_or_none(_phrase_word_groups[_sidx] if _sidx < len(_phrase_word_groups) else None)
+                                                            _phrase_words_json = words_json_or_none(_phrase_word_groups[_sidx] if _sidx < len(_phrase_word_groups) else None)
+                                                            if _is_hallucination or _cjk_deny or (word_count >= MIN_WORDS and not is_dup):
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id, _denied, _denied_reason),
+                                                                )
+                                                                _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                if not _denied:
+                                                                    saved_sentences.append(sentence)
+                                                                    print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
+                                                                if _cjk_shadow:
+                                                                    persistent_db_cursor.execute(
+                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                        (timestamp, _cjk_shadow, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _cjk_shadow, _phrase_words_json, _phrase_words_source, live_session_id),
+                                                                    )
+                                                                    _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                    print(f"[CJK SHADOW→DENIED] '{_cjk_shadow[:40]}'", flush=True)
+                                                            elif word_count < MIN_WORDS:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
                                                                     (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                                saved_sentences.append(sentence)
-                                                                print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
-                                                            elif word_count < MIN_WORDS:
-                                                                print(f"[SKIP SHORT PHRASE] '{sentence}' ({word_count} words, min={MIN_WORDS})", flush=True)
+                                                                print(f"[SHORT→DENIED] '{sentence}' ({word_count} words)", flush=True)
                                                             elif is_dup:
-                                                                print(f"[SKIP DUP PHRASE] '{sentence[:40]}'", flush=True)
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
+                                                                )
+                                                                _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                print(f"[DUP→DENIED] '{sentence[:40]}'", flush=True)
                                                         # Also save substantial remainder from phrase_complete
-                                                        if remainder and not is_whisper_hallucination(remainder):
+                                                        if remainder:
+                                                            _rem_cjk_deny = False
+                                                            _rem_cjk_shadow = None
+                                                            if _cjk_filter_enabled:
+                                                                _rem_stripped = filter_hallucinated_text(remainder, live_language)
+                                                                if not _rem_stripped.strip():
+                                                                    _rem_cjk_deny = True
+                                                                    print(f"[CJK REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
+                                                                elif _rem_stripped != remainder:
+                                                                    _rem_cjk_shadow = remainder
+                                                                    remainder = _rem_stripped
+                                                            _rem_is_hallucination = is_whisper_hallucination(remainder)
+                                                            if _rem_is_hallucination:
+                                                                print(f"[HALLUCINATION REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
+                                                            _rem_denied = 1 if (_rem_is_hallucination or _rem_cjk_deny) else 0
+                                                            _rem_denied_reason = ('hallucination' if _rem_is_hallucination else 'cjk') if _rem_denied else None
                                                             _verbatim_rem = remainder
                                                             remainder = apply_profanity_filter(remainder)
                                                             rem_word_count = len(remainder.split())
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
-                                                            if rem_word_count >= MIN_WORDS and not rem_is_dup:
+                                                            if _rem_is_hallucination or _rem_cjk_deny or (rem_word_count >= MIN_WORDS and not rem_is_dup):
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id, _rem_denied, _rem_denied_reason),
+                                                                )
+                                                                _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                if not _rem_denied:
+                                                                    saved_sentences.append(remainder)
+                                                                if _rem_cjk_shadow:
+                                                                    persistent_db_cursor.execute(
+                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                        (timestamp, _rem_cjk_shadow, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _rem_cjk_shadow, _phrase_words_source, live_session_id),
+                                                                    )
+                                                                    _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                            elif rem_word_count < MIN_WORDS:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
                                                                     (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
-                                                                saved_sentences.append(remainder)
+                                                                print(f"[SHORT REMAINDER→DENIED] '{remainder}' ({rem_word_count} words)", flush=True)
+                                                            elif rem_is_dup:
+                                                                persistent_db_cursor.execute(
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
+                                                                )
+                                                                _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
+                                                                print(f"[DUP REMAINDER→DENIED] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DUP REMAINDER→DENIED] '{remainder}'", flush=True)
                                                         if _phrase_inserted_ids:
                                                             persistent_db_cursor.executemany(
                                                                 "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
@@ -14688,40 +14822,81 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     print("\nCleaning up resources...")
 
                     # Flush any held sentence fragment so it isn't lost on stop
-                    if pending_remainder and not is_whisper_hallucination(pending_remainder):
+                    if pending_remainder:
                         try:
+                            # CJK filter on flush remainder
+                            _flush_cjk_deny = False
+                            _flush_cjk_shadow = None
+                            try:
+                                _flush_cjk_enabled = config.get("hallucination_filter", {}).get("cjk_filter_enabled", True)
+                                _flush_ll = live_language
+                            except NameError:
+                                _flush_cjk_enabled = True
+                                _flush_ll = None
+                            if _flush_cjk_enabled:
+                                _flush_stripped = filter_hallucinated_text(pending_remainder, _flush_ll)
+                                if not _flush_stripped.strip():
+                                    _flush_cjk_deny = True
+                                    print(f"[CJK STOP-FLUSH→DENIED] '{pending_remainder[:40]}'", flush=True)
+                                elif _flush_stripped != pending_remainder:
+                                    _flush_cjk_shadow = pending_remainder
+                                    pending_remainder = _flush_stripped
+                            _flush_is_hallucination = is_whisper_hallucination(pending_remainder)
+                            if _flush_is_hallucination:
+                                print(f"[HALLUCINATION STOP-FLUSH→DENIED] '{pending_remainder[:40]}'", flush=True)
+                            _flush_denied = 1 if (_flush_is_hallucination or _flush_cjk_deny) else 0
+                            _flush_denied_reason = ('hallucination' if _flush_is_hallucination else 'cjk') if _flush_denied else None
                             _verbatim_flush = pending_remainder
                             _flush_text = apply_profanity_filter(pending_remainder)
-                            if len(_flush_text.split()) >= min_words_threshold and not is_fuzzy_duplicate(_flush_text, saved_sentences, fuzzy_threshold):
-                                _flush_start, _flush_end, _flush_conf = pending_remainder_meta if pending_remainder_meta else (0, 0, None)
-                                _flush_now = datetime.now(configured_timezone)
-                                _flush_ts_ms = int(_flush_now.timestamp() * 1000)
-                                _flush_speech_type = finalized_audio_type(process_config, transcription_state)
-                                _flush_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
-                                _flush_needs_review = 1 if (_flush_conf is not None and _flush_conf < _flush_threshold) else 0
-                                try:
-                                    _ll = live_language
-                                except NameError:
-                                    _ll = None
-                                _flush_src = _ll if (_ll and _ll != "auto") else "und"
-                                try:
-                                    _flush_words_source = model_type
-                                except NameError:
-                                    _flush_words_source = None
-                                with _db_lock:
-                                    # words_json NULL: carried fragment, no per-word data retained.
+                            _flush_word_count = len(_flush_text.split())
+                            _flush_is_dup = is_fuzzy_duplicate(_flush_text, saved_sentences, fuzzy_threshold)
+                            _flush_word_ok = _flush_word_count >= min_words_threshold and not _flush_is_dup
+                            _flush_start, _flush_end, _flush_conf = pending_remainder_meta if pending_remainder_meta else (0, 0, None)
+                            _flush_now = datetime.now(configured_timezone)
+                            _flush_ts_ms = int(_flush_now.timestamp() * 1000)
+                            _flush_speech_type = finalized_audio_type(process_config, transcription_state)
+                            _flush_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
+                            _flush_needs_review = 1 if (_flush_conf is not None and _flush_conf < _flush_threshold) else 0
+                            try:
+                                _flush_ll = live_language
+                            except NameError:
+                                _flush_ll = None
+                            _flush_src = _flush_ll if (_flush_ll and _flush_ll != "auto") else "und"
+                            try:
+                                _flush_words_source = model_type
+                            except NameError:
+                                _flush_words_source = None
+                            if not _flush_denied and not _flush_word_ok:
+                                _flush_denied = 1
+                                _flush_denied_reason = 'short' if _flush_word_count < min_words_threshold else 'dup'
+                            with _db_lock:
+                                # words_json NULL: carried fragment, no per-word data retained.
+                                persistent_db_cursor.execute(
+                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                    (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush, _flush_words_source, live_session_id, _flush_denied, _flush_denied_reason),
+                                )
+                                _flush_row_id = persistent_db_cursor.lastrowid
+                                persistent_db_cursor.execute(
+                                    "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                    (str(_flush_row_id), _flush_row_id),
+                                )
+                                if _flush_cjk_shadow:
                                     persistent_db_cursor.execute(
-                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
-                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush, _flush_words_source, live_session_id),
+                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_cjk_shadow, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _flush_cjk_shadow, _flush_words_source, live_session_id),
                                     )
-                                    _flush_row_id = persistent_db_cursor.lastrowid
+                                    _shadow_id = persistent_db_cursor.lastrowid
                                     persistent_db_cursor.execute(
                                         "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
-                                        (str(_flush_row_id), _flush_row_id),
+                                        (str(_shadow_id), _shadow_id),
                                     )
-                                    persistent_db_conn.commit()
+                                    print(f"[CJK SHADOW STOP-FLUSH→DENIED] '{_flush_cjk_shadow[:40]}'", flush=True)
+                                persistent_db_conn.commit()
+                            if not _flush_denied:
                                 saved_sentences.append(_flush_text)
                                 print(f"[DB INSERT STOP-FLUSH] '{_flush_text[:50]}'", flush=True)
+                            else:
+                                print(f"[STOP-FLUSH {_flush_denied_reason.upper()}→DENIED] '{_flush_text[:50]}'", flush=True)
                         except Exception as _flush_err:
                             print(f"[WARNING] Failed to flush pending fragment on stop: {_flush_err}")
                         pending_remainder = ""
