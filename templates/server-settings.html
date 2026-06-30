@@ -44,8 +44,8 @@
             background: var(--bg-base);
             color: var(--accent);
             padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
+            border-radius: var(--radius-sm);
+            font-family: monospace;
             word-break: break-all;
         }
 
@@ -54,10 +54,10 @@
             display: flex;
             align-items: flex-start;
             padding: 8px 12px;
-            background: #1e1e1e;
+            background: var(--bg-elevated);
             border-radius: var(--radius-sm);
             margin-bottom: 6px;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             font-size: 0.85em;
         }
 
@@ -77,20 +77,19 @@
         }
 
         .endpoint-description {
-            color: #888;
+            color: var(--text-muted);
             font-size: 0.85em;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin-top: 2px;
         }
 
         .endpoint-example {
-            color: #63b3ed;
+            color: var(--info);
             font-size: 0.8em;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             margin-top: 3px;
             padding: 3px 6px;
             background: var(--bg-card);
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             display: inline-block;
             max-width: 100%;
             word-break: break-all;
@@ -108,14 +107,14 @@
             border: none;
             color: var(--accent);
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
             font-size: 0.85em;
             flex-shrink: 0;
         }
 
         .endpoint-copy-btn:hover {
-            background: #4a4a4a;
+            background: var(--bg-elevated);
         }
 
         .endpoint-category {
@@ -132,7 +131,7 @@
 
         .alert.show {
             display: block;
-            animation: slideDown 0.3s ease;
+            animation: slideDown 0.2s var(--ease-out);
         }
 
         /* Responsive */
@@ -181,9 +180,9 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(26, 26, 46, 0.95);
+            background: rgba(10, 10, 12, 0.95);
             backdrop-filter: blur(8px);
-            border-top: 1px solid var(--accent);
+            border-top: 1px solid var(--border);
             padding: 10px 24px;
             z-index: 1000;
         }
@@ -207,7 +206,7 @@
                 <!-- Alert Display -->
                 <div id="alert_message" class="alert"></div>
 
-                <div style="background: #3a1a1a; border: 1px solid #5a2d2d; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
+                <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 15px;">
                     <span style="color: var(--danger); font-weight: 600;">⚠️ Important</span><br>
                     <small style="color: var(--text-primary);">Changes to Host, Port, and Update Interval require server restart to take effect. Stop the server and restart it after saving.</small>
                 </div>
@@ -215,7 +214,7 @@
                 <div class="info-box">
                     🕐 <strong>Current Date & Time (Server):</strong><br>
                     <span id="current_datetime" style="font-size: 0.95em; color: var(--accent);">Loading...</span>
-                    <div id="timezone_warning" style="display: none; margin-top: 8px; padding: 8px; background: #4a3000; border: 1px solid #ff9800; border-radius: 4px; color: #ffcc80;">
+                    <div id="timezone_warning" style="display: none; margin-top: 8px; padding: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-sm); color: var(--warning);">
                         ⚠️ <strong>Timezone Mismatch:</strong> Your browser time differs from server time by <span id="time_diff"></span>. File paths will use server time.
                     </div>
                 </div>
@@ -257,7 +256,7 @@
                     <label for="database_path_format">Database Path Format</label>
                     <input type="text" id="database_path_format" name="database.path_format" placeholder="%Y/%m" oninput="updatePreview()">
                     <small>Python strftime format for subdirectories. Default: %Y/%m</small>
-                    <div style="margin-top: 8px; padding: 8px; background: var(--bg-card); border-left: 3px solid var(--accent); border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 0.85em; color: var(--text-primary);">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: monospace; font-size: 0.85em; color: var(--text-primary);">
                         <strong>Full Path:</strong> <span id="database_path_preview">_AUTOMATIC_BACKUP/2025/01/20250108_143527.db</span>
                     </div>
                 </div>
@@ -316,7 +315,7 @@
                     <label for="audio_backup_path_format">Audio Backup Path Format</label>
                     <input type="text" id="audio_backup_path_format" name="audio_backup.path_format" placeholder="%Y/%m" oninput="updatePreview()">
                     <small>Python strftime format for subdirectories. Default: %Y/%m</small>
-                    <div style="margin-top: 8px; padding: 8px; background: var(--bg-card); border-left: 3px solid var(--accent); border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 0.85em; color: var(--text-primary);">
+                    <div style="margin-top: 8px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: monospace; font-size: 0.85em; color: var(--text-primary);">
                         <strong>Full Paths:</strong><br>
                         <span id="audio_path_preview_wav">.wav: _AUTOMATIC_BACKUP/2025/01/20250108_143527.wav</span><br>
                         <span id="audio_path_preview_ts">.ts: _AUTOMATIC_BACKUP/2025/01/20250108_143527.ts</span>
@@ -337,7 +336,7 @@
 
                 <button id="main-save-btn" type="submit" class="btn-save" style="background: var(--accent);">💾 Save Settings</button>
                 <button type="button" onclick="restartServer()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">🔄 Restart Server</button>
-                <button type="button" onclick="resetAllToDefaults()" class="btn-save" style="background: #e53e3e; margin-top: 10px; width: 100%;">⚠️ Reset ALL Settings to Default (Nuclear)</button>
+                <button type="button" onclick="resetAllToDefaults()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">⚠️ Reset ALL Settings to Default (Nuclear)</button>
                 <button type="button" onclick="logout()" class="btn-save" style="background: var(--warning); margin-top: 10px; width: 100%;">🚪 Logout</button>
             </div>
             </form>
@@ -345,7 +344,7 @@
             <!-- Server Panel -->
             <div class="server-panel">
                 <!-- Disk Space Display -->
-                <div class="settings-card" style="border-left-color: var(--success);">
+                <div class="settings-card" style="border-color: var(--success);">
                     <h4>💾 Disk Space Usage</h4>
                     <div id="disk_space_info" style="font-size: 0.9em; color: var(--text-primary);">
                         <div style="margin-bottom: 10px;">
@@ -357,8 +356,8 @@
                                 <span><strong>Free:</strong> <span id="disk_free">-</span></span>
                                 <span><strong>Used:</strong> <span id="disk_used">-</span></span>
                             </div>
-                            <div style="background: #3a3a3a; border-radius: 10px; height: 20px; overflow: hidden;">
-                                <div id="disk_usage_bar" style="background: linear-gradient(135deg, var(--success) 0%, #38a169 100%); height: 100%; width: 0%; transition: width 0.5s, background 0.5s; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 0.75em; font-weight: 600;"></div>
+                            <div style="background: var(--bg-elevated); border-radius: 10px; height: 20px; overflow: hidden;">
+                                <div id="disk_usage_bar" style="background: var(--success); height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; transition: transform 0.5s, background 0.5s;"></div>
                             </div>
                         </div>
                         <div style="text-align: center; font-size: 0.85em; color: var(--text-secondary);">
@@ -371,14 +370,14 @@
                 </div>
 
                 <!-- API Endpoints Card -->
-                <div class="settings-card" style="border-left-color: #63b3ed;">
+                <div class="settings-card" style="border-color: var(--info);">
                     <h4>🔌 API Endpoints</h4>
                     <div class="description" style="margin-bottom: 12px;">
                         All available API endpoints for integration and automation.
                     </div>
                     <div style="margin-bottom: 10px; font-size: 0.82em; color: var(--text-secondary);">
-                        <span style="background: #744210; color: #fbd38d; border-radius: 4px; padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">🔒 Auth</span> requires IP whitelist or password login &nbsp;·&nbsp;
-                        <span style="background: var(--bg-secondary); color: var(--text-secondary); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">Open</span> accessible from any IP
+                        <span style="background: rgba(245,158,11,0.15); color: var(--warning); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">🔒 Auth</span> requires IP whitelist or password login &nbsp;·&nbsp;
+                        <span style="background: var(--bg-secondary); color: var(--text-secondary); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">Open</span> accessible from any IP
                     </div>
                     <div id="api-endpoints-list" style="max-height: 400px; overflow-y: auto;">
                         <div style="color: var(--text-secondary);">Loading endpoints...</div>
@@ -451,8 +450,8 @@
                     <div class="settings-card">
                         <h4>💾 Database Settings</h4>
                         <!-- Transcription Lock Warning -->
-                        <div id="transcription_lock_warning" style="display: none; background: #3a2f1a; border: 1px solid #5a4a2d; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 4px solid #f6ad55;">
-                            <span style="color: #f6ad55; font-weight: 600;">⚠️ Live Transcription Running</span><br>
+                        <div id="transcription_lock_warning" style="display: none; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 12px;">
+                            <span style="color: var(--warning); font-weight: 600;">⚠️ Live Transcription Running</span><br>
                             <small style="color: var(--text-primary);">Database and audio backup settings are locked. Stop transcription to modify these settings.</small>
                         </div>
                         <div class="description">
@@ -548,16 +547,15 @@
 
                     // Update the progress bar
                     const progressBar = document.getElementById('disk_usage_bar');
-                    progressBar.style.width = diskSpace.percent_used + '%';
-                    progressBar.textContent = diskSpace.percent_used + '%';
+                    progressBar.style.transform = 'scaleX(' + (diskSpace.percent_used / 100) + ')';
 
                     // Change color based on usage
                     if (diskSpace.percent_used >= 90) {
-                        progressBar.style.background = 'linear-gradient(135deg, var(--danger) 0%, #e53e3e 100%)';
+                        progressBar.style.background = 'var(--danger)';
                     } else if (diskSpace.percent_used >= 75) {
-                        progressBar.style.background = 'linear-gradient(135deg, #f6ad55 0%, var(--warning) 100%)';
+                        progressBar.style.background = 'var(--warning)';
                     } else {
-                        progressBar.style.background = 'linear-gradient(135deg, var(--success) 0%, #38a169 100%)';
+                        progressBar.style.background = 'var(--success)';
                     }
                 } else {
                     console.error('Error loading disk space:', data.error);
@@ -606,8 +604,8 @@
                             const descriptionHtml = description ? `<div class="endpoint-description">${description}</div>` : '';
                             const examplesHtml = examples.length > 0 ? examples.map(ex => `<div class="endpoint-example">${ex}</div>`).join('') : '';
                             const authBadge = ep.auth_required
-                                ? `<span style="background:#744210;color:#fbd38d;border-radius:4px;padding:1px 6px;font-size:0.75em;white-space:nowrap;cursor:help;" title="Whitelisted IPs can call this freely. Other IPs need to log in with a password first (/api/auth/login).">🔒 Auth</span>`
-                                : `<span style="background:var(--bg-secondary);color:var(--text-secondary);border-radius:4px;padding:1px 6px;font-size:0.75em;white-space:nowrap;" title="No authentication required — any IP can call this endpoint.">Open</span>`;
+                                ? `<span style="background:rgba(245,158,11,0.15);color:var(--warning);border-radius:var(--radius-sm);padding:1px 6px;font-size:0.75em;white-space:nowrap;cursor:help;" title="Whitelisted IPs can call this freely. Other IPs need to log in with a password first (/api/auth/login).">🔒 Auth</span>`
+                                : `<span style="background:var(--bg-elevated);color:var(--text-secondary);border-radius:var(--radius-sm);padding:1px 6px;font-size:0.75em;white-space:nowrap;" title="No authentication required — any IP can call this endpoint.">Open</span>`;
                             html += `
                                 <div class="endpoint-item">
                                     <span class="endpoint-methods">${methods}</span>
