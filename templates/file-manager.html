@@ -399,7 +399,7 @@
             <!-- File Mover Configuration -->
             <div style="background: var(--bg-card); border: 1px solid var(--accent); padding: 12px 15px; margin-top: 10px; border-radius: var(--radius-sm);">
                 <details id="fileMoverDetails">
-                    <summary style="cursor: pointer; font-weight: 600; color: var(--accent); font-size: 0.9em; user-select: none; display: flex; justify-content: space-between; align-items: center;">
+                    <summary style="cursor: pointer; font-weight: 600; color: var(--text-primary); font-size: 0.9em; user-select: none; display: flex; justify-content: space-between; align-items: center;">
                         <span>📤 Automatic File Mover <span id="fileMoverStatus" style="font-size: 0.8em; color: var(--text-secondary); font-weight: normal;">(Disabled)</span> <span id="fileMoverActivity" style="font-size: 0.8em; font-weight: normal; margin-left: 6px;"></span></span>
                         <button type="button" class="btn btn-success" onclick="event.stopPropagation(); triggerFileMover();" style="padding: 4px 12px; font-size: 0.8em;">▶️ Run Now</button>
                     </summary>
@@ -420,7 +420,7 @@
                                 </div>
 
                                 <div style="background: var(--bg-base); padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
-                                    <h4 style="margin: 0 0 8px 0; color: var(--accent); font-size: 0.85em;">Options</h4>
+                                    <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-size: 0.85em;">Options</h4>
                                     <div class="form-group" style="margin-bottom: 6px;">
                                         <div class="checkbox-group">
                                             <input type="checkbox" id="moveOnTranscriptionStop" checked onchange="updateFileMoverStatus()">
@@ -446,7 +446,7 @@
                             <!-- Right Column -->
                             <div class="file-mover-right" style="min-width: 280px;">
                                 <div style="background: var(--bg-base); padding: 10px; border-radius: 4px; border: 1px solid var(--border); height: 100%;">
-                                    <h4 style="margin: 0 0 8px 0; color: var(--accent); font-size: 0.85em;">SMB/Network Credentials</h4>
+                                    <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-size: 0.85em;">SMB/Network Credentials</h4>
                                     <div class="form-group" style="margin-bottom: 8px;">
                                         <label for="smbUsername">Username</label>
                                         <input type="text" id="smbUsername" placeholder="Leave empty for local paths">
@@ -473,7 +473,7 @@
 
                                 <div id="fileMoverMessage" style="margin-top: 10px; display: none;"></div>
                                 <div id="fileMoverRuntime" style="margin-top: 8px; padding: 8px; background: var(--bg-base); border-radius: 4px; border: 1px solid var(--border); font-size: 0.8em; color: var(--text-secondary);">
-                                    <span style="font-weight: 600; color: var(--accent);">Last run:</span>
+                                    <span style="font-weight: 600; color: var(--text-secondary);">Last run:</span>
                                     <span id="fileMoverRuntimeText">No runs recorded yet</span>
                                 </div>
                                 <div id="pendingMoves" style="margin-top: 8px; padding: 8px; background: var(--bg-base); border-radius: 4px; border: 1px solid var(--border); display: none;">
