@@ -13,9 +13,9 @@
         }
 
         .section-title {
-            font-size: 1.1em;
+            font-size: 1.2em;
             font-weight: 600;
-            color: #f0f0f0;
+            color: var(--text-primary);
             margin-bottom: 10px;
         }
 
@@ -41,7 +41,7 @@
         }
 
         .dropzone p {
-            font-size: 1em;
+            font-size: 0.9em;
             color: var(--accent-hover);
             margin: 6px 0;
         }
@@ -109,7 +109,7 @@
             color: #ffffff;
             border: none;
             border-radius: 8px;
-            font-size: 1em;
+            font-size: 0.9em;
             font-weight: 600;
             cursor: pointer;
             transition: background-color 0.3s, color 0.3s, border-color 0.3s, transform 0.3s, box-shadow 0.3s;
@@ -118,7 +118,7 @@
         button.primary:hover:not(:disabled) {
             background: var(--accent-hover);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(187, 134, 252, 0.4);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
         button.primary:disabled {
@@ -144,14 +144,11 @@
 
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
-            transition: width 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #ffffff;
-            font-weight: 600;
-            font-size: 0.9em;
+            width: 100%;
+            background: var(--accent);
+            transition: transform 0.3s;
+            transform: scaleX(0);
+            transform-origin: left;
         }
 
         .progress-text {
@@ -177,7 +174,7 @@
         }
 
         .stat-card .label {
-            font-size: 0.8em;
+            font-size: 0.9em;
             color: var(--text-secondary);
             margin-bottom: 4px;
         }
@@ -186,6 +183,7 @@
             font-size: 1.2em;
             font-weight: 600;
             color: var(--accent);
+            font-variant-numeric: tabular-nums;
         }
 
         .transcription-output {
@@ -195,7 +193,7 @@
             max-height: 400px;
             overflow-y: auto;
             white-space: pre-wrap;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             border: 2px solid var(--border);
             margin: 15px 0;
             font-size: 0.9em;
@@ -252,13 +250,13 @@
         .slider-label span {
             font-weight: 500;
             color: var(--text-primary);
-            font-size: 0.85em;
+            font-size: 0.9em;
         }
 
         .slider-value {
             color: var(--accent);
             font-weight: 600;
-            font-size: 0.85em;
+            font-size: 0.9em;
         }
 
         /* Responsive overrides for file page */
@@ -296,7 +294,7 @@
                     <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-sm);">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-weight: 500; color: var(--text-primary);">Current Model:</span>
-                            <span id="ft_model_status" style="font-size: 0.8em; color: var(--text-secondary);">Loading...</span>
+                            <span id="ft_model_status" style="font-size: 0.9em; color: var(--text-secondary);">Loading...</span>
                         </div>
                     </div>
                     <small style="margin-top: 8px; display: block;">
@@ -358,7 +356,7 @@
                         <option value="ko">Korean</option>
                         <option value="zh">Chinese</option>
                     </select>
-                    <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 3px; display: block;">Auto detect uses Whisper's language detection</small>
+                    <small style="color: var(--text-secondary); font-size: 0.9em; margin-top: 3px; display: block;">Auto detect uses Whisper's language detection</small>
                 </div>
 
                 <!-- Translation Option -->
@@ -424,7 +422,7 @@
                             <option value="pa">Punjabi</option>
                             <option value="ur">Urdu</option>
                         </select>
-                        <small id="ft_translate_hint" style="color: var(--success); font-size: 0.75em; margin-top: 4px; display: block;">Uses NLLB-200 model for translation</small>
+                        <small id="ft_translate_hint" style="color: var(--success); font-size: 0.9em; margin-top: 4px; display: block;">Uses NLLB-200 model for translation</small>
                     </div>
                     <div class="form-group" style="margin-top: 10px;">
                         <label for="ft_translation_method">Translation Method:</label>
@@ -433,7 +431,7 @@
                             <option value="whisper_translate">Whisper Translate (English only)</option>
                             <option value="whisper_forced_lang">Whisper Forced Language (Experimental)</option>
                         </select>
-                        <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 4px; display: block;">Whisper methods reuse the transcription model — no extra VRAM needed</small>
+                        <small style="color: var(--text-secondary); font-size: 0.9em; margin-top: 4px; display: block;">Whisper methods reuse the transcription model; no extra VRAM needed</small>
                     </div>
                     <div id="ft_nllb_model_group">
                     <div class="form-group" style="margin-top: 10px;">
@@ -441,7 +439,7 @@
                         <select id="ft_translation_model">
                             <option value="">Loading models...</option>
                         </select>
-                        <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 4px; display: block;">Select downloaded NLLB model. <a href="/model-manager" style="color: var(--success);">Download more in Model Manager</a></small>
+                        <small style="color: var(--text-secondary); font-size: 0.9em; margin-top: 4px; display: block;">Select downloaded NLLB model. <a href="/model-manager" style="color: var(--success);">Download more in Model Manager</a></small>
                     </div>
                     </div>
                 </div>
@@ -454,10 +452,10 @@
 
                 <!-- Action Buttons -->
                 <div style="display: flex; gap: 8px; margin-top: 16px;">
-                    <button onclick="reloadSettings()" style="flex: 1; padding: 10px; background: var(--accent); color: #ffffff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: background 0.2s;">
+                    <button onclick="reloadSettings()" style="flex: 1; padding: 10px; background: var(--accent); color: #ffffff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;">
                         ↻ Reload Settings
                     </button>
-                    <button onclick="saveSettings()" style="flex: 1; padding: 10px; background: var(--success); color: #ffffff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: background 0.2s;">
+                    <button onclick="saveSettings()" style="flex: 1; padding: 10px; background: var(--success); color: #ffffff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.9em; font-weight: 500; transition: background 0.2s;">
                         💾 Save Settings
                     </button>
                 </div>
@@ -474,7 +472,7 @@
                     <div class="dropzone" id="dropzone">
                         <p>🎵 Drag & drop file here or click to browse</p>
                         <input type="file" id="fileInput" accept="audio/*,video/*">
-                        <p style="font-size: 0.8em; color: #888; margin-top: 8px;">MP3, WAV, MP4, MKV, AVI, MOV, FLAC, OGG, WebM, and more</p>
+                        <p style="font-size: 0.9em; color: var(--text-muted); margin-top: 8px;">MP3, WAV, MP4, MKV, AVI, MOV, FLAC, OGG, WebM, and more</p>
                     </div>
 
                     <div class="file-info" id="fileInfo">
@@ -498,7 +496,7 @@
                     <div class="checkbox-group" style="margin-top: 12px;">
                         <input type="checkbox" id="applyWordHighlighting">
                         <label for="applyWordHighlighting">Apply Word Highlighting</label>
-                        <a href="/word-highlighting" target="_blank" style="margin-left: 8px; color: var(--accent); font-size: 0.85em;">Configure</a>
+                        <a href="/word-highlighting" target="_blank" style="margin-left: 8px; color: var(--accent); font-size: 0.9em;">Configure</a>
                     </div>
                 </div>
 
@@ -506,11 +504,12 @@
                 <div class="progress-section" id="progressSection">
                     <div class="section-title">Processing File...</div>
                     <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill" style="width: 0%">
-                            <span id="progressPercent">0%</span>
-                        </div>
+                        <div class="progress-fill" id="progressFill"></div>
                     </div>
-                    <p class="progress-text" id="progressText">Ready to transcribe file</p>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                        <p class="progress-text" id="progressText">Ready to transcribe file</p>
+                        <span id="progressPercent" style="color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 0.9em;"></span>
+                    </div>
                 </div>
 
                 <!-- Always Visible Action Buttons -->
@@ -547,7 +546,7 @@
                     <div id="transcriptionContainer" style="margin-top: 15px;">
                         <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
                             <span>Original Transcription</span>
-                            <span id="sourceLanguageLabel" style="font-size: 0.8em; color: var(--accent);"></span>
+                            <span id="sourceLanguageLabel" style="font-size: 0.9em; color: var(--text-secondary);"></span>
                         </div>
                         <div class="transcription-output" id="transcriptionOutput"></div>
                         <iframe id="htmlPreview" title="Transcription HTML Preview" style="display: none; width: 100%; height: 500px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-base);"></iframe>
@@ -563,7 +562,7 @@
                     <div id="translationContainer" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 2px solid var(--success);">
                         <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; color: var(--success);">
                             <span>Translation</span>
-                            <span id="targetLanguageLabel" style="font-size: 0.8em; color: var(--success);"></span>
+                            <span id="targetLanguageLabel" style="font-size: 0.9em; color: var(--text-secondary);"></span>
                         </div>
                         <div class="transcription-output" id="translationOutput" style="border-color: var(--success);"></div>
                         <iframe id="translationHtmlPreview" title="Translation HTML Preview" style="display: none; width: 100%; height: 500px; border: 1px solid var(--success); border-radius: 8px; background: var(--bg-base);"></iframe>
@@ -1103,7 +1102,7 @@
                 // Error responses may be HTML (e.g. 413 from the upload size
                 // cap), which would otherwise surface as a JSON SyntaxError
                 if (response.status === 413) {
-                    showError('File too large — the upload limit is 4GB.');
+                    showError('File too large (upload limit: 4GB).');
                     return;
                 }
                 if (!response.ok && !(response.headers.get('content-type') || '').includes('json')) {
@@ -1189,7 +1188,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: sans-serif;
             background: #1a1a1a;
             color: #e0e0e0;
             padding: 20px;
@@ -1224,7 +1223,7 @@
         .segment:hover { border-left-color: var(--accent); }
         .timestamp {
             color: #888;
-            font-size: 0.8em;
+            font-size: 0.9em;
             margin-right: 12px;
             font-family: monospace;
         }
@@ -1314,7 +1313,7 @@
             <button onclick="doSearch()">Search</button>
             <button class="secondary" onclick="prevMatch()">&#8593; Prev</button>
             <button class="secondary" onclick="nextMatch()">&#8595; Next</button>
-            <span id="searchCount" style="font-size:0.85em;color:#aaa;"></span>
+            <span id="searchCount" style="font-size:0.9em;color:#aaa;"></span>
             <button class="secondary" onclick="clearSearch()">Clear</button>
             <button onclick="copyText()">Copy All</button>
         </div>
@@ -1513,7 +1512,7 @@ ${segmentsHtml}
         }
 
         function updateProgress(percent, status) {
-            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').style.transform = 'scaleX(' + (percent / 100) + ')';
             document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
             document.getElementById('progressText').textContent = status;
         }
