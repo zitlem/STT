@@ -359,6 +359,16 @@
                 display: none;
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            .notification {
+                animation: none;
+            }
+            .fm-running-dot {
+                animation: none;
+                opacity: 0.7;
+            }
+        }
 {% endblock %}
 
 {% block content %}
@@ -471,7 +481,7 @@
                                     <button type="button" class="btn btn-success" onclick="triggerFileMover()" style="flex: 1;">▶️ Run Now</button>
                                 </div>
 
-                                <div id="fileMoverMessage" style="margin-top: 10px; display: none;"></div>
+                                <div id="fileMoverMessage" role="status" aria-live="polite" style="margin-top: 10px; display: none;"></div>
                                 <div id="fileMoverRuntime" style="margin-top: 8px; padding: 8px; background: var(--bg-base); border-radius: 4px; border: 1px solid var(--border); font-size: 0.8em; color: var(--text-secondary);">
                                     <span style="font-weight: 600; color: var(--text-secondary);">Last run:</span>
                                     <span id="fileMoverRuntimeText">No runs recorded yet</span>
@@ -486,14 +496,14 @@
             </div>
 
             <!-- File Table -->
-            <div id="fileTableContainer">
+            <div id="fileTableContainer" aria-live="polite" aria-label="File listing">
                 <div class="loading">Loading...</div>
             </div>
 
     <!-- Rename Modal -->
-    <div class="modal" id="renameModal">
+    <div class="modal" id="renameModal" role="dialog" aria-modal="true" aria-labelledby="renameDlgLabel">
         <div class="modal-content">
-            <div class="modal-header">Rename File/Folder</div>
+            <div class="modal-header" id="renameDlgLabel">Rename File/Folder</div>
             <div class="modal-body">
                 <div class="form-group">
                     <label for="newNameInput">New Name</label>
@@ -508,9 +518,9 @@
     </div>
 
     <!-- Create Folder Modal -->
-    <div class="modal" id="createFolderModal">
+    <div class="modal" id="createFolderModal" role="dialog" aria-modal="true" aria-labelledby="createFolderDlgLabel">
         <div class="modal-content">
-            <div class="modal-header">Create New Folder</div>
+            <div class="modal-header" id="createFolderDlgLabel">Create New Folder</div>
             <div class="modal-body">
                 <div class="form-group">
                     <label for="folderNameInput">Folder Name</label>
@@ -525,7 +535,7 @@
     </div>
 
     <!-- Preview Modal -->
-    <div class="modal" id="previewModal">
+    <div class="modal" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewFileName">
         <div class="preview-modal-content">
             <div class="modal-header">
                 <span id="previewFileName">File Preview</span>
@@ -538,6 +548,7 @@
             </div>
         </div>
     </div>
+    <div id="fm-announce" role="status" aria-live="polite" aria-atomic="true" style="position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -658,11 +669,11 @@
                 <table class="file-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Size</th>
-                            <th>Modified</th>
-                            <th>Actions</th>
+                            <th scope="col">Name</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Size</th>
+                            <th scope="col">Modified</th>
+                            <th scope="col">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -964,9 +975,10 @@
             notification.textContent = message;
             document.body.appendChild(notification);
 
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
+            const announce = document.getElementById('fm-announce');
+            if (announce) announce.textContent = message;
+
+            setTimeout(() => { notification.remove(); }, 3000);
         }
 
         // Modal close on outside click
