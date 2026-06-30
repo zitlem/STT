@@ -128,6 +128,12 @@
             justify-content: space-between;
         }
         .unsaved-bar span { color: var(--warning); font-size: 0.85em; font-weight: 600; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .language-item {
+                transition: none;
+            }
+        }
 {% endblock %}
 
 {% block content %}
@@ -137,7 +143,7 @@
                 <h3>Live Translation Settings</h3>
 
                 <!-- Alert Display -->
-                <div id="alert_message" class="alert"></div>
+                <div id="alert_message" class="alert" role="alert" aria-live="assertive"></div>
 
                 <!-- Enable/Disable Translation -->
                 <div class="checkbox-group">
@@ -399,7 +405,7 @@
                 </div>
 
                 <!-- Status Card -->
-                <div class="settings-card">
+                <div class="settings-card" aria-live="polite">
                     <h4>Translation Status</h4>
                     <p>
                         <strong>Status:</strong>
@@ -417,7 +423,7 @@
                 </div>
 
                 <!-- Pairing request banner (shown on Machine B when A requests pairing) -->
-                <div id="pair_request_banner" style="display:none; margin-bottom: 12px; padding: 14px; background: #1a2a3a; border: 1px solid #3a6a9a; border-radius: var(--radius-sm);">
+                <div id="pair_request_banner" role="status" aria-live="polite" style="display:none; margin-bottom: 12px; padding: 14px; background: #1a2a3a; border: 1px solid #3a6a9a; border-radius: var(--radius-sm);">
                     <strong>🔗 Pairing request from <span id="pair_request_ip" style="color: #7ab8f5;"></span></strong>
                     <div style="margin-top: 8px; font-size: 0.9em; color: var(--text-secondary);">Code to give to Machine A:</div>
                     <div id="pair_request_code" style="font-size: 2em; font-weight: bold; letter-spacing: 0.3em; color: #f0e040; margin: 6px 0;"></div>
@@ -433,13 +439,13 @@
                     <div class="preview-content">
                         <div class="preview-section">
                             <small>Original</small>
-                            <div id="preview_original" class="preview-text">
+                            <div id="preview_original" class="preview-text" aria-live="polite">
                                 <span class="preview-empty">Start transcription to see preview...</span>
                             </div>
                         </div>
                         <div class="preview-section">
                             <small>Translated</small>
-                            <div id="preview_translated" class="preview-text">
+                            <div id="preview_translated" class="preview-text" aria-live="polite">
                                 <span class="preview-empty">Enable translation to see translations...</span>
                             </div>
                         </div>
@@ -450,14 +456,14 @@
                 <div class="settings-card">
                     <h4>Quick Language Selection</h4>
                     <small style="color: var(--text-secondary);">Click a language to quickly switch to it</small>
-                    <div class="language-grid" id="language_grid">
+                    <div class="language-grid" id="language_grid" aria-live="polite">
                         <!-- Populated dynamically -->
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="unsaved-bar" class="unsaved-bar" style="display:none;">
+        <div id="unsaved-bar" class="unsaved-bar" role="status" aria-live="polite" style="display:none;">
             <div class="unsaved-bar-inner">
                 <span>Unsaved changes</span>
                 <button onclick="saveSettings()" class="btn-save" style="margin:0; width:auto; padding:8px 24px;">Save</button>
