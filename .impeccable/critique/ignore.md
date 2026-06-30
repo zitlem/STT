@@ -18,6 +18,10 @@
 
 - `Courier New` (line ~234 in live-settings.html) — `.preview-content` monospace; deferred to typeset pass
 
+## design-system-font: caption display configuration values
+
+- `Arial` (fontFamily default in url-builder.html) — this is a user-configurable caption font setting passed as a URL parameter to the caption display (index.html). Not a UI font; users can change it in the builder. Ignore as a UI font violation.
+
 ## em-dash-overuse: false positive from Jinja template blocks
 
 - CSS `--custom-property` names in `{% block extra_css %}` blocks are not wrapped in `<style>` tags, so the HTML stripper leaves them as text. Each `--accent`, `--border` etc. matches the `--(?=\S)` regex, inflating em-dash counts in all Jinja-extended templates. Actual em-dash usage is ≤2 per page.
