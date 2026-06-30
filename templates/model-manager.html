@@ -189,6 +189,8 @@
             font-weight: 600;
             color: var(--text-primary);
             margin-bottom: 2px;
+            overflow-wrap: break-word;
+            word-break: break-word;
         }
 
         .model-details {
@@ -323,7 +325,7 @@
             <div class="model-manager-panel">
 
             <!-- Alert Display -->
-            <div id="alert_message" class="alert"></div>
+            <div id="alert_message" class="alert" role="status" aria-live="polite"></div>
                 <div class="loading" id="loading">
                     <div class="spinner"></div>
                     <p>Processing...</p>
@@ -521,8 +523,8 @@
 
                 <!-- Download Progress Display -->
                 <div id="download_progress_container" style="display: none; background: var(--bg-card); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); margin-top: 20px;">
-                    <h4 style="margin: 0 0 12px 0; color: var(--accent); font-size: 0.9em;">📥 Downloading Models</h4>
-                    <div id="download_progress_list"></div>
+                    <h4 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 0.9em;">📥 Downloading Models</h4>
+                    <div id="download_progress_list" aria-live="polite" aria-label="Download progress"></div>
                 </div>
 
                 <!-- Model Library Section -->
@@ -544,7 +546,7 @@
 
                     <!-- Whisper Models -->
                     <div id="whisper_models" class="model-list">
-                        <div id="whisper_models_list">
+                        <div id="whisper_models_list" aria-live="polite" aria-label="Whisper model list">
                             <div class="model-item">
                                 <div class="model-info">
                                     <div class="model-name">Loading models...</div>
@@ -555,7 +557,7 @@
 
                     <!-- Faster Whisper Models -->
                     <div id="faster_whisper_models" class="model-list" style="display: none;">
-                        <div id="faster_whisper_models_list">
+                        <div id="faster_whisper_models_list" aria-live="polite" aria-label="Faster Whisper model list">
                             <div class="model-item">
                                 <div class="model-info">
                                     <div class="model-name">Loading faster-whisper models...</div>
@@ -596,7 +598,7 @@
                                 <h5 style="margin: 0; color: var(--text-primary);">🌐 Translation Models (NLLB)</h5>
                                 <button class="model-btn" onclick="refreshNLLBModels()" style="background: var(--success); padding: 5px 10px; font-size: 0.8em;">🔄 Check for Updates</button>
                             </div>
-                            <div id="nllb_models_list">
+                            <div id="nllb_models_list" aria-live="polite" aria-label="Translation model list">
                                 <div class="model-item model-item--success">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Loading translation models...</div>
@@ -615,7 +617,7 @@
                                 Piper models run locally/offline. Edge TTS (cloud) requires no downloads.
                                 Configure TTS backend in <a href="/translation" style="color: var(--accent);">Translation Settings</a>.
                             </small>
-                            <div id="tts_models_list">
+                            <div id="tts_models_list" aria-live="polite" aria-label="Piper TTS model list">
                                 <div class="model-item model-item--accent">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Loading Piper models...</div>
@@ -629,7 +631,7 @@
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                                 <h5 style="margin: 0; color: var(--text-primary);">🎤 Voice Activity Detection (VAD)</h5>
                             </div>
-                            <div id="silero_vad_status">
+                            <div id="silero_vad_status" aria-live="polite" aria-label="Silero VAD status">
                                 <div class="model-item model-item--success">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Checking VAD status...</div>
@@ -643,7 +645,7 @@
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                                 <h5 style="margin: 0; color: var(--text-primary);">🎵 Music / Speech Detection (PANNs)</h5>
                             </div>
-                            <div id="panns_status">
+                            <div id="panns_status" aria-live="polite" aria-label="PANNs status">
                                 <div class="model-item model-item--success">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Checking PANNs status...</div>
@@ -674,10 +676,10 @@
             </div>
 
     <!-- Upload Local Model Modal -->
-    <div id="uploadModal" class="download-modal">
+    <div id="uploadModal" class="download-modal" role="dialog" aria-modal="true" aria-labelledby="uploadModal-title">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>📤 Upload Local Model</h3>
+                <h3 id="uploadModal-title">📤 Upload Local Model</h3>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -3003,6 +3005,8 @@
             // Reset to files mode
             document.querySelector('input[name="upload_method"][value="files"]').checked = true;
             updateUploadMethod();
+            // Focus first input
+            setTimeout(() => document.getElementById('upload_model_name').focus(), 50);
         }
 
         function updateUploadMethod() {
@@ -3129,6 +3133,13 @@
         // Close upload modal when clicking outside
         document.getElementById('uploadModal').addEventListener('click', function(e) {
             if (e.target === this) {
+                closeUploadModal();
+            }
+        });
+
+        // Close upload modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && document.getElementById('uploadModal').classList.contains('show')) {
                 closeUploadModal();
             }
         });
