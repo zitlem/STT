@@ -127,6 +127,11 @@
             animation: slideDown 0.2s var(--ease-out);
         }
 
+        @media (prefers-reduced-motion: reduce) {
+            .alert.show { animation: none; }
+            #disk_usage_bar { transition: none; }
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .settings-panel {
@@ -197,7 +202,7 @@
                 <h3>🌐 Server Settings</h3>
 
                 <!-- Alert Display -->
-                <div id="alert_message" class="alert"></div>
+                <div id="alert_message" class="alert" role="status" aria-live="polite"></div>
 
                 <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 15px;">
                     <span style="color: var(--danger); font-weight: 600;">⚠️ Important</span><br>
@@ -206,8 +211,8 @@
 
                 <div class="info-box">
                     🕐 <strong>Current Date & Time (Server):</strong><br>
-                    <span id="current_datetime" style="font-size: 0.95em; color: var(--text-primary);">Loading...</span>
-                    <div id="timezone_warning" style="display: none; margin-top: 8px; padding: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-sm); color: var(--warning);">
+                    <span id="current_datetime" style="font-size: 0.95em; color: var(--text-primary);" aria-live="polite" aria-atomic="true">Loading...</span>
+                    <div id="timezone_warning" style="display: none; margin-top: 8px; padding: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-sm); color: var(--warning);" aria-live="polite">
                         ⚠️ <strong>Timezone Mismatch:</strong> Your browser time differs from server time by <span id="time_diff"></span>. File paths will use server time.
                     </div>
                 </div>
@@ -337,7 +342,7 @@
                 <!-- Disk Space Display -->
                 <div class="settings-card" style="border-color: var(--success);">
                     <h4>💾 Disk Space Usage</h4>
-                    <div id="disk_space_info" style="font-size: 0.9em; color: var(--text-primary);">
+                    <div id="disk_space_info" style="font-size: 0.9em; color: var(--text-primary);" aria-live="polite">
                         <div style="margin-bottom: 10px;">
                             <strong>Path:</strong> <span id="disk_path">Loading...</span>
                         </div>
@@ -352,7 +357,7 @@
                             </div>
                         </div>
                         <div style="text-align: center; font-size: 0.85em; color: var(--text-secondary);">
-                            <span id="disk_percentage">0%</span> used
+                            <span id="disk_percentage" style="font-variant-numeric: tabular-nums;">0%</span> used
                         </div>
                     </div>
                     <div class="info-box">
@@ -370,7 +375,7 @@
                         <span style="background: rgba(245,158,11,0.15); color: var(--warning); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">🔒 Auth</span> requires IP whitelist or password login &nbsp;·&nbsp;
                         <span style="background: var(--bg-secondary); color: var(--text-secondary); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 0.85em; margin-right: 6px;">Open</span> accessible from any IP
                     </div>
-                    <div id="api-endpoints-list" style="max-height: 400px; overflow-y: auto;">
+                    <div id="api-endpoints-list" style="max-height: 400px; overflow-y: auto;" aria-live="polite">
                         <div style="color: var(--text-secondary);">Loading endpoints...</div>
                     </div>
                     <div class="info-box">
@@ -441,7 +446,7 @@
                     <div class="settings-card">
                         <h4>💾 Database Settings</h4>
                         <!-- Transcription Lock Warning -->
-                        <div id="transcription_lock_warning" style="display: none; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 12px;">
+                        <div id="transcription_lock_warning" style="display: none; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 12px;" aria-live="polite">
                             <span style="color: var(--warning); font-weight: 600;">⚠️ Live Transcription Running</span><br>
                             <small style="color: var(--text-primary);">Database and audio backup settings are locked. Stop transcription to modify these settings.</small>
                         </div>
