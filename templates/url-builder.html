@@ -119,7 +119,7 @@
         }
 
         .preview-section h3 {
-            color: var(--accent);
+            color: var(--text-primary);
             font-size: 1em;
             margin-bottom: 12px;
         }
@@ -202,7 +202,7 @@
                     </button>
                 </div>
 
-                <button class="btn" onclick="resetToDefaults()" style="width: 100%; margin-top: 10px; background: #444; border: 1px solid #666;">
+                <button class="btn" onclick="resetToDefaults()" style="width: 100%; margin-top: 10px;">
                     🔄 Reset to Default
                 </button>
 
@@ -782,9 +782,9 @@
 
             // Add a border to show preview bounds when transparent
             if (transparentBg) {
-                placeholder.style.border = '2px dashed #ccc';
+                placeholder.style.border = '2px dashed var(--border-hover)';
             } else {
-                placeholder.style.border = '2px solid #e9ecef';
+                placeholder.style.border = '2px solid var(--border)';
             }
 
             // If transcription is running, update iframe with debounce
@@ -1063,9 +1063,9 @@
             `;
 
             if (type === 'success') {
-                notification.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                notification.style.background = 'var(--success)';
             } else {
-                notification.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+                notification.style.background = 'var(--danger)';
             }
 
             notification.textContent = message;
