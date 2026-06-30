@@ -170,6 +170,15 @@
                 flex-direction: column;
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            .preset-btn,
+            .preset-btn:hover,
+            .preview-text {
+                transition: none;
+                transform: none;
+            }
+        }
 {% endblock %}
 
 {% block content %}
@@ -376,7 +385,7 @@
                 <div class="form-group">
                     <label for="url_inProgressOpacity">In-Progress Text Opacity</label>
                     <input type="range" id="url_inProgressOpacity" min="0.5" max="1.0" step="0.1" value="0.7" oninput="updateCustomURL(); updateOpacityLabel()">
-                    <small id="opacityLabel">70% (slightly faded)</small>
+                    <small id="opacityLabel" aria-live="polite">70% (slightly faded)</small>
                 </div>
 
                 <div class="form-group">
@@ -438,7 +447,7 @@
                         <input type="text" id="profileName" placeholder="Profile name">
                         <button onclick="saveProfile()">💾 Save as Profile</button>
                     </div>
-                    <div id="profilesList"></div>
+                    <div id="profilesList" aria-live="polite"></div>
                     <div class="info-box">
                         💡 <strong>Recall</strong> loads a profile into the builder. <strong>Set as Root</strong> makes it what the bare <code>/</code> URL shows.
                     </div>
@@ -472,6 +481,7 @@
                 </div>
             </div>
         </div>
+        <div id="url-builder-announce" role="status" aria-live="polite" aria-atomic="true" style="position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -1046,7 +1056,7 @@
         }
 
         function showNotification(message, type) {
-            // Create notification element
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             const notification = document.createElement('div');
             notification.style.cssText = `
                 position: fixed;
@@ -1059,24 +1069,20 @@
                 z-index: 1000;
                 max-width: 400px;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-                animation: slideIn 0.3s ease;
+                ${reduceMotion ? '' : 'animation: slideIn 0.3s ease;'}
             `;
-
-            if (type === 'success') {
-                notification.style.background = 'var(--success)';
-            } else {
-                notification.style.background = 'var(--danger)';
-            }
-
+            notification.style.background = type === 'success' ? 'var(--success)' : 'var(--danger)';
             notification.textContent = message;
             document.body.appendChild(notification);
 
-            // Remove after 3 seconds
+            const announce = document.getElementById('url-builder-announce');
+            if (announce) announce.textContent = message;
+
             setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
+                if (!reduceMotion) notification.style.animation = 'slideOut 0.3s ease';
                 setTimeout(() => {
-                    document.body.removeChild(notification);
-                }, 300);
+                    if (notification.parentNode) document.body.removeChild(notification);
+                }, reduceMotion ? 0 : 300);
             }, 3000);
         }
 
