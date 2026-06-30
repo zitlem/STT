@@ -48,7 +48,7 @@
         background: var(--bg-base); transition: border-color 0.15s;
       }
       .seg-card:hover { border-color: #444; }
-      .seg-card.low-confidence { border-left: 3px solid orange; }
+      .seg-card.low-confidence { border-color: var(--warning); background: rgba(245,158,11,0.04); }
       .seg-card.staged {
         border: 1px dashed rgba(255,165,0,0.5);
         background: rgba(255,165,0,0.03);
@@ -56,7 +56,7 @@
       }
       /* Denied segments stay visible here (struck-through) so they can be restored,
          but are hidden from the live output display. */
-      .seg-card.denied { opacity: 0.45; border-left: 3px solid var(--danger); }
+      .seg-card.denied { opacity: 0.45; border-color: var(--danger); }
       .seg-card.denied .seg-original,
       .seg-card.denied .seg-translated { text-decoration: line-through; }
 
@@ -140,9 +140,16 @@
       /* Review queue bottom bar */
       .review-bar {
         background: var(--bg-base); border-top: 1px solid #333;
-        flex-shrink: 0; max-height: 200px; overflow: hidden; transition: max-height 0.3s ease;
+        flex-shrink: 0;
       }
-      .review-bar.collapsed { max-height: 36px; }
+      .review-bar-collapsible {
+        display: grid;
+        grid-template-rows: 1fr;
+        transition: grid-template-rows 0.3s ease;
+      }
+      .review-bar.collapsed .review-bar-collapsible {
+        grid-template-rows: 0fr;
+      }
       .review-bar-header {
         padding: 6px 14px; display: flex; justify-content: space-between;
         align-items: center; cursor: pointer; font-size: 0.85em;
@@ -153,6 +160,9 @@
         padding: 1px 8px; font-size: 0.8em; font-weight: 600; margin-left: 6px;
       }
       .review-bar-items {
+        overflow: hidden;
+      }
+      .review-bar-items-inner {
         padding: 4px 14px 8px; overflow-y: auto; max-height: 160px;
         display: flex; flex-wrap: wrap; gap: 6px;
       }
@@ -227,7 +237,11 @@
                 <span id="review-toggle-icon" style="font-size:0.8em;">&#9650;</span>
             </span>
         </button>
-        <div class="review-bar-items" id="review-items"></div>
+        <div class="review-bar-collapsible">
+            <div class="review-bar-items">
+                <div class="review-bar-items-inner" id="review-items"></div>
+            </div>
+        </div>
     </div>
 
     <div class="shortcuts-hint">
