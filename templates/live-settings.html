@@ -66,6 +66,14 @@
             color: var(--accent);
         }
 
+        .section-label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -138,7 +146,7 @@
             border-radius: var(--radius-sm);
             font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.3s, transform 0.3s, opacity 0.3s;
+            transition: background-color 0.2s var(--ease-out), transform 0.2s var(--ease-out), opacity 0.2s var(--ease-out);
             font-size: 0.9em;
         }
 
@@ -391,7 +399,7 @@
         details.section-collapse > summary::marker { display: none; }
         details.section-collapse > summary .section-collapse-label {
             font-weight: 600;
-            color: var(--accent);
+            color: var(--text-primary);
             font-size: 0.88rem;
         }
         details.section-collapse > summary .section-collapse-sub {
@@ -409,6 +417,26 @@
         }
         details.section-collapse .section-collapse-body {
             padding-top: 12px;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            .status-indicator.running,
+            .status-indicator.starting {
+                animation: none;
+            }
+            .control-btn,
+            .btn-start,
+            .btn-stop,
+            .btn-force-reset {
+                transition: none;
+            }
+            .hint-details summary,
+            .hint-details summary .hint-icon,
+            details.section-collapse > summary .section-collapse-chevron,
+            .volume-fill {
+                transition: none;
+            }
         }
 
         /* Responsive */
@@ -600,11 +628,9 @@
 
                 <!-- Music / Speech Detection (PANNs) -->
                 <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-                    <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
-                        Music / Speech Detection
-                    </label>
+                    <span class="section-label">Music / Speech Detection</span>
                     <small style="color: var(--text-secondary); font-size: 0.75em; display: block; margin-bottom: 12px;">
-                        Uses a dedicated audio model (PANNs) to label each segment as Speaking / Music / Quiet. Runs before VAD, so it works without disabling VAD.
+                        Uses PANNs to label each segment as Speaking / Music / Quiet. Runs before VAD.
                     </small>
                 </div>
                 <div class="checkbox-group">
@@ -751,7 +777,7 @@
 
                 <!-- Real-Time Corrections Settings -->
                 <div style="border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px;">
-                    <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Real-Time Corrections</h3>
+                    <span class="section-label" style="margin-bottom: 12px;">Real-Time Corrections</span>
 
                     <div class="checkbox-group">
                         <input type="checkbox" id="corrections_enabled" checked>
@@ -779,7 +805,7 @@
 
                 <!-- Custom Dictionary -->
                 <div style="border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px;">
-                    <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Custom Dictionary</h3>
+                    <span class="section-label" style="margin-bottom: 12px;">Custom Dictionary</span>
 
                     <div class="checkbox-group">
                         <input type="checkbox" id="nllb_glossary_enabled" checked>
