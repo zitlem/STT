@@ -1,5 +1,9 @@
 # Critique ignore list
 
+## design-system-color: progress track backgrounds
+
+- `rgba(255,255,255,0.1)` — disk space bar track background in file-manager; intentional thin-track contrast value
+
 ## design-system-color: intentional hover shades
 
 - `#16A34A` — success button hover shade (matches base.html `.btn-success:hover`); intentional system hover
@@ -7,10 +11,13 @@
 - `rgba(224, 224, 224, 0.7)` — in-progress transcription text at reduced opacity; intentional for live status distinction
 - `#38a169` — model-btn.download hover shade (darker success green); intentional hover
 - `#e53e3e` — model-btn.remove hover shade (darker danger red); intentional hover
+- `#3182ce` — file-manager download button hover shade (darker info blue); intentional hover
+- `#718096` — file-manager up-button hover shade (darker neutral); intentional for navigation affordance
 
 ## design-system-radius: intentional pill/micro shapes
 
 - `3px` — disk space bar track; intentional micro-pill for thin progress track
+- `4px` — file-manager action buttons (rename/delete/download) and form textareas in file mover; intentional dense micro-radius for compact elements
 - `10px` — progress bar container pills (upload, download, PANNs progress); intentional pill shape
 - `12px` — status badge pills ("✓ Downloaded", "Available"); intentional badge pill
 
