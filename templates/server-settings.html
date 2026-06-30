@@ -11,13 +11,6 @@
             gap: 18px;
         }
 
-        .section-title {
-            font-size: 1.1em;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 10px;
-        }
-
         /* Masonry/Pinterest-style grid layout */
         .masonry-grid {
             column-count: 2;
@@ -273,8 +266,6 @@
                     <small>Optional. Leave blank for date-only filenames, or set a label like "Church" to get 2025-01-08__14-30-00_Church.db</small>
                 </div>
 
-
-
                 <div class="checkbox-group">
                     <input type="checkbox" id="srt_generation_enabled" name="database.srt_enabled">
                     <label for="srt_generation_enabled">Save Transcription SRT</label>
@@ -338,8 +329,8 @@
                 <button type="button" onclick="restartServer()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">🔄 Restart Server</button>
                 <button type="button" onclick="resetAllToDefaults()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">⚠️ Reset ALL Settings to Default (Nuclear)</button>
                 <button type="button" onclick="logout()" class="btn-save" style="background: var(--warning); margin-top: 10px; width: 100%;">🚪 Logout</button>
-            </div>
             </form>
+            </div>
 
             <!-- Server Panel -->
             <div class="server-panel">
@@ -512,8 +503,7 @@
                         </div>
                     </div>
                 </div>
-            </form>
-        </div>
+            </div>
         </div>
 
         <div id="unsaved-bar" class="unsaved-bar" style="display:none;">
