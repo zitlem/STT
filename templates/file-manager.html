@@ -163,11 +163,6 @@
             color: var(--text-secondary);
         }
 
-        .empty-state i {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-
         .modal {
             display: none;
             position: fixed;
@@ -922,11 +917,6 @@
             }
         }
 
-        // Hidden items list UI removed - function kept for compatibility
-        function updateHiddenItemsList(hiddenItems) {
-            // No-op: UI element removed
-        }
-
         async function hideItem(path) {
             try {
                 const response = await fetch('/api/file-manager/hide', {
@@ -938,7 +928,6 @@
                 const data = await response.json();
                 if (data.success) {
                     showNotification('Item hidden successfully', 'success');
-                    updateHiddenItemsList(data.hidden_items);
                     refreshFiles();
                 } else {
                     showNotification(data.error || 'Failed to hide item', 'error');
@@ -959,7 +948,6 @@
                 const data = await response.json();
                 if (data.success) {
                     showNotification('Item unhidden successfully', 'success');
-                    updateHiddenItemsList(data.hidden_items);
                     refreshFiles();
                 } else {
                     showNotification(data.error || 'Failed to unhide item', 'error');
@@ -967,13 +955,6 @@
             } catch (error) {
                 showNotification('Error: ' + error.message, 'error');
             }
-        }
-
-        async function unhideItemByPath(relPath) {
-            // Convert relative path to absolute
-            const workingDir = currentPath.split(/[\\\/]/)[0]; // Get drive/root
-            const absPath = relPath; // Already stored as relative, backend will handle
-            await unhideItem(absPath);
         }
 
         // Notification system
