@@ -22,7 +22,7 @@
             min-width: 300px;
             background: var(--bg-card);
             padding: 10px 15px;
-            border-radius: 5px;
+            border-radius: var(--radius-sm);
             border: 1px solid var(--border);
             font-family: monospace;
             font-size: 0.9em;
@@ -38,7 +38,7 @@
         }
 
         .breadcrumb-part:hover {
-            color: #d0a9ff;
+            color: var(--accent-hover);
             text-decoration: underline;
         }
 
@@ -57,7 +57,7 @@
             width: 100%;
             border-collapse: collapse;
             background: var(--bg-card);
-            border-radius: 5px;
+            border-radius: var(--radius-sm);
             overflow: hidden;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
             min-width: 500px;
@@ -79,7 +79,7 @@
         }
 
         .file-table tr:hover {
-            background: #2f2f2f;
+            background: var(--bg-elevated);
         }
 
         .file-icon {
@@ -92,7 +92,7 @@
         }
 
         .file-icon-default {
-            color: #a0aec0;
+            color: var(--text-secondary);
         }
 
         .file-name {
@@ -123,11 +123,11 @@
 
         .action-rename {
             background: var(--accent);
-            color: #ffffff;
+            color: white;
         }
 
         .action-rename:hover {
-            background: #d0a9ff;
+            background: var(--accent-hover);
         }
 
         .action-delete {
@@ -140,7 +140,7 @@
         }
 
         .action-download {
-            background: #4299e1;
+            background: var(--info);
             color: white;
         }
 
@@ -149,12 +149,12 @@
         }
 
         .action-preview {
-            background: #9f7aea;
+            background: var(--accent);
             color: white;
         }
 
         .action-preview:hover {
-            background: #805ad5;
+            background: var(--accent-hover);
         }
 
         .empty-state {
@@ -189,7 +189,7 @@
             background: var(--bg-base);
             border: 1px solid var(--border);
             padding: 25px;
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             max-width: 500px;
             width: 90%;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -236,7 +236,7 @@
             top: 20px;
             right: 20px;
             padding: 15px 20px;
-            border-radius: 5px;
+            border-radius: var(--radius-sm);
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             z-index: 2000;
             animation: slideIn 0.3s ease-out;
@@ -264,7 +264,7 @@
         }
 
         .up-button {
-            background: #a0aec0;
+            background: var(--text-secondary);
             color: white;
         }
 
@@ -276,7 +276,7 @@
             background: var(--bg-base);
             border: 1px solid var(--border);
             padding: 25px;
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             max-width: 90%;
             max-height: 90%;
             width: auto;
@@ -303,7 +303,7 @@
         .preview-content pre {
             background: var(--bg-card);
             padding: 15px;
-            border-radius: 5px;
+            border-radius: var(--radius-sm);
             overflow-x: auto;
             color: var(--text-primary);
             font-family: monospace;
@@ -368,7 +368,7 @@
 
 {% block content %}
             <!-- Disk Space Display (Slim) -->
-            <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--text-primary);">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 8px 15px; border-radius: var(--radius-sm); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--text-primary);">
                 <div style="display: flex; gap: 20px; align-items: center;">
                     <span><strong>💾 Disk:</strong> <span id="disk-space-path">-</span></span>
                     <span><strong>Total:</strong> <span id="disk-space-total">-</span></span>
@@ -376,8 +376,8 @@
                     <span><strong>Used:</strong> <span id="disk-space-used">-</span></span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 150px; height: 6px; background: #3a3a3a; border-radius: 3px; overflow: hidden;">
-                        <div id="disk-space-bar" style="height: 100%; background: var(--success); width: 0%; transition: width 0.3s, background 0.3s;"></div>
+                    <div style="width: 150px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                        <div id="disk-space-bar" style="height: 100%; width: 100%; background: var(--success); transform: scaleX(0); transform-origin: left; transition: transform 0.3s, background 0.3s;"></div>
                     </div>
                     <span id="disk-space-percent" style="min-width: 40px; font-weight: 600;">0%</span>
                 </div>
@@ -402,7 +402,7 @@
             </div>
 
             <!-- File Mover Configuration -->
-            <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 12px 15px; margin-top: 10px; border-radius: 6px; border-left: 3px solid var(--accent);">
+            <div style="background: var(--bg-card); border: 1px solid var(--accent); padding: 12px 15px; margin-top: 10px; border-radius: var(--radius-sm);">
                 <details id="fileMoverDetails">
                     <summary style="cursor: pointer; font-weight: 600; color: var(--accent); font-size: 0.9em; user-select: none; display: flex; justify-content: space-between; align-items: center;">
                         <span>📤 Automatic File Mover <span id="fileMoverStatus" style="font-size: 0.8em; color: var(--text-secondary); font-weight: normal;">(Disabled)</span> <span id="fileMoverActivity" style="font-size: 0.8em; font-weight: normal; margin-left: 6px;"></span></span>
@@ -685,7 +685,7 @@
                 // Hide/Unhide button based on current state (only for local view)
                 const hideButton = !isRemote && item.is_hidden
                     ? `<button class="action-btn" style="background: var(--success); color: white;" onclick="unhideItem('${item.path.replace(/\\/g, '\\\\')}')">Unhide</button>`
-                    : !isRemote ? `<button class="action-btn" style="background: #718096; color: white;" onclick="hideItem('${item.path.replace(/\\/g, '\\\\')}')">Hide</button>` : '';
+                    : !isRemote ? `<button class="action-btn" style="background: var(--text-secondary); color: white;" onclick="hideItem('${item.path.replace(/\\/g, '\\\\')}')">Hide</button>` : '';
 
                 // Download and Preview buttons (only for files, not folders)
                 const downloadButton = item.type === 'file'
@@ -887,7 +887,7 @@
 
                     // Update progress bar
                     const bar = document.getElementById('disk-space-bar');
-                    bar.style.width = ds.percent_used + '%';
+                    bar.style.transform = 'scaleX(' + (ds.percent_used / 100) + ')';
 
                     // Color code based on usage
                     if (ds.percent_used >= 90) {
@@ -1227,7 +1227,7 @@
                 textSpan.innerHTML = `<span style="color: var(--success);">✓</span> ${when} — ${triggerLabel}: moved ${moved}` +
                     (failed > 0 ? `, <span style="color: var(--warning);">${failed} failed</span>` : '');
             } else {
-                textSpan.innerHTML = `<span style="color: var(--danger, #e74c3c);">✗</span> ${when} — ${triggerLabel}: ` +
+                textSpan.innerHTML = `<span style="color: var(--danger);">✗</span> ${when} — ${triggerLabel}: ` +
                     (runtime.message || 'failed');
             }
         }
@@ -1255,7 +1255,7 @@
                 statusSpan.style.color = 'var(--success)';
             } else {
                 statusSpan.textContent = '(Manual only)';
-                statusSpan.style.color = '#999';
+                statusSpan.style.color = 'var(--text-secondary)';
             }
         }
 
