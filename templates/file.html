@@ -37,7 +37,7 @@
 
         .dropzone.dragover {
             border-color: var(--accent-hover);
-            background: #2f2f2f;
+            background: var(--bg-elevated);
         }
 
         .dropzone p {
@@ -122,8 +122,8 @@
         }
 
         button.primary:disabled {
-            background: #4a4a4a;
-            color: #888;
+            background: var(--bg-elevated);
+            color: var(--text-muted);
             cursor: not-allowed;
             transform: none;
         }
@@ -219,7 +219,7 @@
 
         .btn-copy { background: var(--accent); color: #ffffff; }
         .btn-download { background: var(--success); color: #ffffff; }
-        .btn-new { background: #6c757d; color: #ffffff; }
+        .btn-new { background: var(--bg-elevated); color: var(--text-primary); }
 
         .actions button:hover {
             transform: translateY(-2px);
@@ -227,35 +227,11 @@
         }
 
         .error-message {
-            background: #dc3545;
-            color: white;
+            background: var(--danger-bg);
+            color: var(--danger);
             padding: 12px;
             border-radius: var(--radius-sm);
             margin: 15px 0;
-            font-size: 0.9em;
-        }
-
-        /* Slider Styles */
-        .slider-container {
-            margin-bottom: 14px;
-        }
-
-        .slider-label {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-
-        .slider-label span {
-            font-weight: 500;
-            color: var(--text-primary);
-            font-size: 0.9em;
-        }
-
-        .slider-value {
-            color: var(--accent);
-            font-weight: 600;
             font-size: 0.9em;
         }
 
@@ -367,8 +343,8 @@
 
                 <div id="translation_settings" style="display: none; margin-top: 8px; padding: 12px; background: var(--border); border-radius: var(--radius-sm);">
                     <!-- Model warning (shown if NLLB not downloaded) -->
-                    <div id="nllb_warning" style="display: none; background: #3a2a1a; border: 1px solid #f6ad55; padding: 10px; border-radius: var(--radius-sm); margin-bottom: 10px;">
-                        <span style="color: #f6ad55;">⚠️ Translation model not downloaded.</span>
+                    <div id="nllb_warning" style="display: none; background: var(--warning-bg); border: 1px solid rgba(245,158,11,0.3); padding: 10px; border-radius: var(--radius-sm); margin-bottom: 10px;">
+                        <span style="color: var(--warning);">⚠️ Translation model not downloaded.</span>
                         <a href="/models" style="color: var(--success); margin-left: 5px;">Download in Model Manager</a>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
