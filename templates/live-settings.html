@@ -224,7 +224,7 @@
             background: var(--bg-base);
             padding: 16px;
             border-radius: var(--radius-sm);
-            border: 2px solid var(--border);
+            border: 1px solid var(--border);
             min-height: 400px;
             max-height: 500px;
             overflow-y: auto;
@@ -338,6 +338,79 @@
         }
         .unsaved-bar span { color: var(--warning); font-size: 0.85em; font-weight: 600; }
 
+        /* Collapsible hint details */
+        .hint-details {
+            margin-top: 6px;
+        }
+        .hint-details summary {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            user-select: none;
+            transition: color 0.15s;
+        }
+        .hint-details summary::-webkit-details-marker { display: none; }
+        .hint-details summary::marker { display: none; }
+        .hint-details summary .hint-icon {
+            font-size: 0.9em;
+            color: var(--text-muted);
+            transition: color 0.15s;
+        }
+        .hint-details[open] summary,
+        .hint-details[open] summary .hint-icon {
+            color: var(--text-secondary);
+        }
+        .hint-details .hint-body {
+            margin-top: 6px;
+            padding: 8px 10px;
+            background: var(--accent-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 0.75em;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Collapsible advanced section */
+        details.section-collapse {
+            border-top: 1px solid var(--border);
+            margin-top: 16px;
+        }
+        details.section-collapse > summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 16px;
+            cursor: pointer;
+            list-style: none;
+        }
+        details.section-collapse > summary::-webkit-details-marker { display: none; }
+        details.section-collapse > summary::marker { display: none; }
+        details.section-collapse > summary .section-collapse-label {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 0.88rem;
+        }
+        details.section-collapse > summary .section-collapse-sub {
+            color: var(--text-secondary);
+            font-size: 0.75em;
+            margin-top: 2px;
+        }
+        details.section-collapse > summary .section-collapse-chevron {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            transition: transform 0.2s var(--ease-out);
+        }
+        details.section-collapse[open] > summary .section-collapse-chevron {
+            transform: rotate(180deg);
+        }
+        details.section-collapse .section-collapse-body {
+            padding-top: 12px;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .control-buttons {
@@ -427,7 +500,7 @@
                 <!-- Audio Settings -->
                 <div class="form-group" style="margin-top: 12px;">
                     <label for="audio_device">Audio Interface</label>
-                    <select id="audio_device" style="width: 100%; padding: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
+                    <select id="audio_device" style="width: 100%; padding: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.9em;">
                         <option value="">Loading devices...</option>
                     </select>
                     <small style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px; display: block;">
@@ -479,7 +552,7 @@
                 <!-- Language Selection -->
                 <div class="form-group" style="margin-top: 12px;">
                     <label for="live_language">Language</label>
-                    <select id="live_language" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
+                    <select id="live_language" style="width: 100%; padding: 8px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.9em;">
                         <option value="auto">Auto Detect</option>
                         <option value="en">English</option>
                         <option value="es">Spanish</option>
@@ -515,19 +588,18 @@
                         <span class="slider-value"><span id="vadValue">0.5</span></span>
                     </div>
                     <input type="range" id="vad_threshold" min="0.1" max="1.0" value="0.5" step="0.05" oninput="document.getElementById('vadValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            Minimum confidence (0.0-1.0) that audio contains speech before transcribing.
-                            <br/>
-                            <strong>Lower</strong> (0.3) = more sensitive, catches quiet speech but may transcribe noise.
-                            <br/>
+                    <details class="hint-details">
+                        <summary><span class="hint-icon">ⓘ</span> Lower = more sensitive · Higher = speech only</summary>
+                        <div class="hint-body">
+                            Minimum confidence (0.0–1.0) that audio contains speech before transcribing.<br>
+                            <strong>Lower</strong> (0.3) = more sensitive, catches quiet speech but may transcribe noise.<br>
                             <strong>Higher</strong> (0.7) = stricter, only clear speech, filters out most non-speech.
-                        </span>
-                    </div>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- Music / Speech Detection (PANNs) -->
-                <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--border);">
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
                     <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
                         Music / Speech Detection
                     </label>
@@ -552,13 +624,14 @@
                         <span class="slider-value"><span id="musicProbValue">0.5</span></span>
                     </div>
                     <input type="range" id="music_prob_threshold" min="0.1" max="0.9" value="0.5" step="0.05" oninput="document.getElementById('musicProbValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            Music/singing probability above which audio is classified Music and blocked from transcription.
-                            <strong>Lower</strong> = more aggressive music blocking; <strong>higher</strong> = stricter (more music passes through).
+                    <details class="hint-details">
+                        <summary><span class="hint-icon">ⓘ</span> Lower = block more music · Higher = let more through</summary>
+                        <div class="hint-body">
+                            Music/singing probability above which audio is classified Music and blocked from transcription.<br>
+                            <strong>Lower</strong> = more aggressive blocking. <strong>Higher</strong> = stricter threshold (more music passes through).<br>
                             Only applies when <strong>Transcribe detected music</strong> is disabled.
-                        </span>
-                    </div>
+                        </div>
+                    </details>
                 </div>
 
                 <div class="slider-container">
@@ -567,18 +640,20 @@
                         <span class="slider-value"><span id="smoothingValue">4</span></span>
                     </div>
                     <input type="range" id="smoothing_window" min="1" max="10" value="4" step="1" oninput="document.getElementById('smoothingValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            How many recent detections to average. Higher = steadier label (less choppy), slower to react.
-                        </span>
-                    </div>
+                    <details class="hint-details">
+                        <summary><span class="hint-icon">ⓘ</span> Higher = steadier label, slower to react</summary>
+                        <div class="hint-body">
+                            How many recent detections to average before committing to a label.<br>
+                            <strong>Higher</strong> = steadier, less choppy switching. <strong>Lower</strong> = faster to react to changes.
+                        </div>
+                    </details>
                 </div>
 
                 <div class="slider-container">
                     <div class="slider-label">
                         <label for="panns_device">PANNs Device</label>
                     </div>
-                    <select id="panns_device" style="width: 100%; padding: 8px; border-radius: 4px; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border);">
+                    <select id="panns_device" style="width: 100%; padding: 8px; border-radius: var(--radius-sm); background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border);">
                         <option value="cpu">CPU (recommended — spares GPU VRAM)</option>
                         <option value="cuda">GPU (CUDA)</option>
                     </select>
@@ -590,82 +665,82 @@
                 </div>
 
                 <!-- Advanced Whisper Decoding -->
-                <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--border);">
-                    <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
-                        Advanced Whisper Decoding
-                    </label>
-                    <small style="color: var(--text-secondary); font-size: 0.75em; display: block; margin-bottom: 12px;">
-                        Fine-tune transcription quality vs speed. Lower beam size = faster, higher = more accurate.
-                    </small>
-                </div>
+                <details class="section-collapse">
+                    <summary>
+                        <div>
+                            <div class="section-collapse-label">Advanced Whisper Decoding</div>
+                            <div class="section-collapse-sub">Fine-tune quality vs speed · defaults work for most live use</div>
+                        </div>
+                        <span class="section-collapse-chevron">▼</span>
+                    </summary>
+                    <div class="section-collapse-body">
 
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <label for="beam_size">Beam Size</label>
-                        <span class="slider-value"><span id="beamSizeValue">1</span></span>
-                    </div>
-                    <input type="range" id="beam_size" min="1" max="5" value="1" step="1" oninput="document.getElementById('beamSizeValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            Search breadth for transcription.
-                            <br/>
-                            <strong>1</strong> = Greedy/Fast (recommended for live, reduces hallucinations)
-                            <br/>
-                            <strong>5</strong> = Thorough/Slow (best quality, slower processing)
-                        </span>
-                    </div>
-                </div>
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <label for="beam_size">Beam Size</label>
+                                <span class="slider-value"><span id="beamSizeValue">1</span></span>
+                            </div>
+                            <input type="range" id="beam_size" min="1" max="5" value="1" step="1" oninput="document.getElementById('beamSizeValue').textContent = this.value">
+                            <details class="hint-details">
+                                <summary><span class="hint-icon">ⓘ</span> 1 = fast/greedy (recommended) · 5 = slower, higher quality</summary>
+                                <div class="hint-body">
+                                    Search breadth for transcription candidates.<br>
+                                    <strong>1</strong> = Greedy/Fast — recommended for live, reduces hallucinations.<br>
+                                    <strong>5</strong> = Thorough/Slow — best quality, slower processing.
+                                </div>
+                            </details>
+                        </div>
 
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <label for="temperature">Temperature</label>
-                        <span class="slider-value"><span id="temperatureValue">0.0</span></span>
-                    </div>
-                    <input type="range" id="temperature" min="0" max="1.0" value="0.0" step="0.1" oninput="document.getElementById('temperatureValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            Transcription randomness/creativity.
-                            <br/>
-                            <strong>0.0</strong> = Deterministic (recommended for live, most stable)
-                            <br/>
-                            <strong>0.5-1.0</strong> = Creative (more variations, may help with difficult audio)
-                        </span>
-                    </div>
-                </div>
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <label for="temperature">Temperature</label>
+                                <span class="slider-value"><span id="temperatureValue">0.0</span></span>
+                            </div>
+                            <input type="range" id="temperature" min="0" max="1.0" value="0.0" step="0.1" oninput="document.getElementById('temperatureValue').textContent = this.value">
+                            <details class="hint-details">
+                                <summary><span class="hint-icon">ⓘ</span> 0.0 = deterministic (recommended) · higher = more variation</summary>
+                                <div class="hint-body">
+                                    Controls transcription randomness.<br>
+                                    <strong>0.0</strong> = Deterministic — recommended for live, most stable output.<br>
+                                    <strong>0.5–1.0</strong> = Creative — more variation, may help with difficult audio.
+                                </div>
+                            </details>
+                        </div>
 
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <label for="compression_ratio">Compression Ratio Threshold</label>
-                        <span class="slider-value"><span id="compressionRatioValue">1.8</span></span>
-                    </div>
-                    <input type="range" id="compression_ratio" min="1.0" max="3.0" value="1.8" step="0.1" oninput="document.getElementById('compressionRatioValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            Rejects transcriptions with too much repetition.
-                            <br/>
-                            <strong>Lower</strong> (1.5-1.8) = Stricter, rejects more repetitive text (reduces hallucinations)
-                            <br/>
-                            <strong>Higher</strong> (2.4-3.0) = Permissive, allows some repetition
-                        </span>
-                    </div>
-                </div>
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <label for="compression_ratio">Compression Ratio Threshold</label>
+                                <span class="slider-value"><span id="compressionRatioValue">1.8</span></span>
+                            </div>
+                            <input type="range" id="compression_ratio" min="1.0" max="3.0" value="1.8" step="0.1" oninput="document.getElementById('compressionRatioValue').textContent = this.value">
+                            <details class="hint-details">
+                                <summary><span class="hint-icon">ⓘ</span> Lower = reject more repetition · Higher = allow more</summary>
+                                <div class="hint-body">
+                                    Rejects transcriptions that contain too much repetition (hallucination signal).<br>
+                                    <strong>Lower</strong> (1.5–1.8) = Stricter, rejects repetitive text.<br>
+                                    <strong>Higher</strong> (2.4–3.0) = Permissive, allows more repetition.
+                                </div>
+                            </details>
+                        </div>
 
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <label for="logprob_threshold">Log Probability Threshold</label>
-                        <span class="slider-value"><span id="logprobValue">-0.5</span></span>
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <label for="logprob_threshold">Log Probability Threshold</label>
+                                <span class="slider-value"><span id="logprobValue">-0.5</span></span>
+                            </div>
+                            <input type="range" id="logprob_threshold" min="-1.0" max="0.0" value="-0.5" step="0.1" oninput="document.getElementById('logprobValue').textContent = this.value">
+                            <details class="hint-details">
+                                <summary><span class="hint-icon">ⓘ</span> Higher = only high-confidence text · Lower = accept more</summary>
+                                <div class="hint-body">
+                                    Rejects transcriptions with low confidence scores.<br>
+                                    <strong>Higher</strong> (−0.3 to 0.0) = Stricter, only high-confidence output.<br>
+                                    <strong>Lower</strong> (−1.0 to −0.7) = Permissive, accepts lower-confidence text.
+                                </div>
+                            </details>
+                        </div>
+
                     </div>
-                    <input type="range" id="logprob_threshold" min="-1.0" max="0.0" value="-0.5" step="0.1" oninput="document.getElementById('logprobValue').textContent = this.value">
-                    <div style="margin-top: 8px; padding: 8px; background: var(--accent-subtle); border-radius: 4px;">
-                        <span style="color: var(--text-primary); font-size: 0.75em;">
-                            Rejects transcriptions with low confidence scores.
-                            <br/>
-                            <strong>Higher</strong> (-0.3 to 0.0) = Stricter, only high-confidence text (reduces hallucinations)
-                            <br/>
-                            <strong>Lower</strong> (-1.0 to -0.7) = Permissive, accepts lower confidence text
-                        </span>
-                    </div>
-                </div>
+                </details>
 
                 <!-- Performance Settings -->
                 <div class="checkbox-group">
@@ -675,7 +750,7 @@
                     <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">GPU for Whisper only. Translation GPU is configured on the /translation page</div>
 
                 <!-- Real-Time Corrections Settings -->
-                <div style="border-top: 1px solid #333; margin-top: 16px; padding-top: 16px;">
+                <div style="border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px;">
                     <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Real-Time Corrections</h3>
 
                     <div class="checkbox-group">
@@ -703,7 +778,7 @@
                 </div>
 
                 <!-- Custom Dictionary -->
-                <div style="border-top: 1px solid #333; margin-top: 16px; padding-top: 16px;">
+                <div style="border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px;">
                     <h3 style="margin: 0 0 12px 0; font-size: 1em; color: var(--accent);">Custom Dictionary</h3>
 
                     <div class="checkbox-group">
@@ -801,15 +876,7 @@
                             <span style="color: var(--text-primary); font-size: 0.9em; font-weight: 600;">Audio Level Timeline (Last 60s)</span>
                             <span style="color: var(--text-muted); font-size: 0.75em;">Activation Threshold: <span id="threshold_display" style="color: var(--accent); font-weight: 600;">3500</span></span>
                         </div>
-                        <div style="margin-bottom: 8px; padding: 8px; background: var(--accent-subtle); border: 1px solid rgba(124,107,240,0.15); border-radius: var(--radius-sm);">
-                            <span style="color: var(--text-primary); font-size: 0.75em;">
-                                <strong>Goal:</strong> Peak above the purple threshold line when speaking. Audio below the threshold is considered silence and won't be transcribed.
-                                <br>* <strong>Energy Threshold (Always Active):</strong> Quiet audio below this line is immediately rejected - fast and lightweight
-                                <br>* <strong>VAD (When Enabled Above):</strong> For loud audio, VAD uses AI to detect if it's actually speech vs noise/music
-                                <br>* <em>Best practice: Enable VAD for accurate filtering of background noise and music</em>
-                            </span>
-                        </div>
-                        <canvas id="audio_timeline" width="1200" height="180" style="width: 100%; height: 180px; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border);"></canvas>
+                        <canvas id="audio_timeline" width="1200" height="180" style="width: 100%; height: 180px; background: var(--bg-base); border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 8px;"></canvas>
                         <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7em; color: var(--text-muted);">
                             <span>< 60s ago</span>
                             <span>30s ago</span>
