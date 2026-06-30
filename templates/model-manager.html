@@ -22,8 +22,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             padding: 16px;
-            border-radius: 8px;
-            border-left: 4px solid var(--accent);
+            border-radius: var(--radius-sm);
             color: var(--text-primary);
         }
 
@@ -53,11 +52,7 @@
         }
 
         .model-card.live {
-            border-left-color: var(--success);
-        }
-
-        .model-card.file {
-            border-left-color: var(--accent);
+            border-color: var(--success);
         }
 
         .model-card h4 {
@@ -83,11 +78,11 @@
             flex: 1;
             padding: 8px 12px;
             border: none;
-            border-radius: 5px;
+            border-radius: var(--radius-sm);
             font-weight: 500;
             cursor: pointer;
             font-size: 0.85em;
-            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -104,12 +99,13 @@
         }
 
         .sync-btn.primary:hover {
-            background: #d0a9ff;
+            background: var(--accent-hover);
         }
 
         .sync-btn.secondary {
-            background: #6c757d;
-            color: white;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
         }
 
         .alert.show {
@@ -127,18 +123,17 @@
         }
 
         .model-library h4 {
-            color: var(--accent);
+            color: var(--text-primary);
             font-size: 1em;
             margin-bottom: 12px;
             padding-bottom: 6px;
-            border-bottom: 2px solid var(--accent);
         }
 
         .model-tabs {
             display: flex;
             gap: 10px;
             margin-bottom: 16px;
-            border-bottom: 2px solid #e2e8f0;
+            border-bottom: 1px solid var(--border);
         }
 
         .model-tab {
@@ -149,23 +144,23 @@
             cursor: pointer;
             font-weight: 500;
             color: var(--text-secondary);
-            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
         }
 
         .model-tab.active {
             color: var(--accent);
             border-bottom-color: var(--accent);
-            background: rgba(187, 134, 252, 0.1);
+            background: var(--accent-subtle);
         }
 
         .model-tab:hover {
-            color: var(--accent);
-            background: rgba(187, 134, 252, 0.05);
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.04);
         }
 
         .model-list {
             border: 1px solid var(--border);
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             background: var(--bg-elevated);
         }
 
@@ -209,7 +204,7 @@
         .model-btn {
             padding: 6px 12px;
             border: none;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             font-size: 0.8em;
             font-weight: 500;
             cursor: pointer;
@@ -235,7 +230,9 @@
         }
 
         .model-btn:disabled {
-            background: #ccc;
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            opacity: 0.6;
             cursor: not-allowed;
         }
 
@@ -285,6 +282,15 @@
             justify-content: flex-end;
         }
 
+        /* Model item status variants — tinted backgrounds replace banned side-stripe borders */
+        .model-item--success { background: rgba(34, 197, 94, 0.05); }
+        .model-item--accent  { background: var(--accent-subtle); }
+        .model-item--warning { background: rgba(245, 158, 11, 0.05); }
+        .model-item--danger  { background: rgba(239, 68, 68, 0.05); }
+        .model-item--header  { background: var(--bg-card); }
+
+        #disk-space-percent { font-variant-numeric: tabular-nums; }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .config-layout {
@@ -299,6 +305,15 @@
         @media (max-width: 768px) {
             .sync-buttons {
                 flex-direction: column;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .model-tab,
+            .model-btn,
+            .sync-btn,
+            .model-item {
+                transition: none;
             }
         }
 {% endblock %}
@@ -492,7 +507,7 @@
                 </div>
 
                 <!-- Disk Space Display (Compact) -->
-                <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--text-primary);">
+                <div style="background: var(--bg-card); border: 1px solid var(--border); padding: 8px 15px; border-radius: var(--radius-sm); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--text-primary);">
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <span><strong>💾 Disk:</strong> <span id="disk-space-path">-</span></span>
                         <span><strong>Total:</strong> <span id="disk-space-total">-</span></span>
@@ -500,15 +515,15 @@
                         <span><strong>Used:</strong> <span id="disk-space-used">-</span></span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="width: 150px; height: 6px; background: #3a3a3a; border-radius: 3px; overflow: hidden;">
-                            <div id="disk-space-bar" style="height: 100%; background: var(--success); width: 0%; transition: width 0.3s, background 0.3s;"></div>
+                        <div style="width: 150px; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden;">
+                            <div id="disk-space-bar" style="height: 100%; width: 100%; background: var(--success); transform: scaleX(0); transform-origin: left; transition: transform 0.3s, background 0.3s;"></div>
                         </div>
                         <span id="disk-space-percent" style="min-width: 40px; font-weight: 600;">0%</span>
                     </div>
                 </div>
 
                 <!-- Download Progress Display -->
-                <div id="download_progress_container" style="display: none; background: var(--bg-card); border: 1px solid var(--border); padding: 16px; border-radius: 8px; margin-top: 20px; border-left: 4px solid var(--accent);">
+                <div id="download_progress_container" style="display: none; background: var(--bg-card); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm); margin-top: 20px;">
                     <h4 style="margin: 0 0 12px 0; color: var(--accent); font-size: 0.9em;">📥 Downloading Models</h4>
                     <div id="download_progress_list"></div>
                 </div>
@@ -526,13 +541,13 @@
                         <button class="model-tab" onclick="switchModelTab('faster_whisper')">⚡ Faster Whisper</button>
                         <button class="model-tab" onclick="switchModelTab('downloaded')">📥 Add Models</button>
                         <button class="model-tab" onclick="switchModelTab('my_downloaded')">📦 Downloaded Models</button>
-                        <button id="refresh_whisper_btn" class="model-btn" onclick="refreshWhisperModels()" style="margin-left: auto; background: var(--accent); color: white; padding: 8px 16px; font-size: 0.85em; border-radius: 6px;">🔄 Check for New Models</button>
-                        <button id="refresh_faster_whisper_btn" class="model-btn" onclick="refreshFasterWhisperModels()" style="margin-left: auto; background: var(--warning); color: #1a1a2e; padding: 8px 16px; font-size: 0.85em; border-radius: 6px; display: none;">🔄 Check for New Models</button>
+                        <button id="refresh_whisper_btn" class="model-btn" onclick="refreshWhisperModels()" style="margin-left: auto; background: var(--accent); color: var(--text-primary); padding: 8px 16px; font-size: 0.85em;">🔄 Check for New Models</button>
+                        <button id="refresh_faster_whisper_btn" class="model-btn" onclick="refreshFasterWhisperModels()" style="margin-left: auto; background: var(--warning); color: var(--text-primary); padding: 8px 16px; font-size: 0.85em; display: none;">🔄 Check for New Models</button>
                     </div>
 
                     <!-- Whisper Models -->
                     <div id="whisper_models" class="model-list">
-                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                        <div class="model-item model-item--header">
                             <div class="model-info" style="flex: 1;">
                                 <div class="model-name" style="color: var(--accent);">🤖 Whisper Models</div>
                                 <div class="model-details">OpenAI Whisper models for file transcription.</div>
@@ -549,7 +564,7 @@
 
                     <!-- Faster Whisper Models -->
                     <div id="faster_whisper_models" class="model-list" style="display: none;">
-                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--warning);">
+                        <div class="model-item model-item--header">
                             <div class="model-info" style="flex: 1;">
                                 <div class="model-name" style="color: var(--warning);">⚡ Faster Whisper Models</div>
                                 <div class="model-details">Models for live transcription.</div>
@@ -567,7 +582,7 @@
                     <!-- Downloaded Models (combines HuggingFace + Local) -->
                     <div id="downloaded_models" class="model-list" style="display: none;">
                         <!-- Upload Section -->
-                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                        <div class="model-item model-item--header">
                             <div class="model-info" style="flex: 1;">
                                 <div class="model-name" style="color: var(--accent);">📤 Upload Local Model</div>
                                 <div class="model-details">Upload model files from your computer</div>
@@ -578,11 +593,11 @@
                         </div>
 
                         <!-- HuggingFace Download Section -->
-                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                        <div class="model-item model-item--header">
                             <div class="model-info" style="flex: 1;">
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="custom_hf_model_id" style="font-weight: 600; color: var(--accent); margin-bottom: 5px;">🤗 Download from HuggingFace</label>
-                                    <input type="text" id="custom_hf_model_id" placeholder="e.g., openai/whisper-large-v3" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
+                                    <input type="text" id="custom_hf_model_id" placeholder="e.g., openai/whisper-large-v3" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.9em;">
                                 </div>
                             </div>
                             <div class="model-actions" style="align-self: flex-end;">
@@ -597,7 +612,7 @@
                                 <button class="model-btn" onclick="refreshNLLBModels()" style="background: var(--success); padding: 5px 10px; font-size: 0.8em;">🔄 Check for Updates</button>
                             </div>
                             <div id="nllb_models_list">
-                                <div class="model-item" style="border-left: 3px solid var(--success);">
+                                <div class="model-item model-item--success">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Loading translation models...</div>
                                     </div>
@@ -616,7 +631,7 @@
                                 Configure TTS backend in <a href="/translation" style="color: var(--accent);">Translation Settings</a>.
                             </small>
                             <div id="tts_models_list">
-                                <div class="model-item" style="border-left: 3px solid var(--accent);">
+                                <div class="model-item model-item--accent">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Loading Piper models...</div>
                                     </div>
@@ -630,7 +645,7 @@
                                 <h5 style="margin: 0; color: var(--success);">🎤 Voice Activity Detection (VAD)</h5>
                             </div>
                             <div id="silero_vad_status">
-                                <div class="model-item" style="border-left: 3px solid var(--success);">
+                                <div class="model-item model-item--success">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Checking VAD status...</div>
                                     </div>
@@ -644,7 +659,7 @@
                                 <h5 style="margin: 0; color: var(--success);">🎵 Music / Speech Detection (PANNs)</h5>
                             </div>
                             <div id="panns_status">
-                                <div class="model-item" style="border-left: 3px solid var(--success);">
+                                <div class="model-item model-item--success">
                                     <div class="model-info">
                                         <div class="model-name" style="color: var(--text-secondary);">Checking PANNs status...</div>
                                     </div>
@@ -656,7 +671,7 @@
 
                     <!-- Downloaded Models (separate tab) -->
                     <div id="my_downloaded_models" class="model-list" style="display: none;">
-                        <div class="model-item" style="background: var(--bg-card); border-left: 3px solid var(--accent);">
+                        <div class="model-item model-item--header">
                             <div class="model-info" style="flex: 1;">
                                 <div class="model-name" style="color: var(--accent);">📦 Downloaded Models</div>
                                 <div class="model-details">All downloaded and uploaded models on this system</div>
@@ -714,15 +729,15 @@
                     💡 <strong>Tip:</strong> Include all required files: config.json, model weights (pytorch_model.bin, model.safetensors), tokenizer files (tokenizer.json, vocab files), and any other configuration files. The files will be uploaded to the models directory.
                 </div>
                 <div id="upload_progress" style="display: none; margin-top: 15px;">
-                    <div style="background: #e9ecef; border-radius: 10px; height: 20px; overflow: hidden;">
-                        <div id="upload_progress_bar" style="background: var(--success); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    <div style="background: var(--bg-elevated); border-radius: 10px; height: 20px; overflow: hidden;">
+                        <div id="upload_progress_bar" style="background: var(--success); height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; transition: transform 0.3s;"></div>
                     </div>
                     <div id="upload_status" style="margin-top: 8px; font-size: 0.85em; color: var(--text-muted);"></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="model-btn" onclick="closeUploadModal()" style="background: #6c757d;">Cancel</button>
-                <button class="model-btn" id="upload_btn" style="background: #3b82f6; color: white;" onclick="confirmUpload()">Upload</button>
+                <button class="model-btn" onclick="closeUploadModal()" style="background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary);">Cancel</button>
+                <button class="model-btn" id="upload_btn" style="background: var(--accent); color: var(--text-primary);" onclick="confirmUpload()">Upload</button>
             </div>
         </div>
     </div>
@@ -891,8 +906,8 @@
                         const modelNameCap = model.name.charAt(0).toUpperCase() + model.name.slice(1);
 
                         const statusBadge = isDownloaded
-                            ? '<span style="background: var(--success); color: #ffffff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">✓ Downloaded</span>'
-                            : '<span style="background: #3a3a3a; color: var(--text-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Available</span>';
+                            ? '<span style="background: var(--success); color: var(--text-primary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">✓ Downloaded</span>'
+                            : '<span style="background: var(--bg-elevated); color: var(--text-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Available</span>';
 
                         whisperList.innerHTML += `
                             <div class="model-item">
@@ -904,14 +919,12 @@
                                     <button class="model-btn download"
                                             data-model-name="${model.name}"
                                             onclick="downloadWhisperModel('${model.name}')"
-                                            ${isDownloaded ? 'disabled' : ''}
-                                            style="${isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                            ${isDownloaded ? 'disabled' : ''}>
                                         ${isDownloaded ? 'Downloaded' : 'Download'}
                                     </button>
                                     <button class="model-btn remove"
                                             onclick="removeWhisperModel('${model.name}')"
-                                            ${!isDownloaded ? 'disabled' : ''}
-                                            style="${!isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                            ${!isDownloaded ? 'disabled' : ''}>
                                         Remove
                                     </button>
                                 </div>
@@ -975,8 +988,8 @@
                         const modelNameCap = model.name.charAt(0).toUpperCase() + model.name.slice(1);
 
                         const statusBadge = isDownloaded
-                            ? '<span style="background: var(--success); color: #ffffff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">✓ Downloaded</span>'
-                            : '<span style="background: #3a3a3a; color: var(--text-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Available</span>';
+                            ? '<span style="background: var(--success); color: var(--text-primary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">✓ Downloaded</span>'
+                            : '<span style="background: var(--bg-elevated); color: var(--text-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Available</span>';
 
                         listEl.innerHTML += `
                             <div class="model-item">
@@ -988,14 +1001,12 @@
                                 <div class="model-actions">
                                     <button class="model-btn download"
                                             onclick="downloadFasterWhisperModel('${model.name}')"
-                                            ${isDownloaded ? 'disabled' : ''}
-                                            style="${isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                            ${isDownloaded ? 'disabled' : ''}>
                                         ${isDownloaded ? 'Downloaded' : 'Download'}
                                     </button>
                                     <button class="model-btn remove"
                                             onclick="removeFasterWhisperModel('${model.name}')"
-                                            ${!isDownloaded ? 'disabled' : ''}
-                                            style="${!isDownloaded ? 'background: #cbd5e0; cursor: not-allowed;' : ''}">
+                                            ${!isDownloaded ? 'disabled' : ''}>
                                         Remove
                                     </button>
                                 </div>
@@ -1011,7 +1022,7 @@
                 document.getElementById('faster_whisper_models_list').innerHTML = `
                     <div class="model-item">
                         <div class="model-info">
-                            <div class="model-name" style="color: #e53e3e;">Error loading models</div>
+                            <div class="model-name" style="color: var(--danger);">Error loading models</div>
                             <div class="model-details">${error.message}</div>
                         </div>
                     </div>
@@ -1189,7 +1200,7 @@
 
                     // Update the progress bar
                     const progressBar = document.getElementById('disk-space-bar');
-                    progressBar.style.width = diskSpace.percent_used + '%';
+                    progressBar.style.transform = 'scaleX(' + (diskSpace.percent_used / 100) + ')';
 
                     // Change color based on usage
                     if (diskSpace.percent_used >= 90) {
@@ -1801,19 +1812,19 @@
 
                         // Check if this is the recommended model
                         const isRecommended = model.model_id === 'facebook/nllb-200-distilled-600M';
-                        const recommendedBadge = isRecommended ? '<span style="background: var(--success); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.7em; margin-left: 8px;">Recommended</span>' : '';
+                        const recommendedBadge = isRecommended ? '<span style="background: var(--success); color: var(--text-primary); padding: 1px 6px; border-radius: var(--radius-sm); font-size: 0.7em; margin-left: 8px;">Recommended</span>' : '';
 
                         html += `
-                            <div class="model-item" style="border-left: 3px solid var(--success);">
+                            <div class="model-item model-item--success">
                                 <div class="model-info">
                                     <div class="model-name" style="color: var(--success);">
                                         🌐 ${model.name}${recommendedBadge}
                                     </div>
                                     <div class="model-details">${model.description}</div>
                                     <div class="model-details" style="margin-top: 4px;">
-                                        <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${model.size}</span>
-                                        <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 5px;">GPU Recommended</span>
-                                        ${model.downloads > 0 ? `<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 5px;">📥 ${formatNumber(model.downloads)}</span>` : ''}
+                                        <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.8em;">${model.size}</span>
+                                        <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.8em; margin-left: 5px;">GPU Recommended</span>
+                                        ${model.downloads > 0 ? `<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.8em; margin-left: 5px;">📥 ${formatNumber(model.downloads)}</span>` : ''}
                                     </div>
                                 </div>
                                 <div class="model-actions">
@@ -1829,7 +1840,7 @@
                     updateDownloadButtons();
                 } else {
                     listEl.innerHTML = `
-                        <div class="model-item" style="border-left: 3px solid var(--success);">
+                        <div class="model-item model-item--success">
                             <div class="model-info">
                                 <div class="model-name" style="color: var(--text-secondary);">No translation models found</div>
                                 <div class="model-details">Click "Check for Updates" to refresh the list</div>
@@ -1840,9 +1851,9 @@
             } catch (error) {
                 console.error('Error loading NLLB models:', error);
                 listEl.innerHTML = `
-                    <div class="model-item" style="border-left: 3px solid #fc8181;">
+                    <div class="model-item model-item--danger">
                         <div class="model-info">
-                            <div class="model-name" style="color: #fc8181;">Error loading models</div>
+                            <div class="model-name" style="color: var(--danger);">Error loading models</div>
                             <div class="model-details">${error.message}</div>
                         </div>
                     </div>
@@ -1861,7 +1872,7 @@
         async function refreshNLLBModels() {
             const listEl = document.getElementById('nllb_models_list');
             listEl.innerHTML = `
-                <div class="model-item" style="border-left: 3px solid var(--success);">
+                <div class="model-item model-item--warning">
                     <div class="model-info">
                         <div class="model-name" style="color: var(--warning);">🔄 Checking for new models...</div>
                     </div>
@@ -1904,7 +1915,7 @@
                     pollTranslationDownload(modelId);
                 } else {
                     showAlert('❌ Download failed: ' + data.error, 'error');
-                    statusEl.innerHTML = '<span style="color: #fc8181;">Failed</span>';
+                    statusEl.innerHTML = '<span style="color: var(--danger);">Failed</span>';
                     btnEl.textContent = 'Retry';
                     btnEl.disabled = false;
                     btnEl.style.background = 'var(--success)';
@@ -1912,7 +1923,7 @@
                 }
             } catch (error) {
                 showAlert('❌ Download error: ' + error.message, 'error');
-                statusEl.innerHTML = '<span style="color: #fc8181;">Error</span>';
+                statusEl.innerHTML = '<span style="color: var(--danger);">Error</span>';
                 btnEl.textContent = 'Retry';
                 btnEl.disabled = false;
                 btnEl.style.background = 'var(--success)';
@@ -1944,7 +1955,7 @@
                     } else if (data.status === 'error') {
                         stopDownloadProgress(modelId);
                         showAlert('❌ Download failed: ' + data.message, 'error');
-                        statusEl.innerHTML = '<span style="color: #fc8181;">Failed</span>';
+                        statusEl.innerHTML = '<span style="color: var(--danger);">Failed</span>';
                         btnEl.textContent = 'Retry';
                         btnEl.disabled = false;
                         btnEl.style.background = 'var(--success)';
@@ -1969,7 +1980,7 @@
                     pollFailures++;
                     if (pollFailures >= 10) {
                         stopDownloadProgress(modelId);
-                        statusEl.innerHTML = '<span style="color: #fc8181;">Status unknown — server unreachable</span>';
+                        statusEl.innerHTML = '<span style="color: var(--danger);">Status unknown — server unreachable</span>';
                         btnEl.textContent = 'Retry';
                         btnEl.disabled = false;
                         return;
@@ -2025,22 +2036,22 @@
                 const resp = await fetch(url);
                 const data = await resp.json();
                 if (!data.success) {
-                    listEl.innerHTML = `<div class="model-item" style="border-left: 3px solid var(--accent);"><div class="model-info"><div class="model-name" style="color: var(--text-secondary);">${data.error || 'Error loading Piper models'}</div></div></div>`;
+                    listEl.innerHTML = `<div class="model-item model-item--danger"><div class="model-info"><div class="model-name" style="color: var(--danger);">${data.error || 'Error loading Piper models'}</div></div></div>`;
                     return;
                 }
                 listEl.innerHTML = '';
                 for (const model of data.models) {
                     const isDownloaded = model.downloaded;
                     const badge = isDownloaded
-                        ? '<span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-left: 8px;">Downloaded</span>'
+                        ? '<span style="background: var(--success); color: var(--text-primary); padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-left: 8px;">Downloaded</span>'
                         : '<span style="background: var(--border); color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-left: 8px;">Available</span>';
-                    const langBadge = `<span style="background: #1a3a5c; color: #7ab8f5; padding: 1px 6px; border-radius: 8px; font-size: 0.7em;">${model.language}</span>`;
+                    const langBadge = `<span style="background: var(--bg-elevated); color: var(--info); padding: 1px 6px; border-radius: var(--radius-sm); font-size: 0.7em;">${model.language}</span>`;
                     const btnId = 'tts_btn_' + model.id.replace(/[^a-zA-Z0-9]/g, '_');
                     const btn = isDownloaded
                         ? `<button id="${btnId}" class="model-btn remove" onclick="removeTTSModel('${model.id}')">Remove</button>`
                         : `<button id="${btnId}" class="model-btn download" onclick="downloadTTSModel('${model.id}')">Download</button>`;
                     listEl.innerHTML += `
-                        <div class="model-item" style="border-left: 3px solid ${isDownloaded ? 'var(--success)' : 'var(--accent)'};">
+                        <div class="model-item ${isDownloaded ? 'model-item--success' : 'model-item--accent'}">
                             <div class="model-info">
                                 <div class="model-name">🔊 ${model.name} ${badge}</div>
                                 <div class="model-details">${model.quality} quality ${langBadge} <span style="color: var(--text-secondary); font-size: 0.8em; margin-left: 4px;">~${model.size}</span></div>
@@ -2049,7 +2060,7 @@
                         </div>`;
                 }
             } catch (e) {
-                listEl.innerHTML = `<div class="model-item" style="border-left: 3px solid var(--accent);"><div class="model-info"><div class="model-name" style="color: var(--text-secondary);">Error loading Piper models</div><div class="model-details">${e.message}</div></div></div>`;
+                listEl.innerHTML = `<div class="model-item model-item--danger"><div class="model-info"><div class="model-name" style="color: var(--danger);">Error loading Piper models</div><div class="model-details">${e.message}</div></div></div>`;
             }
         }
 
@@ -2137,20 +2148,20 @@
                 if (data.success) {
                     const isAvailable = data.downloaded;
                     const statusText = isAvailable ? '✅ Available' : '❌ Not installed';
-                    const statusColor = isAvailable ? 'var(--success)' : '#fc8181';
+                    const statusColor = isAvailable ? 'var(--success)' : 'var(--danger)';
                     const sourceText = data.source || 'pip package';
 
                     statusEl.innerHTML = `
-                        <div class="model-item" style="border-left: 3px solid ${isAvailable ? 'var(--success)' : '#fc8181'};">
+                        <div class="model-item ${isAvailable ? 'model-item--success' : 'model-item--danger'}">
                             <div class="model-info">
-                                <div class="model-name" style="color: ${isAvailable ? 'var(--success)' : '#fc8181'};">
+                                <div class="model-name" style="color: ${isAvailable ? 'var(--success)' : 'var(--danger)'};">
                                     🔊 Silero VAD
-                                    <span style="background: var(--success); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.7em; margin-left: 8px;">Voice Activity Detection</span>
+                                    <span style="background: var(--success); color: var(--text-primary); padding: 1px 6px; border-radius: var(--radius-sm); font-size: 0.7em; margin-left: 8px;">Voice Activity Detection</span>
                                 </div>
                                 <div class="model-details">Detects speech segments in audio for improved transcription accuracy</div>
                                 <div class="model-details" style="margin-top: 4px;">
-                                    <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${sourceText}</span>
-                                    ${!isAvailable ? '<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 5px;">pip install silero-vad</span>' : ''}
+                                    <span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.8em;">${sourceText}</span>
+                                    ${!isAvailable ? '<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.8em; margin-left: 5px;">pip install silero-vad</span>' : ''}
                                 </div>
                             </div>
                             <div class="model-actions">
@@ -2160,9 +2171,9 @@
                     `;
                 } else {
                     statusEl.innerHTML = `
-                        <div class="model-item" style="border-left: 3px solid #fc8181;">
+                        <div class="model-item model-item--danger">
                             <div class="model-info">
-                                <div class="model-name" style="color: #fc8181;">Error checking VAD status</div>
+                                <div class="model-name" style="color: var(--danger);">Error checking VAD status</div>
                                 <div class="model-details">${data.error || 'Unknown error'}</div>
                             </div>
                         </div>
@@ -2171,9 +2182,9 @@
             } catch (error) {
                 console.error('Error loading Silero VAD status:', error);
                 statusEl.innerHTML = `
-                    <div class="model-item" style="border-left: 3px solid #fc8181;">
+                    <div class="model-item model-item--danger">
                         <div class="model-info">
-                            <div class="model-name" style="color: #fc8181;">Error checking VAD status</div>
+                            <div class="model-name" style="color: var(--danger);">Error checking VAD status</div>
                             <div class="model-details">${error.message}</div>
                         </div>
                     </div>
@@ -2192,22 +2203,22 @@
                 const ready = data.downloaded;
                 const installed = data.package_installed;
                 const statusText = ready ? '✅ Ready' : (installed ? '⬇️ Not downloaded' : '❌ Not installed');
-                const statusColor = ready ? 'var(--success)' : '#fc8181';
+                const statusColor = ready ? 'var(--success)' : 'var(--danger)';
                 let action;
                 if (ready) {
                     action = `<span style="font-size: 0.85em; color: ${statusColor};">${statusText}</span>`;
                 } else if (installed) {
                     action = `<button class="model-btn download" onclick="downloadPANNsModel(this)">⬇️ Download (~312 MB)</button>`;
                 } else {
-                    action = `<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">pip install panns-inference</span>`;
+                    action = `<span style="background: var(--bg-elevated); padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.8em;">pip install panns-inference</span>`;
                 }
 
                 statusEl.innerHTML = `
-                    <div class="model-item" style="border-left: 3px solid ${ready ? 'var(--success)' : '#fc8181'};">
+                    <div class="model-item ${ready ? 'model-item--success' : 'model-item--danger'}">
                         <div class="model-info">
-                            <div class="model-name" style="color: ${ready ? 'var(--success)' : '#fc8181'};">
+                            <div class="model-name" style="color: ${ready ? 'var(--success)' : 'var(--danger)'};">
                                 🎵 PANNs CNN14
-                                <span style="background: var(--success); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.7em; margin-left: 8px;">Music / Speech Detection</span>
+                                <span style="background: var(--success); color: var(--text-primary); padding: 1px 6px; border-radius: var(--radius-sm); font-size: 0.7em; margin-left: 8px;">Music / Speech Detection</span>
                             </div>
                             <div class="model-details">Labels each segment as Speaking / Music / Quiet for reliable music handling</div>
                             <div id="panns_dl_progress" class="model-details" style="margin-top: 4px; display: none;"></div>
@@ -2218,9 +2229,9 @@
             } catch (error) {
                 console.error('Error loading PANNs status:', error);
                 statusEl.innerHTML = `
-                    <div class="model-item" style="border-left: 3px solid #fc8181;">
+                    <div class="model-item model-item--danger">
                         <div class="model-info">
-                            <div class="model-name" style="color: #fc8181;">Error checking PANNs status</div>
+                            <div class="model-name" style="color: var(--danger);">Error checking PANNs status</div>
                             <div class="model-details">${error.message}</div>
                         </div>
                     </div>
@@ -2275,28 +2286,28 @@
                     let html = '';
 
                     if (data.downloaded_models && data.downloaded_models.length > 0) {
-                        html += '<div style="margin: 10px 0; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px;">';
+                        html += '<div style="margin: 10px 0; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);">';
                         data.downloaded_models.forEach(model => {
-                            let displayType, typeIcon, borderColor;
+                            let displayType, typeIcon, statusClass;
                             const dir = model.directory || model.name;
                             if (dir.startsWith('whisper-')) {
-                                displayType = 'Whisper'; typeIcon = '🤖'; borderColor = 'var(--accent)';
+                                displayType = 'Whisper'; typeIcon = '🤖'; statusClass = 'model-item--accent';
                             } else if (dir.startsWith('faster-whisper')) {
-                                displayType = 'Faster Whisper'; typeIcon = '⚡'; borderColor = 'var(--warning)';
+                                displayType = 'Faster Whisper'; typeIcon = '⚡'; statusClass = 'model-item--warning';
                             } else if (dir.startsWith('facebook--nllb-')) {
-                                displayType = 'NLLB Translation'; typeIcon = '🌐'; borderColor = 'var(--success)';
+                                displayType = 'NLLB Translation'; typeIcon = '🌐'; statusClass = 'model-item--success';
                             } else if (model.type === 'piper') {
-                                displayType = 'Piper TTS'; typeIcon = '🔊'; borderColor = '#8b5cf6';
+                                displayType = 'Piper TTS'; typeIcon = '🔊'; statusClass = 'model-item--accent';
                             } else if (model.type === 'huggingface') {
-                                displayType = 'HuggingFace'; typeIcon = '🤗'; borderColor = 'var(--accent)';
+                                displayType = 'HuggingFace'; typeIcon = '🤗'; statusClass = 'model-item--accent';
                             } else {
-                                displayType = 'Local'; typeIcon = '💾'; borderColor = 'var(--accent)';
+                                displayType = 'Local'; typeIcon = '💾'; statusClass = 'model-item--accent';
                             }
                             html += `
-                                <div class="model-item" style="border-left: 3px solid ${borderColor};">
+                                <div class="model-item ${statusClass}">
                                     <div class="model-info">
                                         <div class="model-name">${typeIcon} ${model.name}</div>
-                                        <div class="model-details"><span style="background: var(--bg-elevated); padding: 1px 6px; border-radius: 8px; font-size: 0.75em;">${displayType}</span></div>
+                                        <div class="model-details"><span style="background: var(--bg-elevated); padding: 1px 6px; border-radius: var(--radius-sm); font-size: 0.75em;">${displayType}</span></div>
                                     </div>
                                     <div class="model-actions">
                                         <button class="model-btn remove" onclick="removeModel('${model.name}', '${model.type}')">Remove</button>
@@ -2749,19 +2760,19 @@
                     const percentage = progress.percentage;
 
                     let progressDisplay = '';
-                    let progressBarWidth = '0%';
+                    let progressBarScale = 0;
                     let progressBarAnimation = '';
                     let progressBarColor = 'var(--success)';
                     let statusIcon = '';
 
                     if (status === 'completed') {
                         progressDisplay = `✓ Download completed successfully`;
-                        progressBarWidth = '100%';
+                        progressBarScale = 1;
                         progressBarColor = 'var(--success)';
                         statusIcon = '✓';
                     } else if (status === 'failed') {
                         progressDisplay = `✗ Download failed: ${downloadInfo.error || 'Unknown error'}`;
-                        progressBarWidth = '100%';
+                        progressBarScale = 1;
                         progressBarColor = 'var(--danger)';
                         statusIcon = '✗';
                     } else {
@@ -2774,21 +2785,21 @@
                         if (total && percentage !== undefined) {
                             // We have total size and percentage - show detailed progress
                             progressDisplay = `${formatBytes(downloaded)} / ${formatBytes(total)} (${percentage}%)`;
-                            progressBarWidth = `${percentage}%`;
+                            progressBarScale = percentage / 100;
                         } else if (percentage !== undefined && percentage > 0) {
                             // We have percentage but no byte totals (e.g., NLLB downloads)
                             const message = progress.message || 'Downloading...';
                             progressDisplay = `${message} (${percentage}%)`;
-                            progressBarWidth = `${percentage}%`;
+                            progressBarScale = percentage / 100;
                         } else if (downloaded > 0 && total) {
                             // We have bytes but no percentage calculated - calculate it
                             const calcPercentage = Math.min(Math.floor((downloaded / total) * 100), 99);
                             progressDisplay = `${formatBytes(downloaded)} / ${formatBytes(total)} (${calcPercentage}%)`;
-                            progressBarWidth = `${calcPercentage}%`;
+                            progressBarScale = calcPercentage / 100;
                         } else if (downloaded > 0) {
                             // We have bytes but no total - show downloaded amount with pulse
                             progressDisplay = `${formatBytes(downloaded)} downloaded`;
-                            progressBarWidth = '100%';
+                            progressBarScale = 1;
                             progressBarAnimation = ' animation: pulse 2s infinite;';
                         } else {
                             // No progress data yet - differentiate between Whisper and HF
@@ -2797,7 +2808,7 @@
                             } else {
                                 progressDisplay = 'Starting download...';
                             }
-                            progressBarWidth = '100%';
+                            progressBarScale = 1;
                             progressBarAnimation = ' animation: pulse 2s infinite;';
                         }
                         progressBarColor = '#fbbf24';
@@ -2807,18 +2818,18 @@
                     // Only cancel server-side while in flight — dismissing a
                     // completed/failed notification must never delete files
                     const cancelOnServer = status === 'downloading';
-                    const dismissBtn = `<button onclick="stopDownloadProgress('${modelName}', ${cancelOnServer})" style="position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: #888; cursor: pointer; font-size: 1.2em; padding: 2px 6px; line-height: 1;" title="${cancelOnServer ? 'Cancel download' : 'Dismiss'}">&times;</button>`;
+                    const dismissBtn = `<button onclick="stopDownloadProgress('${modelName}', ${cancelOnServer})" style="position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2em; padding: 2px 6px; line-height: 1;" title="${cancelOnServer ? 'Cancel download' : 'Dismiss'}">&times;</button>`;
 
                     progressList.innerHTML += `
-                        <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; position: relative;">
+                        <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); position: relative;">
                             ${dismissBtn}
                             <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px; padding-right: 20px;">
                                 ${statusIcon} ${modelName}
                             </div>
-                            <div style="font-size: 0.8em; color: #b0b0b0; margin-bottom: 4px;">${progressDisplay}</div>
-                            <div style="font-size: 0.75em; color: #888;">Time: ${minutes}:${seconds.toString().padStart(2, '0')}</div>
-                            <div style="background: #3a3a3a; border-radius: 10px; height: 6px; overflow: hidden; margin-top: 4px;">
-                                <div style="background: ${progressBarColor}; height: 100%; width: ${progressBarWidth}; transition: width 0.3s;${progressBarAnimation}"></div>
+                            <div style="font-size: 0.8em; color: var(--text-secondary); margin-bottom: 4px;">${progressDisplay}</div>
+                            <div style="font-size: 0.75em; color: var(--text-muted);">Time: ${minutes}:${seconds.toString().padStart(2, '0')}</div>
+                            <div style="background: var(--bg-elevated); border-radius: 10px; height: 6px; overflow: hidden; margin-top: 4px;">
+                                <div style="background: ${progressBarColor}; height: 100%; width: 100%; transform: scaleX(${progressBarScale}); transform-origin: left; transition: transform 0.3s;${progressBarAnimation}"></div>
                             </div>
                         </div>
                     `;
@@ -3010,7 +3021,7 @@
             document.getElementById('upload_model_name').value = '';
             document.getElementById('upload_model_files').value = '';
             document.getElementById('upload_progress').style.display = 'none';
-            document.getElementById('upload_progress_bar').style.width = '0%';
+            document.getElementById('upload_progress_bar').style.transform = 'scaleX(0)';
             // Reset to files mode
             document.querySelector('input[name="upload_method"][value="files"]').checked = true;
             updateUploadMethod();
@@ -3094,7 +3105,7 @@
                 xhr.upload.addEventListener('progress', function(e) {
                     if (e.lengthComputable) {
                         const percentComplete = (e.loaded / e.total) * 100;
-                        document.getElementById('upload_progress_bar').style.width = percentComplete + '%';
+                        document.getElementById('upload_progress_bar').style.transform = 'scaleX(' + (percentComplete / 100) + ')';
                         document.getElementById('upload_status').textContent =
                             `Uploading: ${Math.round(percentComplete)}% (${Math.round(e.loaded / 1024 / 1024)}MB / ${Math.round(e.total / 1024 / 1024)}MB)`;
                     }
