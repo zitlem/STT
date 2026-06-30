@@ -14223,6 +14223,14 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             > _std_cfg.get("music_prob_threshold", 0.5)):
                                     speech_detected = True
 
+                                # Block transcription when PANNs has classified the audio as
+                                # Music and the user hasn't opted in to transcribing music.
+                                # Handles the case where VAD detects speech in vocal music.
+                                if (speech_detected
+                                        and not _std_cfg.get("transcribe_detected_music", False)
+                                        and transcription_state.get("audio_type") == "Music"):
+                                    speech_detected = False
+
                                 # Check if phrase is complete (silence after speech)
                                 phrase_complete = False
                                 if not speech_detected:
