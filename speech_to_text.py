@@ -2856,6 +2856,18 @@ def initialize_database():
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added speech_type column)")
 
+            if "audio_tag" not in columns:
+                print("[DB] Migrating database: adding audio_tag column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN audio_tag TEXT DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added audio_tag column)")
+
+            if "music_prob" not in columns:
+                print("[DB] Migrating database: adding music_prob column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN music_prob REAL DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added music_prob column)")
+
             if "denied" not in columns:
                 # `denied` is a UI visibility/hide flag (0 = visible, 1 = hidden from
                 # the transcript view); toggled by handle_set_segment_denied.
@@ -12203,6 +12215,8 @@ def emit_new_entries():
                             "energy": audio_energy if audio_energy is not None else 0,
                             "audio_type": transcription_state.get("audio_type"),
                             "detection_mode": transcription_state.get("detection_mode"),
+                            "audio_tag": transcription_state.get("audio_tag"),
+                            "music_prob": transcription_state.get("music_prob"),
                         },
                     )
                 except Exception as emit_error:
@@ -14376,6 +14390,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             segment_confidence = sum(batch_confidences) / len(batch_confidences) if batch_confidences else None
                                             segment_speech_type = finalized_audio_type(process_config, transcription_state)
                                             transcription_state['audio_type'] = segment_speech_type
+                                            segment_audio_tag = transcription_state.get("audio_tag")
+                                            segment_music_prob = transcription_state.get("music_prob")
                                             # Source language ISO code: configured value, or Whisper's
                                             # detected language when audio.language is 'auto'.
                                             _detected_lang = next((s.get('language') for s in result['completed_segments'] if s.get('language')), None)
@@ -14455,8 +14471,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         _words_json = words_json_or_none(_sentence_word_groups[_sidx] if _sidx < len(_sentence_word_groups) else None)
                                                         if _is_hallucination or _cjk_deny or (word_count >= MIN_WORDS and not is_dup):
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id, _denied, _denied_reason),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id, _denied, _denied_reason),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             if not _denied:
@@ -14466,22 +14482,22 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             # Shadow row: full original sentence with CJK preserved, denied
                                                             if _cjk_shadow:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
-                                                                    (timestamp, _cjk_shadow, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _cjk_shadow, _words_json, _words_source, live_session_id),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                    (timestamp, _cjk_shadow, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _cjk_shadow, _words_json, _words_source, live_session_id),
                                                                 )
                                                                 _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 print(f"[CJK SHADOW→DENIED] '{_cjk_shadow[:40]}'", flush=True)
                                                         elif word_count < MIN_WORDS:
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
-                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             print(f"[SHORT→DENIED] '{sentence}' ({word_count} words)", flush=True)
                                                         elif is_dup:
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
-                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             print(f"[DUP→DENIED] '{sentence[:40]}'", flush=True)
@@ -14526,8 +14542,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             # words_json NULL: the remainder is the trailing fragment, not one of
                                                             # the attributed `sentences` (and may be carried text with no words).
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id, _rem_denied, _rem_denied_reason),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id, _rem_denied, _rem_denied_reason),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             if not _rem_denied:
@@ -14535,22 +14551,22 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
                                                             if _rem_cjk_shadow:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
-                                                                    (timestamp, _rem_cjk_shadow, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _rem_cjk_shadow, _words_source, live_session_id),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                    (timestamp, _rem_cjk_shadow, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _rem_cjk_shadow, _words_source, live_session_id),
                                                                 )
                                                                 _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 print(f"[CJK SHADOW REMAINDER→DENIED] '{_rem_cjk_shadow[:40]}'", flush=True)
                                                         elif rem_word_count < MIN_WORDS:
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             print(f"[SHORT REMAINDER→DENIED] '{remainder}' ({rem_word_count} words)", flush=True)
                                                         elif rem_is_dup:
                                                             persistent_db_cursor.execute(
-                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
-                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
+                                                                "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                (timestamp, remainder, segment_start, segment_end, segment_confidence, rem_needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim_rem, _words_source, live_session_id),
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             print(f"[DUP REMAINDER→DENIED] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DUP REMAINDER→DENIED] '{remainder}'", flush=True)
@@ -14637,6 +14653,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 MIN_WORDS = min_words_threshold
                                                 _phrase_speech_type = finalized_audio_type(process_config, transcription_state)
                                                 transcription_state['audio_type'] = _phrase_speech_type
+                                                _phrase_audio_tag = transcription_state.get("audio_tag")
+                                                _phrase_music_prob = transcription_state.get("music_prob")
                                                 # Segment-level confidence from per-word probabilities
                                                 _phrase_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
                                                 _phrase_probs = [w.get('probability') for w in _phrase_words if w.get('probability') is not None]
@@ -14681,8 +14699,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             _phrase_words_json = words_json_or_none(_phrase_word_groups[_sidx] if _sidx < len(_phrase_word_groups) else None)
                                                             if _is_hallucination or _cjk_deny or (word_count >= MIN_WORDS and not is_dup):
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id, _denied, _denied_reason),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id, _denied, _denied_reason),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 if not _denied:
@@ -14690,22 +14708,22 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
                                                                 if _cjk_shadow:
                                                                     persistent_db_cursor.execute(
-                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
-                                                                        (timestamp, _cjk_shadow, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _cjk_shadow, _phrase_words_json, _phrase_words_source, live_session_id),
+                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                        (timestamp, _cjk_shadow, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _cjk_shadow, _phrase_words_json, _phrase_words_source, live_session_id),
                                                                     )
                                                                     _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                     print(f"[CJK SHADOW→DENIED] '{_cjk_shadow[:40]}'", flush=True)
                                                             elif word_count < MIN_WORDS:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
-                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 print(f"[SHORT→DENIED] '{sentence}' ({word_count} words)", flush=True)
                                                             elif is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
-                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                    (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 print(f"[DUP→DENIED] '{sentence[:40]}'", flush=True)
@@ -14732,29 +14750,29 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                             if _rem_is_hallucination or _rem_cjk_deny or (rem_word_count >= MIN_WORDS and not rem_is_dup):
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id, _rem_denied, _rem_denied_reason),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id, _rem_denied, _rem_denied_reason),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 if not _rem_denied:
                                                                     saved_sentences.append(remainder)
                                                                 if _rem_cjk_shadow:
                                                                     persistent_db_cursor.execute(
-                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
-                                                                        (timestamp, _rem_cjk_shadow, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _rem_cjk_shadow, _phrase_words_source, live_session_id),
+                                                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                                                        (timestamp, _rem_cjk_shadow, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _rem_cjk_shadow, _phrase_words_source, live_session_id),
                                                                     )
                                                                     _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             elif rem_word_count < MIN_WORDS:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
-                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'short')",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 print(f"[SHORT REMAINDER→DENIED] '{remainder}' ({rem_word_count} words)", flush=True)
                                                             elif rem_is_dup:
                                                                 persistent_db_cursor.execute(
-                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
-                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
+                                                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'dup')",
+                                                                    (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id),
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 print(f"[DUP REMAINDER→DENIED] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DUP REMAINDER→DENIED] '{remainder}'", flush=True)
@@ -14855,6 +14873,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             _flush_now = datetime.now(configured_timezone)
                             _flush_ts_ms = int(_flush_now.timestamp() * 1000)
                             _flush_speech_type = finalized_audio_type(process_config, transcription_state)
+                            _flush_audio_tag = transcription_state.get("audio_tag")
+                            _flush_music_prob = transcription_state.get("music_prob")
                             _flush_threshold = process_config.get("corrections", {}).get("confidence_threshold", 0.7)
                             _flush_needs_review = 1 if (_flush_conf is not None and _flush_conf < _flush_threshold) else 0
                             try:
@@ -14872,8 +14892,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             with _db_lock:
                                 # words_json NULL: carried fragment, no per-word data retained.
                                 persistent_db_cursor.execute(
-                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                                    (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush, _flush_words_source, live_session_id, _flush_denied, _flush_denied_reason),
+                                    "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, audio_tag, music_prob, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                                    (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_text, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_audio_tag, _flush_music_prob, _flush_needs_review, _flush_ts_ms, _flush_src, _verbatim_flush, _flush_words_source, live_session_id, _flush_denied, _flush_denied_reason),
                                 )
                                 _flush_row_id = persistent_db_cursor.lastrowid
                                 persistent_db_cursor.execute(
@@ -14882,8 +14902,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 )
                                 if _flush_cjk_shadow:
                                     persistent_db_cursor.execute(
-                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
-                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_cjk_shadow, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_needs_review, _flush_ts_ms, _flush_src, _flush_cjk_shadow, _flush_words_source, live_session_id),
+                                        "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, audio_tag, music_prob, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
+                                        (_flush_now.strftime("%Y-%m-%d %H:%M:%S"), _flush_cjk_shadow, _flush_start, _flush_end, _flush_conf, _flush_speech_type, _flush_audio_tag, _flush_music_prob, _flush_needs_review, _flush_ts_ms, _flush_src, _flush_cjk_shadow, _flush_words_source, live_session_id),
                                     )
                                     _shadow_id = persistent_db_cursor.lastrowid
                                     persistent_db_cursor.execute(

@@ -777,9 +777,12 @@
                             </div>
                         </div>
                         <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
-                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">TYPE</div>
+                            <div style="display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 0.75em; color: #999;">TYPE</span>
+                                <div id="detection_mode" title="Which detector is producing this label" style="font-size: 0.6em; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 8px; display: none;"></div>
+                            </div>
                             <div id="volume_status" style="font-size: 0.9em; font-weight: 600; color: #999;">Waiting</div>
-                            <div id="detection_mode" title="Which detector is producing this label" style="font-size: 0.6em; font-weight: 700; letter-spacing: 0.04em; margin-top: 4px; padding: 1px 6px; border-radius: 8px; display: none;"></div>
+                            <div id="audio_tag_display" style="font-size: 0.75em; color: #aaa; margin-top: 3px; display: none;"></div>
                         </div>
                         <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
                             <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">RUNNING FOR</div>
@@ -1418,6 +1421,7 @@
             updateTranscriptionPreview(data);
             updateAudioType(data.is_running ? data.audio_type : null);
             updateDetectionMode(data.is_running ? data.detection_mode : null);
+            if (!data.is_running) updateAudioTag(null, null);
         });
 
         // Only process audio_level when page is visible (optimization)
@@ -1438,6 +1442,7 @@
             // Live TYPE from pre-VAD detection (shows Music even when not transcribing)
             if (data.audio_type !== undefined) updateAudioType(data.audio_type);
             if (data.detection_mode !== undefined) updateDetectionMode(data.detection_mode);
+            if (data.audio_tag !== undefined || data.music_prob !== undefined) updateAudioTag(data.audio_tag, data.music_prob);
 
             // Detect frozen audio level (same energy for too long)
             if (Math.abs(data.energy - lastAudioEnergy) < 1) {
@@ -1508,6 +1513,15 @@
                 ? 'PANNs audio tagger is classifying music vs speech'
                 : 'Energy-based fallback (PANNs disabled or model/labels unavailable) — cannot detect Music';
             el.style.display = 'inline-block';
+        }
+
+        function updateAudioTag(tag, musicProb) {
+            const el = document.getElementById('audio_tag_display');
+            if (!el) return;
+            if (!tag) { el.style.display = 'none'; return; }
+            const probStr = (musicProb != null) ? ` · <span style="color: var(--accent);">${Math.round(musicProb * 100)}%</span>` : '';
+            el.innerHTML = tag + probStr;
+            el.style.display = 'block';
         }
 
         function updateTranscriptionPreview(data) {
