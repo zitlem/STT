@@ -56,7 +56,7 @@
         }
 
         .model-card h4 {
-            color: var(--accent);
+            color: var(--text-primary);
             font-size: 1em;
             margin-bottom: 12px;
             display: flex;
@@ -110,7 +110,7 @@
 
         .alert.show {
             display: block;
-            animation: slideDown 0.3s ease;
+            animation: slideDown 0.2s var(--ease-out);
         }
 
         /* Model Library Styles */
@@ -581,7 +581,7 @@
                         <div class="model-item model-item--header">
                             <div class="model-info" style="flex: 1;">
                                 <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="custom_hf_model_id" style="font-weight: 600; color: var(--accent); margin-bottom: 5px;">🤗 Download from HuggingFace</label>
+                                    <label for="custom_hf_model_id" style="font-weight: 600; color: var(--text-primary); margin-bottom: 5px;">🤗 Download from HuggingFace</label>
                                     <input type="text" id="custom_hf_model_id" placeholder="e.g., openai/whisper-large-v3" style="width: 100%; padding: 8px; border: 2px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.9em;">
                                 </div>
                             </div>
@@ -593,7 +593,7 @@
                         <!-- Translation Models Section -->
                         <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                                <h5 style="margin: 0; color: var(--success);">🌐 Translation Models (NLLB)</h5>
+                                <h5 style="margin: 0; color: var(--text-primary);">🌐 Translation Models (NLLB)</h5>
                                 <button class="model-btn" onclick="refreshNLLBModels()" style="background: var(--success); padding: 5px 10px; font-size: 0.8em;">🔄 Check for Updates</button>
                             </div>
                             <div id="nllb_models_list">
@@ -608,7 +608,7 @@
                         <!-- TTS Models Section (Piper - local/offline) -->
                         <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                                <h5 style="margin: 0; color: var(--accent);">🔊 Text-to-Speech Models (Piper - Local)</h5>
+                                <h5 style="margin: 0; color: var(--text-primary);">🔊 Text-to-Speech Models (Piper - Local)</h5>
                                 <button class="model-btn" onclick="loadTTSModels(true)" style="background: var(--accent); padding: 5px 10px; font-size: 0.8em;">🔄 Refresh</button>
                             </div>
                             <small style="color: var(--text-secondary); display: block; margin-bottom: 10px;">
@@ -627,7 +627,7 @@
                         <!-- Voice Activity Detection (VAD) Section -->
                         <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                                <h5 style="margin: 0; color: var(--success);">🎤 Voice Activity Detection (VAD)</h5>
+                                <h5 style="margin: 0; color: var(--text-primary);">🎤 Voice Activity Detection (VAD)</h5>
                             </div>
                             <div id="silero_vad_status">
                                 <div class="model-item model-item--success">
@@ -641,7 +641,7 @@
                         <!-- Music / Speech Detection (PANNs) Section -->
                         <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                                <h5 style="margin: 0; color: var(--success);">🎵 Music / Speech Detection (PANNs)</h5>
+                                <h5 style="margin: 0; color: var(--text-primary);">🎵 Music / Speech Detection (PANNs)</h5>
                             </div>
                             <div id="panns_status">
                                 <div class="model-item model-item--success">
