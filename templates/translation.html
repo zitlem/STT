@@ -19,11 +19,10 @@
 
         /* Translation Preview */
         .translation-preview {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: var(--success-bg);
+            border: 1px solid var(--success);
             padding: 16px;
             border-radius: var(--radius-md);
-            border-left: 4px solid var(--success);
         }
 
         .translation-preview .section-title {
@@ -149,10 +148,10 @@
                 <hr class="divider">
 
                 <div class="form-group">
-                    <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border-left: 4px solid var(--accent); border: 1px solid var(--border);">
+                    <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--accent);">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-weight: 500; color: var(--text-primary);">Target Language:</span>
-                            <span id="target_language_label" style="font-size: 0.8em; color: #999;">English</span>
+                            <span id="target_language_label" style="font-size: 0.8em; color: var(--text-secondary);">English</span>
                         </div>
                     </div>
                     <select id="target_language" style="display:none;">
@@ -176,7 +175,7 @@
                     <input type="checkbox" id="translate_in_progress">
                     <label for="translate_in_progress">Translate In-Progress Text</label>
                 </div>
-                <small style="color: #999; font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
+                <small style="color: var(--text-secondary); font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
                     Also translate text being typed (may cause flicker)
                 </small>
 
@@ -186,7 +185,7 @@
                     <input type="checkbox" id="translation_use_gpu" checked>
                     <label for="translation_use_gpu">Use GPU for Translation</label>
                 </div>
-                <small style="color: #999; font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
+                <small style="color: var(--text-secondary); font-size: 0.75em; margin-left: 22px; display: block; margin-top: -5px; margin-bottom: 10px;">
                     Disable to run NLLB on CPU, freeing GPU VRAM for Whisper
                 </small>
                 </div>
@@ -195,7 +194,7 @@
 
                 <!-- Remote Translation Server -->
                 <div style="margin-bottom: 10px;">
-                    <p style="font-weight: 500; color: #e0e0e0; font-size: 0.85em; margin: 0;">Remote Translation Server</p>
+                    <p style="font-weight: 500; color: var(--text-primary); font-size: 0.85em; margin: 0;">Remote Translation Server</p>
                 </div>
                 <div class="checkbox-group">
                     <input type="checkbox" id="remote_translation_enabled">
@@ -210,17 +209,17 @@
                 <div id="remote_translation_fields" style="display:none; margin-bottom: 10px;">
                     <div class="form-group" style="margin-bottom: 8px;">
                         <label for="remote_translation_endpoint">Machine B URL</label>
-                        <input type="text" id="remote_translation_endpoint" placeholder="http://192.168.X.X:80" style="width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--bg-elevated); border: 1px solid #444; border-radius: 4px; color: #eee; font-size: 0.9em;">
+                        <input type="text" id="remote_translation_endpoint" placeholder="http://192.168.X.X:80" style="width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); font-size: 0.9em;">
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
                         <button onclick="requestPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Request Pairing</button>
-                        <span id="pair_status_text" style="font-size: 0.85em; color: #aaa;"></span>
+                        <span id="pair_status_text" style="font-size: 0.85em; color: var(--text-secondary);"></span>
                     </div>
-                    <div id="pair_code_entry" style="display:none; margin-top: 8px; padding: 10px; background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: 6px;">
+                    <div id="pair_code_entry" style="display:none; margin-top: 8px; padding: 10px; background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: var(--radius-sm);">
                         <div style="margin-bottom: 6px; font-size: 0.85em;">Enter the code shown on Machine B's Translations tab:</div>
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <input type="text" id="pair_code_input" maxlength="6" placeholder="123456"
-                                   style="width: 110px; text-align: center; font-size: 1.4em; letter-spacing: 0.25em; padding: 4px 8px; background: var(--bg-elevated); border: 1px solid #555; border-radius: 4px; color: #eee;">
+                                   style="width: 110px; text-align: center; font-size: 1.4em; letter-spacing: 0.25em; padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);">
                             <button onclick="confirmPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Confirm</button>
                         </div>
                     </div>
@@ -236,13 +235,13 @@
                         <option value="whisper_translate">Whisper Translate (English only)</option>
                         <option value="whisper_forced_lang">Whisper Forced Language (Experimental)</option>
                     </select>
-                    <small id="translation_method_hint" style="color: #999; font-size: 0.75em;">NLLB uses a separate model. Whisper methods reuse the transcription model (no extra VRAM).</small>
+                    <small id="translation_method_hint" style="color: var(--text-secondary); font-size: 0.75em;">NLLB uses a separate model. Whisper methods reuse the transcription model (no extra VRAM).</small>
                 </div>
 
-                <div id="whisper_translate_warning" style="display:none; background: #2a2000; border: 1px solid #665500; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
+                <div id="whisper_translate_warning" style="display:none; background: #2a2000; border: 1px solid #665500; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
                     <small style="color: #ffcc00; font-size: 0.8em;">Whisper Translate only supports English as target language. Whisper runs twice per audio chunk (transcribe + translate).</small>
                 </div>
-                <div id="whisper_forced_warning" style="display:none; background: #2a1500; border: 1px solid #664400; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
+                <div id="whisper_forced_warning" style="display:none; background: #2a1500; border: 1px solid #664400; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
                     <small style="color: #ff9900; font-size: 0.8em;">Experimental: Forces Whisper to output in the target language. Quality varies by language pair. Whisper runs twice per audio chunk.</small>
                 </div>
 
@@ -260,7 +259,7 @@
                 <!-- Translation Quality Settings -->
                 <div id="quality_settings_section">
                 <div style="margin-bottom: 10px;">
-                    <p style="font-weight: 500; color: #e0e0e0; font-size: 0.85em; margin: 0;">Translation Quality</p>
+                    <p style="font-weight: 500; color: var(--text-primary); font-size: 0.85em; margin: 0;">Translation Quality</p>
                 </div>
 
                 <div class="form-group">
@@ -268,7 +267,7 @@
                     <input type="range" id="context_window" min="1" max="5" value="1" step="1"
                            oninput="document.getElementById('contextWindowValue').textContent = this.value"
                            style="width:100%;">
-                    <small style="color: #999; font-size: 0.75em;">Combine adjacent segments for better context. 1 = no batching, 2-5 = more context but slower</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em;">Combine adjacent segments for better context. 1 = no batching, 2-5 = more context but slower</small>
                 </div>
 
                 <div class="form-group">
@@ -276,7 +275,7 @@
                     <input type="range" id="num_beams" min="1" max="20" value="5" step="1"
                            oninput="document.getElementById('numBeamsValue').textContent = this.value"
                            style="width:100%;">
-                    <small style="color: #999; font-size: 0.75em;">Higher = better quality but slower. 1 = greedy (fastest), 5 = default, 10+ = high quality</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em;">Higher = better quality but slower. 1 = greedy (fastest), 5 = default, 10+ = high quality</small>
                 </div>
 
                 <div class="form-group">
@@ -284,7 +283,7 @@
                     <input type="range" id="length_penalty" min="0.1" max="3.0" value="1.0" step="0.1"
                            oninput="document.getElementById('lengthPenaltyValue').textContent = parseFloat(this.value).toFixed(1)"
                            style="width:100%;">
-                    <small style="color: #999; font-size: 0.75em;">&lt;1.0 = shorter translations, 1.0 = neutral, &gt;1.0 = longer translations</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em;">&lt;1.0 = shorter translations, 1.0 = neutral, &gt;1.0 = longer translations</small>
                 </div>
 
                 <div class="form-group">
@@ -292,7 +291,7 @@
                     <input type="range" id="no_repeat_ngram_size" min="0" max="10" value="0" step="1"
                            oninput="document.getElementById('noRepeatValue').textContent = this.value"
                            style="width:100%;">
-                    <small style="color: #999; font-size: 0.75em;">Prevents repeating phrases. 0 = disabled, 3 = recommended for reducing repetition</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em;">Prevents repeating phrases. 0 = disabled, 3 = recommended for reducing repetition</small>
                 </div>
 
                 <div class="form-group">
@@ -300,7 +299,7 @@
                     <input type="range" id="repetition_penalty" min="0.5" max="3.0" value="1.0" step="0.1"
                            oninput="document.getElementById('repPenaltyValue').textContent = parseFloat(this.value).toFixed(1)"
                            style="width:100%;">
-                    <small style="color: #999; font-size: 0.75em;">1.0 = disabled. 1.1-1.5 = recommended to reduce repeated tokens</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em;">1.0 = disabled. 1.1-1.5 = recommended to reduce repeated tokens</small>
                 </div>
                 </div>
 
@@ -311,7 +310,7 @@
                     <input type="range" id="translation_alternatives" min="0" max="5" value="3" step="1"
                            oninput="document.getElementById('translationAltsValue').textContent = this.value"
                            style="width:100%;">
-                    <small style="color: #999; font-size: 0.75em;">0 = disabled. Higher = more alternatives but slower translation</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em;">0 = disabled. Higher = more alternatives but slower translation</small>
                 </div>
                 </div><!-- /nllb_settings_group -->
 
@@ -322,7 +321,7 @@
                 <hr class="divider">
 
                 <h3 style="color: var(--accent); font-size: 1em; margin: 12px 0 8px;">🔊 Text-to-Speech (TTS)</h3>
-                <small style="color: #999; display: block; margin-bottom: 10px;">Synthesize speech from translated text. Choose Edge TTS (cloud, 400+ voices) or Piper (local/offline).</small>
+                <small style="color: var(--text-secondary); display: block; margin-bottom: 10px;">Synthesize speech from translated text. Choose Edge TTS (cloud, 400+ voices) or Piper (local/offline).</small>
 
                 <div class="checkbox-group">
                     <input type="checkbox" id="tts_enabled">
@@ -348,7 +347,7 @@
                     </div>
                     <div class="form-group">
                         <label for="tts_edge_lang_filter">Filter by language</label>
-                        <input type="text" id="tts_edge_lang_filter" placeholder="e.g. en, ru, de, es" style="width: 100%; padding: 6px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px;" oninput="loadEdgeVoices(document.getElementById('tts_edge_voice').value)">
+                        <input type="text" id="tts_edge_lang_filter" placeholder="e.g. en, ru, de, es" style="width: 100%; padding: 6px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px;" oninput="loadEdgeVoices(document.getElementById('tts_edge_voice').value)">
                     </div>
                 </div>
 
@@ -372,7 +371,7 @@
 
                 <p style="margin-top: 8px;">
                     <strong>TTS Status:</strong>
-                    <span id="tts_status_text" style="color: #999;">Disabled</span>
+                    <span id="tts_status_text" style="color: var(--text-secondary);">Disabled</span>
                 </p>
 
                 <div class="info-box" style="margin-top: 14px; border-left: none;">
@@ -413,14 +412,14 @@
                     <p><strong><span id="model_loaded_label">Model Loaded</span>:</strong> <span id="model_loaded">No</span></p>
                     <p><strong>Cache Size:</strong> <span id="cache_size">0</span> segments</p>
                     <p><strong>Transcription:</strong> <span id="transcription_status">-</span></p>
-                    <p id="remote_clients_row" style="display:none;"><strong>Translating for:</strong> <span id="remote_clients_list" style="color: #4caf50;"></span></p>
-                    <p id="trusted_clients_row" style="display:none;"><strong>Paired with:</strong> <span id="trusted_clients_list" style="color: #aaa;"></span></p>
+                    <p id="remote_clients_row" style="display:none;"><strong>Translating for:</strong> <span id="remote_clients_list" style="color: var(--success);"></span></p>
+                    <p id="trusted_clients_row" style="display:none;"><strong>Paired with:</strong> <span id="trusted_clients_list" style="color: var(--text-secondary);"></span></p>
                 </div>
 
                 <!-- Pairing request banner (shown on Machine B when A requests pairing) -->
-                <div id="pair_request_banner" style="display:none; margin-bottom: 12px; padding: 14px; background: #1a2a3a; border: 1px solid #3a6a9a; border-radius: 8px;">
+                <div id="pair_request_banner" style="display:none; margin-bottom: 12px; padding: 14px; background: #1a2a3a; border: 1px solid #3a6a9a; border-radius: var(--radius-sm);">
                     <strong>🔗 Pairing request from <span id="pair_request_ip" style="color: #7ab8f5;"></span></strong>
-                    <div style="margin-top: 8px; font-size: 0.9em; color: #ccc;">Code to give to Machine A:</div>
+                    <div style="margin-top: 8px; font-size: 0.9em; color: var(--text-secondary);">Code to give to Machine A:</div>
                     <div id="pair_request_code" style="font-size: 2em; font-weight: bold; letter-spacing: 0.3em; color: #f0e040; margin: 6px 0;"></div>
                     <div style="display: flex; gap: 8px; margin-top: 8px;">
                         <button onclick="respondToPairing(true)" class="btn-save btn-primary" style="margin: 0; padding: 6px 18px;">Allow</button>
@@ -450,7 +449,7 @@
                 <!-- Quick Language Selection -->
                 <div class="settings-card">
                     <h4>Quick Language Selection</h4>
-                    <small style="color: #999;">Click a language to quickly switch to it</small>
+                    <small style="color: var(--text-secondary);">Click a language to quickly switch to it</small>
                     <div class="language-grid" id="language_grid">
                         <!-- Populated dynamically -->
                     </div>
