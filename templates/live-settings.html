@@ -50,8 +50,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             padding: 16px;
-            border-radius: 8px;
-            border-left: 4px solid var(--accent);
+            border-radius: var(--radius-sm);
         }
 
         .status-header {
@@ -73,7 +72,7 @@
             height: 12px;
             min-width: 12px;
             border-radius: 50%;
-            background: #666;
+            background: var(--text-muted);
             padding: 0;
             gap: 0;
             border: none;
@@ -81,17 +80,17 @@
         }
 
         .status-indicator.running {
-            background: #28a745;
+            background: var(--success);
             animation: pulse 2s infinite;
         }
 
         .status-indicator.starting {
-            background: #f6ad55;
+            background: var(--warning);
             animation: pulse 2s infinite;
         }
 
         .status-indicator.stopped {
-            background: #dc3545;
+            background: var(--danger);
         }
 
         .status-info {
@@ -123,8 +122,13 @@
             gap: 8px;
         }
 
+        .btn-force-reset {
+            background: var(--danger);
+            color: white;
+        }
+
         .btn-force-reset:hover:not(:disabled) {
-            background: #e53e3e;
+            background: #DC2626;
             transform: translateY(-1px);
         }
 
@@ -139,28 +143,28 @@
         }
 
         .btn-start {
-            background: #28a745;
+            background: var(--success);
             color: white;
         }
 
         .btn-start:hover:not(:disabled) {
-            background: #218838;
+            background: #16A34A;
             transform: translateY(-1px);
         }
 
         .btn-stop {
-            background: #dc3545;
+            background: var(--danger);
             color: white;
         }
 
         .btn-stop:hover:not(:disabled) {
-            background: #c82333;
+            background: #DC2626;
             transform: translateY(-1px);
         }
 
         .control-btn:disabled {
-            background: #4a4a4a;
-            color: #888;
+            background: var(--bg-elevated);
+            color: var(--text-muted);
             cursor: not-allowed;
             transform: none;
         }
@@ -178,7 +182,7 @@
             background: var(--bg-base);
             padding: 12px;
             border-radius: var(--radius-sm);
-            border: 2px solid var(--border);
+            border: 1px solid var(--border);
         }
 
         .volume-bar {
@@ -191,12 +195,13 @@
 
         .volume-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--success) 0%, #38a169 50%, var(--warning) 75%, var(--danger) 100%);
-            transition: width 0.1s ease;
+            background: linear-gradient(90deg, var(--success) 0%, #16A34A 50%, var(--warning) 75%, var(--danger) 100%);
             border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
+            transform-origin: left;
+            transition: transform 0.1s var(--ease-out);
         }
 
         .volume-text {
@@ -236,8 +241,8 @@
             margin-bottom: 12px;
             padding: 8px;
             background: var(--bg-card);
-            border-left: 3px solid var(--accent);
-            border-radius: 3px;
+            border: 1px solid rgba(124, 107, 240, 0.2);
+            border-radius: var(--radius-sm);
         }
 
         .preview-timestamp {
@@ -318,7 +323,7 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(26, 26, 46, 0.95);
+            background: rgba(10, 10, 12, 0.95);
             backdrop-filter: blur(8px);
             border-top: 1px solid var(--accent);
             padding: 10px 24px;
@@ -352,18 +357,18 @@
                 <h3>Transcription Settings</h3>
 
                 <!-- Audio Device Lock Warning -->
-                <div id="audio_device_lock_warning" style="display: none; background: #3a2f1a; border: 1px solid #5a4a2d; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 4px solid #f6ad55;">
-                    <span style="color: #f6ad55; font-weight: 600;">Live Transcription Running</span><br>
+                <div id="audio_device_lock_warning" style="display: none; background: var(--warning-bg); border: 1px solid var(--warning); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 12px;">
+                    <span style="color: var(--warning); font-weight: 600;">Live Transcription Running</span><br>
                     <small style="color: var(--text-primary);">Audio device selection is locked. Stop transcription before changing audio input.</small>
                 </div>
 
                 <!-- Model Configuration -->
                 <div class="form-group">
                     <label>Model Configuration</label>
-                    <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border-left: 4px solid var(--accent); border: 1px solid var(--border);">
+                    <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <span style="font-weight: 500; color: var(--text-primary);">Live Transcription Model:</span>
-                            <span id="live_model_status" style="font-size: 0.8em; color: #999;">Loading...</span>
+                            <span id="live_model_status" style="font-size: 0.8em; color: var(--text-secondary);">Loading...</span>
                         </div>
 
                     </div>
@@ -373,7 +378,6 @@
 
                     <!-- Model Configuration -->
                     <div class="form-group" style="margin-top: 12px;">
-                        <label>Model Configuration</label>
                             <div class="form-group" style="margin-bottom: 12px;">
                                 <label for="live_model_type">Model Type</label>
                                 <select id="live_model_type" onchange="updateLiveModelTypeUI()">
@@ -426,7 +430,7 @@
                     <select id="audio_device" style="width: 100%; padding: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); border-radius: 5px; font-size: 0.9em;">
                         <option value="">Loading devices...</option>
                     </select>
-                    <small style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">
+                    <small style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px; display: block;">
                         Select your microphone/audio input device
                     </small>
                 </div>
@@ -442,7 +446,7 @@
                         <span class="slider-value"><span id="phraseValue">2</span>s</span>
                     </div>
                     <input type="range" id="phrase_timeout" min="0.5" max="15" value="2" step="0.1" oninput="document.getElementById('phraseValue').textContent = this.value">
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Time to wait after speech stops before finalizing transcription</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px; display: block;">Time to wait after speech stops before finalizing transcription</div>
                 </div>
 
                 <div class="slider-container">
@@ -451,7 +455,7 @@
                         <span class="slider-value"><span id="sameOutputValue">7</span></span>
                     </div>
                     <input type="range" id="same_output_threshold" min="3" max="25" value="7" step="1" oninput="document.getElementById('sameOutputValue').textContent = this.value">
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Number of repeated outputs before text is finalized. Lower = faster, Higher = more stable</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px; display: block;">Number of repeated outputs before text is finalized. Lower = faster, Higher = more stable</div>
                 </div>
 
                 <div class="slider-container">
@@ -460,7 +464,7 @@
                         <span class="slider-value"><span id="fuzzyThresholdValue">0.85</span></span>
                     </div>
                     <input type="range" id="fuzzy_duplicate_threshold" min="0.5" max="1.0" value="0.85" step="0.05" oninput="document.getElementById('fuzzyThresholdValue').textContent = this.value">
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Similarity threshold for detecting duplicate sentences. Higher = stricter matching</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px; display: block;">Similarity threshold for detecting duplicate sentences. Higher = stricter matching</div>
                 </div>
 
                 <div class="slider-container">
@@ -469,7 +473,7 @@
                         <span class="slider-value"><span id="minWordsValue">0</span></span>
                     </div>
                     <input type="range" id="min_words" min="0" max="15" value="0" step="1" oninput="document.getElementById('minWordsValue').textContent = this.value">
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px; display: block;">Minimum word count to save a segment. 0 = save all, higher = skip short fragments</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px; display: block;">Minimum word count to save a segment. 0 = save all, higher = skip short fragments</div>
                 </div>
 
                 <!-- Language Selection -->
@@ -490,7 +494,7 @@
                         <option value="ko">Korean</option>
                         <option value="zh">Chinese</option>
                     </select>
-                    <small style="color: #999; font-size: 0.75em; margin-top: 3px; display: block;">Auto detect uses Whisper's language detection</small>
+                    <small style="color: var(--text-secondary); font-size: 0.75em; margin-top: 3px; display: block;">Auto detect uses Whisper's language detection</small>
                 </div>
 
                 <!-- VAD Settings -->
@@ -498,10 +502,10 @@
                     <input type="checkbox" id="vad_enabled" checked>
                     <label for="vad_enabled">Enable VAD (Voice Activity Detection)</label>
                 </div>
-                <div id="vad_not_downloaded_warning" style="display: none; margin-top: 8px; padding: 10px; background: rgba(245, 101, 101, 0.15); border: 1px solid #f56565; border-radius: 6px;">
-                    <span style="color: #fc8181; font-size: 0.85em;">
+                <div id="vad_not_downloaded_warning" style="display: none; margin-top: 8px; padding: 10px; background: var(--danger-bg); border: 1px solid var(--danger); border-radius: var(--radius-sm);">
+                    <span style="color: var(--danger); font-size: 0.85em;">
                         <strong>VAD model not downloaded.</strong>
-                        <a href="/model-manager" style="color: #63b3ed; text-decoration: underline;">Download it from the Model Manager</a> to enable Voice Activity Detection.
+                        <a href="/model-manager" style="color: var(--info); text-decoration: underline;">Download it from the Model Manager</a> to enable Voice Activity Detection.
                     </span>
                 </div>
 
@@ -527,7 +531,7 @@
                     <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
                         Music / Speech Detection
                     </label>
-                    <small style="color: #999; font-size: 0.75em; display: block; margin-bottom: 12px;">
+                    <small style="color: var(--text-secondary); font-size: 0.75em; display: block; margin-bottom: 12px;">
                         Uses a dedicated audio model (PANNs) to label each segment as Speaking / Music / Quiet. Runs before VAD, so it works without disabling VAD.
                     </small>
                 </div>
@@ -535,10 +539,10 @@
                     <input type="checkbox" id="std_enabled" checked>
                     <label for="std_enabled">Enable PANNs music detection</label>
                 </div>
-                <div id="panns_not_downloaded_warning" style="display: none; margin-top: 8px; padding: 10px; background: rgba(245, 101, 101, 0.15); border: 1px solid #f56565; border-radius: 6px;">
-                    <span style="color: #fc8181; font-size: 0.85em;">
+                <div id="panns_not_downloaded_warning" style="display: none; margin-top: 8px; padding: 10px; background: var(--danger-bg); border: 1px solid var(--danger); border-radius: var(--radius-sm);">
+                    <span style="color: var(--danger); font-size: 0.85em;">
                         <strong>PANNs model not downloaded.</strong>
-                        <a href="/model-manager" style="color: #63b3ed; text-decoration: underline;">Download it from the Model Manager</a> to enable music detection. Until then, detection falls back to the basic Whisper heuristic.
+                        <a href="/model-manager" style="color: var(--info); text-decoration: underline;">Download it from the Model Manager</a> to enable music detection. Until then, detection falls back to the basic Whisper heuristic.
                     </span>
                 </div>
 
@@ -590,7 +594,7 @@
                     <label style="display: block; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
                         Advanced Whisper Decoding
                     </label>
-                    <small style="color: #999; font-size: 0.75em; display: block; margin-bottom: 12px;">
+                    <small style="color: var(--text-secondary); font-size: 0.75em; display: block; margin-bottom: 12px;">
                         Fine-tune transcription quality vs speed. Lower beam size = faster, higher = more accurate.
                     </small>
                 </div>
@@ -668,7 +672,7 @@
                     <input type="checkbox" id="use_gpu" checked>
                     <label for="use_gpu">Use GPU for Transcription</label>
                 </div>
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">GPU for Whisper only. Translation GPU is configured on the /translation page</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">GPU for Whisper only. Translation GPU is configured on the /translation page</div>
 
                 <!-- Real-Time Corrections Settings -->
                 <div style="border-top: 1px solid #333; margin-top: 16px; padding-top: 16px;">
@@ -678,13 +682,13 @@
                         <input type="checkbox" id="corrections_enabled" checked>
                         <label for="corrections_enabled">Enable corrections features</label>
                     </div>
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Powers the /corrections page. Enables word-level confidence scores, confidence highlighting, and translation alternatives (adds latency)</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">Powers the /corrections page. Enables word-level confidence scores, confidence highlighting, and translation alternatives (adds latency)</div>
 
                     <div class="checkbox-group">
                         <input type="checkbox" id="confidence_highlighting" checked>
                         <label for="confidence_highlighting">Confidence highlighting</label>
                     </div>
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Highlights low-confidence words in orange (adds ~10-20% latency)</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">Highlights low-confidence words in orange (adds ~10-20% latency)</div>
 
                     <div class="slider-container">
                         <div class="slider-label">
@@ -693,7 +697,7 @@
                         </div>
                         <input type="range" id="confidence_threshold" min="0.3" max="0.95" value="0.7" step="0.05"
                                oninput="document.getElementById('confidenceThresholdValue').textContent = this.value">
-                        <div class="slider-hint" style="color: #666; font-size: 0.8em; margin-top: 4px;">Words below this score are flagged for review</div>
+                        <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px;">Words below this score are flagged for review</div>
                     </div>
 
                 </div>
@@ -706,22 +710,22 @@
                         <input type="checkbox" id="nllb_glossary_enabled" checked>
                         <label for="nllb_glossary_enabled">NLLB glossary post-processing</label>
                     </div>
-                    <div class="slider-hint" style="color: #666; font-size: 0.8em; margin: -8px 0 8px 0;">Replaces translated terms using glossary mappings after translation</div>
+                    <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">Replaces translated terms using glossary mappings after translation</div>
 
                     <div class="form-group" style="margin-top: 12px;">
                         <label for="glossary_list" style="font-size: 0.85em;">Glossary (source=target, one per line)</label>
                         <textarea id="glossary_list" rows="4" placeholder="Add translation term mappings...&#10;e.g. neural network=red neuronal&#10;machine learning=aprendizaje automatico"
-                                  style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid #333; color: var(--text-primary); border-radius: 4px; font-size: 0.85em; resize: vertical;"></textarea>
-                        <small style="color: #666; font-size: 0.75em;">Applied when translating to the target language</small>
+                                  style="width: 100%; padding: 6px 8px; background: var(--bg-base); border: 1px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.85em; resize: vertical;"></textarea>
+                        <small style="color: var(--text-muted); font-size: 0.75em;">Applied when translating to the target language</small>
                     </div>
 
-                    <button onclick="saveDictionary()" class="btn-save" style="background: #4a90d9; margin-top: 8px;">Save Dictionary</button>
+                    <button onclick="saveDictionary()" class="btn-save" style="margin-top: 8px;">Save Dictionary</button>
                 </div>
 
                 <!-- Action Buttons -->
                 <button id="main-save-btn" onclick="saveSettings()" class="btn-save">Save Settings</button>
-                <button onclick="resetConfig()" class="btn-save" style="background: #ed8936;">Reset to Default</button>
-                <button onclick="startCalibration()" class="btn-save" style="background: #48bb78;">Calibrate Settings</button>
+                <button onclick="resetConfig()" class="btn-save btn-danger">Reset to Default</button>
+                <button onclick="startCalibration()" class="btn-save btn-secondary">Calibrate Settings</button>
 
             </div>
 
@@ -757,7 +761,7 @@
                         <button id="btn_stop" class="control-btn btn-stop" onclick="stopTranscription()" disabled>
                             Stop
                         </button>
-                        <button id="btn_force_reset" class="control-btn btn-force-reset" onclick="forceResetTranscription()" style="background: #f56565;">
+                        <button id="btn_force_reset" class="control-btn btn-force-reset" onclick="forceResetTranscription()">
                             Force Reset
                         </button>
                     </div>
@@ -769,35 +773,35 @@
 
                     <!-- Stats Bar -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
-                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">CURRENT / PEAK</div>
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); text-align: center;">
+                            <div style="font-size: 0.75em; color: var(--text-muted); margin-bottom: 4px;">CURRENT / PEAK</div>
                             <div style="font-size: 1.4em; font-weight: 700;">
                                 <span id="volume_current" style="color: var(--accent);">0</span>
-                                <span style="color: #666;"> / </span>
-                                <span id="volume_peak" style="color: #48bb78;">0</span>
+                                <span style="color: var(--text-muted);"> / </span>
+                                <span id="volume_peak" style="color: var(--success);">0</span>
                             </div>
                         </div>
-                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); text-align: center;">
                             <div style="display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 4px;">
-                                <span style="font-size: 0.75em; color: #999;">TYPE</span>
-                                <div id="detection_mode" title="Which detector is producing this label" style="font-size: 0.6em; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 8px; display: none;"></div>
+                                <span style="font-size: 0.75em; color: var(--text-muted);">TYPE</span>
+                                <div id="detection_mode" title="Which detector is producing this label" style="font-size: 0.6em; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: var(--radius-sm); display: none;"></div>
                             </div>
-                            <div id="volume_status" style="font-size: 0.9em; font-weight: 600; color: #999;">Waiting</div>
-                            <div id="audio_tag_display" style="font-size: 0.75em; color: #aaa; margin-top: 3px; display: none;"></div>
+                            <div id="volume_status" style="font-size: 0.9em; font-weight: 600; color: var(--text-muted);">Waiting</div>
+                            <div id="audio_tag_display" style="font-size: 0.75em; color: var(--text-secondary); margin-top: 3px; display: none;"></div>
                         </div>
-                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: 6px; border: 2px solid var(--border); text-align: center;">
-                            <div style="font-size: 0.75em; color: #999; margin-bottom: 4px;">RUNNING FOR</div>
+                        <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); text-align: center;">
+                            <div style="font-size: 0.75em; color: var(--text-muted); margin-bottom: 4px;">RUNNING FOR</div>
                             <div id="running_timer" style="color: var(--accent); font-size: 1.4em; font-weight: 700;">--:--</div>
                         </div>
                     </div>
 
                     <!-- Oscilloscope-style Timeline -->
-                    <div style="background: var(--bg-elevated); padding: 16px; border-radius: 6px; border: 2px solid var(--border);">
+                    <div style="background: var(--bg-elevated); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                             <span style="color: var(--text-primary); font-size: 0.9em; font-weight: 600;">Audio Level Timeline (Last 60s)</span>
-                            <span style="color: #999; font-size: 0.75em;">Activation Threshold: <span id="threshold_display" style="color: var(--accent); font-weight: 600;">3500</span></span>
+                            <span style="color: var(--text-muted); font-size: 0.75em;">Activation Threshold: <span id="threshold_display" style="color: var(--accent); font-weight: 600;">3500</span></span>
                         </div>
-                        <div style="margin-bottom: 8px; padding: 8px; background: var(--accent-subtle); border-left: 3px solid var(--accent); border-radius: 3px;">
+                        <div style="margin-bottom: 8px; padding: 8px; background: var(--accent-subtle); border: 1px solid rgba(124,107,240,0.15); border-radius: var(--radius-sm);">
                             <span style="color: var(--text-primary); font-size: 0.75em;">
                                 <strong>Goal:</strong> Peak above the purple threshold line when speaking. Audio below the threshold is considered silence and won't be transcribed.
                                 <br>* <strong>Energy Threshold (Always Active):</strong> Quiet audio below this line is immediately rejected - fast and lightweight
@@ -806,7 +810,7 @@
                             </span>
                         </div>
                         <canvas id="audio_timeline" width="1200" height="180" style="width: 100%; height: 180px; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border);"></canvas>
-                        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7em; color: #666;">
+                        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7em; color: var(--text-muted);">
                             <span>< 60s ago</span>
                             <span>30s ago</span>
                             <span>Now ></span>
@@ -818,7 +822,7 @@
                 <div class="transcription-preview">
                     <div class="section-title">Live Transcription</div>
                     <div id="transcription_preview" class="preview-content">
-                        <p style="color: #999; text-align: center; margin: 100px 0;">Connecting to transcription service...</p>
+                        <p style="color: var(--text-muted); text-align: center; margin: 100px 0;">Connecting to transcription service...</p>
                     </div>
                 </div>
             </div>
@@ -1219,7 +1223,7 @@
             // Clear the preview display
             const preview = document.getElementById('transcription_preview');
             if (preview) {
-                preview.innerHTML = '<p style="color: #999; text-align: center; margin: 30px 0;">No transcriptions yet. Start speaking...</p>';
+                preview.innerHTML = '<p style="color: var(--text-muted); text-align: center; margin: 30px 0;">No transcriptions yet. Start speaking...</p>';
             }
             // Reset segment tracking state
             previewSegments = [];
@@ -1325,10 +1329,10 @@
                     // Update loaded model display
                     if (state.loaded_model && state.loaded_model !== '') {
                         statusModel.textContent = state.loaded_model;
-                        statusModel.style.color = '#bb86fc';
+                        statusModel.style.color = 'var(--accent-hover)';
                     } else {
                         statusModel.textContent = 'Not loaded';
-                        statusModel.style.color = '#666';
+                        statusModel.style.color = 'var(--text-muted)';
                     }
 
                     // Update global transcription state for UI locks
@@ -1346,22 +1350,22 @@
                         statusIndicator.className = 'status-indicator running';
                         btnStart.disabled = true;
                         btnStop.disabled = false;
-                        statusText.style.color = '#28a745';
+                        statusText.style.color = 'var(--success)';
                     } else if (state.status === 'starting') {
                         statusIndicator.className = 'status-indicator starting';
                         btnStart.disabled = true;
                         btnStop.disabled = false; // Allow stopping during startup
-                        statusText.style.color = '#f6ad55';
+                        statusText.style.color = 'var(--warning)';
                     } else if (state.status === 'stopping') {
                         statusIndicator.className = 'status-indicator starting';
                         btnStart.disabled = true;
                         btnStop.disabled = true; // Disable both during shutdown
-                        statusText.style.color = '#f6ad55';
+                        statusText.style.color = 'var(--warning)';
                     } else if (state.status === 'error') {
                         statusIndicator.className = 'status-indicator stopped';
                         btnStart.disabled = false;
                         btnStop.disabled = true;
-                        statusText.style.color = '#f56565';
+                        statusText.style.color = 'var(--danger)';
                         if (state.error) {
                             statusMessage.textContent = state.error;
                             // Only show alert once per error
@@ -1374,7 +1378,7 @@
                         statusIndicator.className = 'status-indicator stopped';
                         btnStart.disabled = false;
                         btnStop.disabled = true;
-                        statusText.style.color = '#dc3545';
+                        statusText.style.color = 'var(--danger)';
                     }
                 }
             } catch (error) {
@@ -1481,16 +1485,16 @@
             const statusEl = document.getElementById('volume_status');
             if (!statusEl) return;
             const types = {
-                'Speaking': { color: '#48bb78', label: 'Speaking' },
-                'Music':    { color: '#805ad5', label: 'Music' },
-                'Quiet':    { color: '#718096', label: 'Quiet' },
+                'Speaking': { color: 'var(--success)', label: 'Speaking' },
+                'Music':    { color: 'var(--accent)', label: 'Music' },
+                'Quiet':    { color: 'var(--text-muted)', label: 'Quiet' },
             };
             if (!audioType) {
                 statusEl.textContent = 'Waiting';
-                statusEl.style.color = '#999';
+                statusEl.style.color = 'var(--text-muted)';
                 return;
             }
-            const t = types[audioType] || { color: '#999', label: audioType };
+            const t = types[audioType] || { color: 'var(--text-muted)', label: audioType };
             statusEl.textContent = t.label;
             statusEl.style.color = t.color;
         }
@@ -1503,10 +1507,10 @@
             if (!el) return;
             if (!mode) { el.style.display = 'none'; return; }
             const modes = {
-                'panns':  { label: 'PANNs',  color: '#805ad5', bg: 'rgba(128,90,213,0.15)' },
-                'energy': { label: 'Energy', color: '#dd6b20', bg: 'rgba(221,107,32,0.15)' },
+                'panns':  { label: 'PANNs',  color: 'var(--accent)', bg: 'var(--accent-subtle)' },
+                'energy': { label: 'Energy', color: 'var(--warning)', bg: 'var(--warning-bg)' },
             };
-            const m = modes[mode] || { label: String(mode), color: '#999', bg: 'rgba(153,153,153,0.15)' };
+            const m = modes[mode] || { label: String(mode), color: 'var(--text-muted)', bg: 'rgba(90,94,102,0.15)' };
             el.textContent = m.label;
             el.style.color = m.color;
             el.style.background = m.bg;
@@ -1534,7 +1538,7 @@
             const hasInProgress = inProgressSegment && inProgressSegment.text && inProgressSegment.text.trim();
 
             if (!hasSegments && !hasInProgress) {
-                preview.innerHTML = '<p style="color: #999; text-align: center; margin: 30px 0;">No transcriptions yet. Start speaking...</p>';
+                preview.innerHTML = '<p style="color: var(--text-muted); text-align: center; margin: 30px 0;">No transcriptions yet. Start speaking...</p>';
                 previewSegments = [];
                 previewLastEndTime = 0;
                 previewLastSegmentCount = 0;
@@ -1660,12 +1664,12 @@
             const centerY = height / 2;
 
             // Clear canvas
-            ctx.fillStyle = '#1a1a1a';
+            ctx.fillStyle = '#0a0a0c';
             ctx.fillRect(0, 0, width, height);
 
             if (timelineData.length === 0) {
                 // Draw "waiting" message
-                ctx.fillStyle = '#666';
+                ctx.fillStyle = '#5A5E66';
                 ctx.font = '14px monospace';
                 ctx.textAlign = 'center';
                 ctx.fillText('Waiting for audio data...', width / 2, centerY);
@@ -1673,7 +1677,7 @@
             }
 
             // Draw grid lines (horizontal)
-            ctx.strokeStyle = '#2a2a2a';
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
             ctx.lineWidth = 1;
             for (let i = 0; i <= 4; i++) {
                 const y = (height / 4) * i;
@@ -1686,7 +1690,7 @@
             // Draw threshold line
             const maxScale = Math.max(energyThreshold * 2, Math.max(...timelineData.map(d => d.energy)));
             const thresholdY = height - (energyThreshold / maxScale) * height;
-            ctx.strokeStyle = '#bb86fc';
+            ctx.strokeStyle = '#7C6BF0';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
@@ -1696,7 +1700,7 @@
             ctx.setLineDash([]);
 
             // Draw threshold label (position it to avoid cutoff)
-            ctx.fillStyle = '#bb86fc';
+            ctx.fillStyle = '#7C6BF0';
             ctx.font = '11px monospace';
             ctx.textAlign = 'left';
             const labelText = `Activation Threshold (${energyThreshold})`;
@@ -1710,9 +1714,9 @@
 
                 // Draw the line with gradient color
                 const gradient = ctx.createLinearGradient(0, 0, width, 0);
-                gradient.addColorStop(0, '#4299e1');
-                gradient.addColorStop(0.5, '#48bb78');
-                gradient.addColorStop(1, '#ed8936');
+                gradient.addColorStop(0, '#3B82F6');
+                gradient.addColorStop(0.5, '#22C55E');
+                gradient.addColorStop(1, '#F59E0B');
                 ctx.strokeStyle = gradient;
 
                 const pointSpacing = width / maxTimelinePoints;
@@ -1736,8 +1740,8 @@
                 ctx.closePath();
 
                 const fillGradient = ctx.createLinearGradient(0, 0, 0, height);
-                fillGradient.addColorStop(0, 'rgba(72, 187, 120, 0.3)');
-                fillGradient.addColorStop(1, 'rgba(72, 187, 120, 0.05)');
+                fillGradient.addColorStop(0, 'rgba(34, 197, 94, 0.25)');
+                fillGradient.addColorStop(1, 'rgba(34, 197, 94, 0.03)');
                 ctx.fillStyle = fillGradient;
                 ctx.fill();
 
@@ -1745,7 +1749,7 @@
                 const lastX = (timelineData.length - 1) * pointSpacing;
                 const lastY = height - (timelineData[timelineData.length - 1].energy / maxScale) * height;
 
-                ctx.strokeStyle = '#bb86fc';
+                ctx.strokeStyle = '#7C6BF0';
                 ctx.lineWidth = 2;
                 ctx.setLineDash([2, 2]);
                 ctx.beginPath();
@@ -1755,7 +1759,7 @@
                 ctx.setLineDash([]);
 
                 // Draw value dot
-                ctx.fillStyle = '#bb86fc';
+                ctx.fillStyle = '#7C6BF0';
                 ctx.beginPath();
                 ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
                 ctx.fill();
@@ -1808,11 +1812,11 @@
                     // No audio devices available
                     if (liveStatus.textContent === 'Loading...' || liveStatus.textContent === 'Not configured') {
                         liveStatus.textContent = 'No audio device available';
-                        liveStatus.style.color = '#f56565'; // Red color for error
+                        liveStatus.style.color = 'var(--danger)';
                     }
                 } else {
                     // Audio devices available, restore normal color
-                    liveStatus.style.color = '#666'; // Normal gray color
+                    liveStatus.style.color = 'var(--text-muted)';
                 }
             } catch (error) {
                 console.error('Error checking audio device status:', error);
@@ -2028,14 +2032,14 @@
                         // console.log(`[Calibration] step=${step}, step1_complete=${step1_complete}, progress=${progress}%, elapsed=${statusData.elapsed}s`);
 
                         // Update progress bar
-                        document.getElementById('calibration_bar').style.width = progress + '%';
+                        document.getElementById('calibration_bar').style.transform = 'scaleX(' + (progress / 100) + ')';
 
                         // Check if Step 1 is complete but Step 2 hasn't started yet
                         if (step === 1 && step1_complete) {
                             // console.log('[Calibration] Showing "Start Step 2" button');
                             // Show "Start Step 2" button
                             document.getElementById('calibration_status').innerHTML =
-                                `Step 1 Complete! <button onclick="startStep2()" class="btn-save" style="background: #48bb78; margin-left: 10px; padding: 8px 16px; cursor: pointer;">Start Step 2</button>`;
+                                `Step 1 Complete! <button onclick="startStep2()" class="btn-save" style="margin-left: 10px; padding: 8px 16px; cursor: pointer; width: auto; margin-top: 0;">Start Step 2</button>`;
                         } else {
                             // Normal progress display
                             let message = '';
@@ -2086,7 +2090,7 @@
 
             let html = `
                 <div style="background: var(--bg-elevated); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: var(--text-primary);">
-                    <h4 style="margin-top: 0; color: #ffffff;">Environment Analysis</h4>
+                    <h4 style="margin-top: 0; color: var(--text-primary); font-size: 0.88em; font-weight: 600;">Environment Analysis</h4>
                     <p><strong>Confidence:</strong> ${data.confidence.toUpperCase()}</p>
             `;
 
@@ -2110,9 +2114,9 @@
             html += `
                 <table style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
                     <tr style="background: var(--bg-elevated);">
-                        <th style="padding: 10px; text-align: left; color: #ffffff;">Setting</th>
-                        <th style="padding: 10px; text-align: center; color: #ffffff;">Current</th>
-                        <th style="padding: 10px; text-align: center; color: #ffffff;">Suggested</th>
+                        <th style="padding: 10px; text-align: left; color: var(--text-primary); font-size: 0.82em; font-weight: 600;">Setting</th>
+                        <th style="padding: 10px; text-align: center; color: var(--text-primary); font-size: 0.82em; font-weight: 600;">Current</th>
+                        <th style="padding: 10px; text-align: center; color: var(--text-primary); font-size: 0.82em; font-weight: 600;">Suggested</th>
                     </tr>
             `;
 
@@ -2123,7 +2127,7 @@
                     <tr>
                         <td style="padding: 10px;">Energy Threshold (${change})</td>
                         <td style="padding: 10px; text-align: center;">${current.energy_threshold}</td>
-                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #48bb78;">
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: var(--success);">
                             ${suggested.energy_threshold}
                         </td>
                     </tr>
@@ -2137,7 +2141,7 @@
                     <tr>
                         <td style="padding: 10px;">Phrase Timeout (${change})</td>
                         <td style="padding: 10px; text-align: center;">${current.phrase_timeout}s</td>
-                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #48bb78;">
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: var(--success);">
                             ${suggested.phrase_timeout}s
                         </td>
                     </tr>
@@ -2151,7 +2155,7 @@
                     <tr>
                         <td style="padding: 10px;">VAD Threshold (${change})</td>
                         <td style="padding: 10px; text-align: center;">${current.vad_threshold}</td>
-                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #48bb78;">
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: var(--success);">
                             ${suggested.vad_threshold}
                         </td>
                     </tr>
@@ -2389,9 +2393,9 @@
     </script>
 
     <!-- Calibration Modal -->
-    <div id="calibrationModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
-        <div style="background: #1e1e1e; padding: 30px; border-radius: 10px; max-width: 600px; width: 90%; color: var(--text-primary);">
-            <h2 style="margin-top: 0; color: #ffffff;">Settings Calibration</h2>
+    <div id="calibrationModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: var(--bg-base); border: 1px solid var(--border); padding: 30px; border-radius: var(--radius-md); box-shadow: 0 24px 80px rgba(0,0,0,0.6); max-width: 600px; width: 90%; color: var(--text-primary);">
+            <h2 style="margin-top: 0; color: var(--text-primary); font-size: 1.1em; font-weight: 600; letter-spacing: -0.02em;">Settings Calibration</h2>
 
             <div id="calibration_instructions" style="margin-bottom: 20px;">
                 <p>This two-step calibration will analyze your environment to suggest optimal settings (30 seconds total).</p>
@@ -2400,20 +2404,20 @@
                     <input type="checkbox" id="skip_step1_checkbox" style="margin-right: 8px; transform: scale(1.2);">
                     <strong>Skip Step 1 (Noise Floor)</strong> - Only calibrate speech patterns
                     <br>
-                    <small style="margin-left: 28px; color: #999;">
+                    <small style="margin-left: 28px; color: var(--text-muted);">
                         Use this if you only need phrase timeout and window duration suggestions.
                         Energy Threshold will use your current config value.
                     </small>
                 </label>
 
-                <div style="background: var(--bg-elevated); padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <div style="background: var(--bg-elevated); padding: 15px; border-radius: var(--radius-sm); margin: 15px 0;">
                     <p><strong>Step 1: Noise Floor (15 seconds)</strong></p>
                     <ul style="margin: 5px 0;">
                         <li>Stay quiet and avoid making noise</li>
                         <li>This measures your background noise level</li>
                     </ul>
                 </div>
-                <div style="background: var(--bg-elevated); padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <div style="background: var(--bg-elevated); padding: 15px; border-radius: var(--radius-sm); margin: 15px 0;">
                     <p><strong>Step 2: Speech Calibration (15 seconds)</strong></p>
                     <ul style="margin: 5px 0;">
                         <li>Speak normally as you would during dictation</li>
@@ -2424,25 +2428,25 @@
             </div>
 
             <div id="calibration_progress" style="display: none;">
-                <div style="background: var(--bg-elevated); border-radius: 10px; padding: 4px; margin-bottom: 10px;">
-                    <div id="calibration_bar" style="background: #48bb78; height: 30px; border-radius: 8px; width: 0%; transition: width 0.3s;"></div>
+                <div style="background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 4px; margin-bottom: 10px; overflow: hidden;">
+                    <div id="calibration_bar" style="background: var(--success); height: 30px; border-radius: var(--radius-sm); width: 100%; transform: scaleX(0); transform-origin: left; transition: transform 0.3s var(--ease-out);"></div>
                 </div>
                 <p id="calibration_status" style="color: var(--text-primary);">Starting calibration...</p>
             </div>
 
             <div id="calibration_results" style="display: none;">
-                <h3 style="color: #ffffff;">Analysis Results</h3>
+                <h3 style="color: var(--text-primary); font-size: 0.95em; font-weight: 600;">Analysis Results</h3>
                 <div id="results_content"></div>
 
                 <div style="margin-top: 20px;">
-                    <button onclick="applyCalibrationResults()" class="btn-save" style="background: #48bb78;">Apply Suggested Settings</button>
-                    <button onclick="closeCalibrationModal()" class="btn-save" style="background: #666;">Cancel</button>
+                    <button onclick="applyCalibrationResults()" class="btn-save">Apply Suggested Settings</button>
+                    <button onclick="closeCalibrationModal()" class="btn-save btn-secondary">Cancel</button>
                 </div>
             </div>
 
             <div id="calibration_controls">
-                <button onclick="runCalibration()" class="btn-save" style="background: #48bb78;">Start Calibration</button>
-                <button onclick="closeCalibrationModal()" class="btn-save" style="background: #666;">Cancel</button>
+                <button onclick="runCalibration()" class="btn-save">Start Calibration</button>
+                <button onclick="closeCalibrationModal()" class="btn-save btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
