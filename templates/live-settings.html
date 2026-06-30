@@ -223,7 +223,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             padding: 16px;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             overflow: hidden;
             min-width: 0;
         }
@@ -239,9 +239,8 @@
             overflow-x: hidden;
             word-wrap: break-word;
             overflow-wrap: break-word;
-            font-family: 'Courier New', monospace;
             font-size: 0.9em;
-            line-height: 1.5;
+            line-height: 1.6;
             color: var(--text-primary);
         }
 
@@ -345,6 +344,12 @@
             justify-content: space-between;
         }
         .unsaved-bar span { color: var(--warning); font-size: 0.85em; font-weight: 600; }
+
+        /* Tabular numerics for system-emitted values */
+        #volume_current, #volume_peak, #running_timer,
+        #threshold_display, .slider-value span {
+            font-variant-numeric: tabular-nums;
+        }
 
         /* Collapsible hint details */
         .hint-details {
@@ -836,19 +841,19 @@
                 <div id="alert_message" class="alert"></div>
 
                 <!-- Status Card -->
-                <div class="status-card">
+                <div class="status-card" role="region" aria-label="Transcription status">
                     <div class="status-header">
                         <div class="status-title">Transcription Status</div>
-                        <div id="status_indicator" class="status-indicator stopped"></div>
+                        <div id="status_indicator" class="status-indicator stopped" aria-hidden="true"></div>
                     </div>
                     <div class="status-info">
                         <div class="status-item">
                             <div class="status-label">Status</div>
-                            <div id="status_text" class="status-value">STOPPED</div>
+                            <div id="status_text" class="status-value" aria-live="polite" aria-atomic="true">STOPPED</div>
                         </div>
                         <div class="status-item">
                             <div class="status-label">Message</div>
-                            <div id="status_message" class="status-value" style="font-size: 0.9em;">Ready</div>
+                            <div id="status_message" class="status-value" style="font-size: 0.9em;" aria-live="polite" aria-atomic="true">Ready</div>
                         </div>
                         <div class="status-item">
                             <div class="status-label">Model</div>
@@ -902,7 +907,7 @@
                             <span style="color: var(--text-primary); font-size: 0.9em; font-weight: 600;">Audio Level Timeline (Last 60s)</span>
                             <span style="color: var(--text-muted); font-size: 0.75em;">Activation Threshold: <span id="threshold_display" style="color: var(--accent); font-weight: 600;">3500</span></span>
                         </div>
-                        <canvas id="audio_timeline" width="1200" height="180" style="width: 100%; height: 180px; background: var(--bg-base); border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 8px;"></canvas>
+                        <canvas id="audio_timeline" width="1200" height="180" style="width: 100%; height: 180px; background: var(--bg-base); border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 8px;" role="img" aria-label="Audio level timeline — last 60 seconds of audio energy with activation threshold marker">Audio level visualization — last 60 seconds</canvas>
                         <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7em; color: var(--text-muted);">
                             <span>< 60s ago</span>
                             <span>30s ago</span>
@@ -2063,17 +2068,34 @@
                 }
             });
             observer.observe(saveBtn);
+
+            // Close calibration modal on Escape
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const modal = document.getElementById('calibrationModal');
+                    if (modal && modal.style.display !== 'none') closeCalibrationModal();
+                }
+            });
         })();
 
         // Calibration functions
         let calibrationResults = null;
 
+        let _calibrationOpener = null;
+
         function startCalibration() {
-            document.getElementById('calibrationModal').style.display = 'flex';
+            _calibrationOpener = document.activeElement;
+            const modal = document.getElementById('calibrationModal');
+            modal.style.display = 'flex';
             document.getElementById('calibration_instructions').style.display = 'block';
             document.getElementById('calibration_progress').style.display = 'none';
             document.getElementById('calibration_results').style.display = 'none';
             document.getElementById('calibration_controls').style.display = 'block';
+            // Move focus into the modal
+            requestAnimationFrame(() => {
+                const first = modal.querySelector('button:not([disabled]), input, [tabindex]:not([tabindex="-1"])');
+                if (first) first.focus();
+            });
         }
 
         async function runCalibration() {
@@ -2292,6 +2314,11 @@
         function closeCalibrationModal() {
             document.getElementById('calibrationModal').style.display = 'none';
             calibrationResults = null;
+            // Return focus to the element that opened the modal
+            if (_calibrationOpener && _calibrationOpener.focus) {
+                _calibrationOpener.focus();
+            }
+            _calibrationOpener = null;
         }
 
         async function startStep2() {
@@ -2486,14 +2513,14 @@
     </script>
 
     <!-- Calibration Modal -->
-    <div id="calibrationModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center;">
+    <div id="calibrationModal" role="dialog" aria-modal="true" aria-labelledby="calibrationModalTitle" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1100; justify-content: center; align-items: center;">
         <div style="background: var(--bg-base); border: 1px solid var(--border); padding: 30px; border-radius: var(--radius-md); box-shadow: 0 24px 80px rgba(0,0,0,0.6); max-width: 600px; width: 90%; color: var(--text-primary);">
-            <h2 style="margin-top: 0; color: var(--text-primary); font-size: 1.1em; font-weight: 600; letter-spacing: -0.02em;">Settings Calibration</h2>
+            <h2 id="calibrationModalTitle" style="margin-top: 0; color: var(--text-primary); font-size: 1.1em; font-weight: 600; letter-spacing: -0.02em;">Settings Calibration</h2>
 
             <div id="calibration_instructions" style="margin-bottom: 20px;">
                 <p>This two-step calibration will analyze your environment to suggest optimal settings (30 seconds total).</p>
 
-                <label style="display: block; margin: 15px 0; padding: 12px; background: var(--bg-elevated); border-radius: 8px; cursor: pointer;">
+                <label style="display: block; margin: 15px 0; padding: 12px; background: var(--bg-elevated); border-radius: var(--radius-sm); cursor: pointer;">
                     <input type="checkbox" id="skip_step1_checkbox" style="margin-right: 8px; transform: scale(1.2);">
                     <strong>Skip Step 1 (Noise Floor)</strong> - Only calibrate speech patterns
                     <br>
