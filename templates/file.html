@@ -255,6 +255,17 @@
                 grid-template-columns: repeat(2, 1fr);
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            .progress-fill,
+            .dropzone,
+            .format-btn,
+            button.primary,
+            .actions button { transition: none; }
+            .format-btn:hover,
+            button.primary:hover:not(:disabled),
+            .actions button:hover { transform: none; }
+        }
 {% endblock %}
 
 {% block content %}
@@ -479,12 +490,12 @@
                 <!-- Progress Section -->
                 <div class="progress-section" id="progressSection">
                     <div class="section-title">Processing File...</div>
-                    <div class="progress-bar">
+                    <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBar">
                         <div class="progress-fill" id="progressFill"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                        <p class="progress-text" id="progressText">Ready to transcribe file</p>
-                        <span id="progressPercent" style="color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 0.9em;"></span>
+                        <p class="progress-text" id="progressText" aria-live="polite">Ready to transcribe file</p>
+                        <span id="progressPercent" style="color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 0.9em;" aria-live="polite"></span>
                     </div>
                 </div>
 
@@ -502,7 +513,7 @@
                 </div>
 
                 <!-- Results Section -->
-                <div class="results-section" id="resultsSection">
+                <div class="results-section" id="resultsSection" aria-live="polite">
                     <div class="stats">
                         <div class="stat-card">
                             <div class="label">Duration</div>
@@ -524,7 +535,7 @@
                             <span>Original Transcription</span>
                             <span id="sourceLanguageLabel" style="font-size: 0.9em; color: var(--text-secondary);"></span>
                         </div>
-                        <div class="transcription-output" id="transcriptionOutput"></div>
+                        <div class="transcription-output" id="transcriptionOutput" aria-live="polite" aria-label="Transcription output"></div>
                         <iframe id="htmlPreview" title="Transcription HTML Preview" style="display: none; width: 100%; height: 500px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-base);"></iframe>
                         <div class="actions" style="margin-top: 10px;">
                             <button class="btn-copy" id="copyBtn">📋 Copy</button>
@@ -540,7 +551,7 @@
                             <span>Translation</span>
                             <span id="targetLanguageLabel" style="font-size: 0.9em; color: var(--text-secondary);"></span>
                         </div>
-                        <div class="transcription-output" id="translationOutput" style="border-color: var(--success);"></div>
+                        <div class="transcription-output" id="translationOutput" style="border-color: var(--success);" aria-live="polite" aria-label="Translation output"></div>
                         <iframe id="translationHtmlPreview" title="Translation HTML Preview" style="display: none; width: 100%; height: 500px; border: 1px solid var(--success); border-radius: 8px; background: var(--bg-base);"></iframe>
                         <div class="actions" style="margin-top: 10px;">
                             <button class="btn-copy" id="copyTranslationBtn" style="background: var(--success);">📋 Copy Translation</button>
@@ -551,8 +562,8 @@
                 </div>
 
                 <!-- Error Display -->
-                <div id="errorSection" style="display: none;">
-                    <div class="error-message" id="errorMessage"></div>
+                <div id="errorSection" style="display: none;" aria-live="assertive">
+                    <div class="error-message" id="errorMessage" role="alert"></div>
                 </div>
             </div>
         </div>
@@ -1491,6 +1502,7 @@ ${segmentsHtml}
             document.getElementById('progressFill').style.transform = 'scaleX(' + (percent / 100) + ')';
             document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
             document.getElementById('progressText').textContent = status;
+            document.getElementById('progressBar').setAttribute('aria-valuenow', Math.round(percent));
         }
 
         function showResults(data) {
