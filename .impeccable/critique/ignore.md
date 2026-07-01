@@ -3,6 +3,7 @@
 ## design-system-color: progress track backgrounds
 
 - `rgba(255,255,255,0.1)` — disk space bar track background in file-manager; intentional thin-track contrast value
+- `rgba(255, 255, 255, 0.3)` — color swatch hover glow in word-highlighting.html; white glow on colored swatch is intentionally contrast-agnostic
 
 ## design-system-color: semantic overlay and themed panel colors (translation.html)
 
@@ -27,7 +28,7 @@
 
 ## design-system-radius: intentional pill/micro shapes
 
-- `3px` — disk space bar track; intentional micro-pill for thin progress track
+- `3px` — disk space bar track and regex-example code pills in word-highlighting; intentional micro-pill for thin/tight contexts
 - `4px` — compact UI elements: file-manager action buttons, file mover textareas, translation language picker items, dense inline form inputs; intentional micro-radius for tight/dense contexts
 - `10px` — progress bar container pills (upload, download, PANNs progress); intentional pill shape
 - `12px` — status badge pills ("✓ Downloaded", "Available"); intentional badge pill
