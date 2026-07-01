@@ -76,7 +76,7 @@
       }
       .seg-original:hover { background: var(--accent-subtle); }
       .seg-original.editing {
-        outline: 2px solid var(--accent); background: rgba(124,107,240,0.08);
+        outline: 2px solid var(--accent); background: var(--accent-subtle);
       }
       .seg-original[contenteditable="true"]:focus { outline: 2px solid var(--accent); }
 
@@ -107,7 +107,7 @@
         font-weight: 600; letter-spacing: 0.02em; border: 1px solid transparent;
       }
       .speech-type-pill.Speaking { color: var(--success); background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); }
-      .speech-type-pill.Music    { color: var(--accent); background: rgba(124,107,240,0.12); border-color: rgba(124,107,240,0.3); }
+      .speech-type-pill.Music    { color: var(--accent); background: var(--accent-subtle); border-color: var(--accent-glow); }
       .speech-type-pill.Quiet    { color: var(--text-secondary); background: rgba(138,143,152,0.1); border-color: rgba(138,143,152,0.25); }
 
       /* Alternatives */

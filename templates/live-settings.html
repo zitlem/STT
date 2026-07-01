@@ -248,7 +248,7 @@
             margin-bottom: 12px;
             padding: 8px;
             background: var(--bg-card);
-            border: 1px solid rgba(124, 107, 240, 0.2);
+            border: 1px solid var(--accent-glow);
             border-radius: var(--radius-sm);
         }
 
@@ -1756,6 +1756,7 @@
             const canvas = document.getElementById('audio_timeline');
             if (!canvas) return;
 
+            const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
             const ctx = canvas.getContext('2d');
             const width = canvas.width;
             const height = canvas.height;
@@ -1788,7 +1789,7 @@
             // Draw threshold line
             const maxScale = Math.max(energyThreshold * 2, Math.max(...timelineData.map(d => d.energy)));
             const thresholdY = height - (energyThreshold / maxScale) * height;
-            ctx.strokeStyle = '#7C6BF0';
+            ctx.strokeStyle = accentColor;
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
@@ -1798,7 +1799,7 @@
             ctx.setLineDash([]);
 
             // Draw threshold label (position it to avoid cutoff)
-            ctx.fillStyle = '#7C6BF0';
+            ctx.fillStyle = accentColor;
             ctx.font = '11px monospace';
             ctx.textAlign = 'left';
             const labelText = `Activation Threshold (${energyThreshold})`;
@@ -1847,7 +1848,7 @@
                 const lastX = (timelineData.length - 1) * pointSpacing;
                 const lastY = height - (timelineData[timelineData.length - 1].energy / maxScale) * height;
 
-                ctx.strokeStyle = '#7C6BF0';
+                ctx.strokeStyle = accentColor;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([2, 2]);
                 ctx.beginPath();
@@ -1857,7 +1858,7 @@
                 ctx.setLineDash([]);
 
                 // Draw value dot
-                ctx.fillStyle = '#7C6BF0';
+                ctx.fillStyle = accentColor;
                 ctx.beginPath();
                 ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
                 ctx.fill();
