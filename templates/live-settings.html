@@ -380,7 +380,7 @@
         .hint-details .hint-body {
             margin-top: 6px;
             padding: 8px 10px;
-            background: var(--accent-subtle);
+            background: var(--bg-subtle);
             border-radius: var(--radius-sm);
             font-size: 0.75em;
             color: var(--text-primary);
@@ -470,7 +470,7 @@
 
                 <!-- Model Configuration -->
                 <div class="form-group">
-                    <label>Model Configuration</label>
+                    <div class="section-title">Model Configuration</div>
                     <div style="background: var(--bg-card); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <span style="font-weight: 500; color: var(--text-primary);">Live Transcription Model:</span>
@@ -857,7 +857,7 @@
                         </div>
                         <div class="status-item">
                             <div class="status-label">Model</div>
-                            <div id="status_model" class="status-value" style="font-size: 0.9em; color: var(--accent);">Not loaded</div>
+                            <div id="status_model" class="status-value" style="font-size: 0.9em; color: var(--text-muted);">Not loaded</div>
                         </div>
                     </div>
                     <div class="control-buttons">
@@ -1756,19 +1756,22 @@
             const canvas = document.getElementById('audio_timeline');
             if (!canvas) return;
 
-            const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+            const style = getComputedStyle(document.documentElement);
+            const accentColor = style.getPropertyValue('--accent').trim();
+            const bgColor = style.getPropertyValue('--bg-base').trim();
+            const mutedColor = style.getPropertyValue('--text-muted').trim();
             const ctx = canvas.getContext('2d');
             const width = canvas.width;
             const height = canvas.height;
             const centerY = height / 2;
 
             // Clear canvas
-            ctx.fillStyle = '#0a0a0c';
+            ctx.fillStyle = bgColor;
             ctx.fillRect(0, 0, width, height);
 
             if (timelineData.length === 0) {
                 // Draw "waiting" message
-                ctx.fillStyle = '#5A5E66';
+                ctx.fillStyle = mutedColor;
                 ctx.font = '14px monospace';
                 ctx.textAlign = 'center';
                 ctx.fillText('Waiting for audio data...', width / 2, centerY);
