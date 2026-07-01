@@ -12046,7 +12046,7 @@ def get_new_entries(limit_override=None):
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
                            confidence, needs_review, translated_text, translation_language, speech_type, COALESCE(denied, 0)
                     FROM transcriptions
-                    WHERE timestamp != '' AND TRIM(text) != ''
+                    WHERE timestamp != '' AND TRIM(text) != '' AND COALESCE(denied, 0) = 0
                     ORDER BY id ASC
                 """
                 )
@@ -12059,7 +12059,7 @@ def get_new_entries(limit_override=None):
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
                                confidence, needs_review, translated_text, translation_language, speech_type, COALESCE(denied, 0) as denied
                         FROM transcriptions
-                        WHERE timestamp != '' AND TRIM(text) != ''
+                        WHERE timestamp != '' AND TRIM(text) != '' AND COALESCE(denied, 0) = 0
                         ORDER BY id DESC
                         LIMIT ?
                     ) ORDER BY id ASC
