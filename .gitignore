@@ -28,3 +28,17 @@ CLAUDE-FABLE-*.md
 # AudioSet label CSV so music detection works self-contained / offline.
 panns_data/*
 !panns_data/class_labels_indices.csv
+
+# Python virtual environment
+.venv/
+
+# Python bytecode (stray .pyc files outside __pycache__)
+*.pyc
+
+# PyInstaller build output
+build/
+dist/
+
+# Claude Code / impeccable skill working files
+.impeccable/
+.github/skills/
