@@ -90,7 +90,7 @@
 
         .word-item:hover {
             border-color: var(--accent);
-            box-shadow: 0 2px 8px rgba(187, 134, 252, 0.1);
+            box-shadow: 0 2px 8px var(--accent-subtle);
         }
 
         .word-color-box {
@@ -145,7 +145,7 @@
             background: var(--bg-base);
             padding: 2px 6px;
             border-radius: 4px;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             color: var(--accent);
         }
 
@@ -227,9 +227,9 @@
         }
 
         .btn-toggle-group {
-            background: #2a5a2a;
-            border: 1px solid #3a7a3a;
-            color: #7fbf7f;
+            background: var(--success-bg);
+            border: 1px solid var(--success);
+            color: var(--success);
             padding: 2px 8px;
             border-radius: 4px;
             font-size: 0.7em;
@@ -238,22 +238,22 @@
         }
 
         .btn-toggle-group:hover {
-            background: #3a7a3a;
+            background: rgba(34, 197, 94, 0.2);
         }
 
         .btn-toggle-group.disabled {
-            background: #5a2a2a;
-            border-color: #7a3a3a;
-            color: #bf7f7f;
+            background: var(--danger-bg);
+            border-color: var(--danger);
+            color: var(--danger);
         }
 
         .btn-toggle-group.disabled:hover {
-            background: #7a3a3a;
+            background: rgba(239, 68, 68, 0.2);
         }
 
         .regex-examples {
             font-size: 0.7em;
-            color: #888;
+            color: var(--text-secondary);
             margin-top: 4px;
             line-height: 1.4;
             word-break: break-word;
@@ -269,15 +269,15 @@
         }
 
         .duplicates-section {
-            background: #3a2a1a;
-            border: 2px solid #fa8c16;
+            background: var(--warning-bg);
+            border: 2px solid var(--warning);
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 16px;
         }
 
         .duplicates-section h5 {
-            color: #fa8c16;
+            color: var(--warning);
             margin: 0 0 10px 0;
             font-size: 0.9em;
         }
@@ -302,7 +302,7 @@
 
         .duplicate-item:hover {
             background: var(--border);
-            border-color: #fa8c16;
+            border-color: var(--warning);
         }
 
         .duplicate-dropdown {
@@ -311,8 +311,8 @@
             left: 0;
             z-index: 1000;
             background: var(--bg-elevated);
-            border: 2px solid #fa8c16;
-            border-radius: 6px;
+            border: 2px solid var(--warning);
+            border-radius: var(--radius-sm);
             padding: 6px 0;
             min-width: 200px;
             max-width: 400px;
@@ -345,15 +345,15 @@
         }
 
         .duplicate-item .count {
-            color: #fa8c16;
+            color: var(--warning);
             font-weight: 600;
             margin-left: 4px;
         }
 
         .btn-matches-toggle {
             background: transparent;
-            border: 1px solid #805ad5;
-            color: #805ad5;
+            border: 1px solid var(--accent);
+            color: var(--accent);
             padding: 1px 6px;
             border-radius: 3px;
             font-size: 0.7em;
@@ -363,12 +363,12 @@
         }
 
         .btn-matches-toggle:hover {
-            background: #805ad5;
+            background: var(--accent);
             color: white;
         }
 
         @keyframes highlight-flash {
-            0% { background: #fa8c16; }
+            0% { background: var(--warning); }
             100% { background: var(--bg-elevated); }
         }
 
@@ -430,7 +430,7 @@
                     <textarea id="new_words" placeholder="Enter words (comma-separated: word1, word2, word3)" rows="3" style="resize: vertical;"></textarea>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="color" id="new_word_color" value="#ffff00" title="Choose color">
-                        <input type="text" id="new_word_color_text" value="#ffff00" placeholder="#RRGGBB" style="width: 80px; padding: 7px; background: var(--bg-elevated); border: 2px solid var(--border); color: var(--text-primary); border-radius: 5px; font-size: 0.85em; font-family: monospace;">
+                        <input type="text" id="new_word_color_text" value="#ffff00" placeholder="#RRGGBB" style="width: 80px; padding: 7px; background: var(--bg-elevated); border: 2px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.85em; font-family: monospace;">
                     </div>
                     <label>
                         <input type="checkbox" id="new_word_case_sensitive">
@@ -707,7 +707,7 @@
             const dropdown = document.createElement('div');
             dropdown.className = 'duplicate-dropdown';
             dropdown.innerHTML = `
-                <div style="padding: 4px 12px 8px; color: #fa8c16; font-size: 0.75em; border-bottom: 1px solid var(--border); margin-bottom: 4px;">
+                <div style="padding: 4px 12px 8px; color: var(--warning); font-size: 0.75em; border-bottom: 1px solid var(--border); margin-bottom: 4px;">
                     Jump to pattern for "${matchedWord}":
                 </div>
                 ${items.map(item => `
@@ -882,7 +882,7 @@
                                     ${word.case_sensitive ? '<span class="case-sensitive">Aa</span>' : ''}
                                 </div>
                                 <div class="word-actions">
-                                    ${word.is_regex ? '<span class="is-regex" style="background: #805ad5; color: white; padding: 1px 6px; border-radius: 3px; font-size: 0.7em;">regex</span>' : ''}
+                                    ${word.is_regex ? '<span class="is-regex" style="background: var(--accent); color: white; padding: 1px 6px; border-radius: 3px; font-size: 0.7em;">regex</span>' : ''}
                                     ${matchesToggle}
                                     <button class="btn btn-primary" onclick="moveWordToColor(${word.originalIndex}, '${word.word.replace(/'/g, "\\'")}', '${word.color}', ${word.case_sensitive}, ${word.is_regex || false})" title="Move to different color">Move</button>
                                     <button class="btn btn-warning" onclick="editHighlightedWord(${word.originalIndex}, '${word.word.replace(/'/g, "\\'")}', '${word.color}', ${word.case_sensitive}, ${word.is_regex || false})">Edit</button>
