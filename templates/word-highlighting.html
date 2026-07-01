@@ -369,6 +369,18 @@
             animation: highlight-flash 1s ease-out;
         }
 
+        @media (prefers-reduced-motion: reduce) {
+            .word-item.flash {
+                animation: none;
+                background: var(--warning-bg);
+            }
+            .btn-toggle-group,
+            .btn-matches-toggle,
+            .duplicate-item {
+                transition: none;
+            }
+        }
+
         @media (max-width: 900px) {
             .main-content {
                 grid-template-columns: 1fr;
@@ -402,13 +414,14 @@
 {% endblock %}
 
 {% block content %}
+        <span id="wh-announce" aria-live="polite" aria-atomic="true" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;"></span>
         <div class="main-content">
             <!-- Settings Panel -->
             <div class="settings-panel">
                 <h3>🎨 Word Highlighting</h3>
 
                 <!-- Alert Display -->
-                <div id="alert_message" class="alert"></div>
+                <div id="alert_message" class="alert" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
                 <div class="checkbox-group">
                     <input type="checkbox" id="word_highlighting_enabled" onchange="toggleWordHighlighting()">
@@ -524,7 +537,7 @@
                 <!-- Word List Card -->
                 <div class="settings-card">
                     <h4>📝 Highlighted Words</h4>
-                    <div id="highlighted_words_list" class="word-list">
+                    <div id="highlighted_words_list" class="word-list" aria-live="polite" aria-label="Highlighted word groups">
                         <!-- Words will be loaded here -->
                     </div>
                 </div>
@@ -1223,6 +1236,8 @@
             const alert = document.getElementById('alert_message');
             alert.textContent = message;
             alert.className = `alert ${type} show`;
+            const announce = document.getElementById('wh-announce');
+            if (announce) announce.textContent = message;
             setTimeout(() => {
                 alert.classList.remove('show');
             }, 3000);
@@ -1266,6 +1281,9 @@
 
             const picker = document.createElement('div');
             picker.className = 'bulk-color-picker';
+            picker.setAttribute('role', 'dialog');
+            picker.setAttribute('aria-modal', 'true');
+            picker.setAttribute('aria-label', 'Move word to color');
             picker.innerHTML = `
                 <div style="color: var(--text-primary); font-size: 0.85em; margin-bottom: 8px;">
                     <strong>Move "${word.substring(0, 30)}${word.length > 30 ? '...' : ''}" to color:</strong>
@@ -1274,7 +1292,7 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="color" id="move-color-input" value="${currentColor}">
                     <input type="text" id="move-color-text" value="${currentColor.toUpperCase()}"
-                           style="width: 80px; padding: 7px; background: var(--bg-base); border: 2px solid var(--border); color: var(--text-primary); border-radius: 5px; font-size: 0.85em; font-family: monospace;">
+                           style="width: 80px; padding: 7px; background: var(--bg-base); border: 2px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.85em; font-family: monospace;">
                 </div>
                 <div class="picker-buttons">
                     <button class="btn btn-primary" onclick="applyMoveWord(${index}, '${word.replace(/'/g, "\\'")}', ${caseSensitive}, ${isRegex})">Move</button>
@@ -1393,6 +1411,9 @@
             // Create picker element
             const picker = document.createElement('div');
             picker.className = 'bulk-color-picker';
+            picker.setAttribute('role', 'dialog');
+            picker.setAttribute('aria-modal', 'true');
+            picker.setAttribute('aria-label', 'Change group color');
             picker.innerHTML = `
                 <div style="color: var(--text-primary); font-size: 0.85em; margin-bottom: 8px;">
                     <strong>Change color for ${wordIndices.length} word(s)</strong>
@@ -1401,7 +1422,7 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="color" id="bulk-color-input" value="${currentColor}">
                     <input type="text" id="bulk-color-text" value="${currentColor.toUpperCase()}"
-                           style="width: 80px; padding: 7px; background: var(--bg-base); border: 2px solid var(--border); color: var(--text-primary); border-radius: 5px; font-size: 0.85em; font-family: monospace;">
+                           style="width: 80px; padding: 7px; background: var(--bg-base); border: 2px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm); font-size: 0.85em; font-family: monospace;">
                 </div>
                 <div class="picker-buttons">
                     <button class="btn btn-primary" onclick="applyBulkColorChange([${wordIndices.join(',')}])">Apply</button>
