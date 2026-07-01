@@ -1647,7 +1647,7 @@
             // Process completed segments - use ID for ordering (chronological from DB)
             let segmentsChanged = false;
             segments.forEach(seg => {
-                if (seg.completed === true) {
+                if (seg.completed === true && !seg.denied) {
                     // Check for duplicate by ID only - no temporal validation
                     // ID ordering from database is already chronological
                     const exists = previewSegments.some(s => s.id === seg.id);

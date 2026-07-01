@@ -11552,6 +11552,7 @@ def handle_request_all_entries():
             "needs_review": bool(e[6]) if len(e) > 6 and e[6] is not None else False,
             "speech_type": e[9] if len(e) > 9 else None,
             "denied": bool(e[10]) if len(e) > 10 and e[10] is not None else False,
+            "denied_reason": e[11] if len(e) > 11 else None,
         }
         for e in entries
     ]
@@ -12005,6 +12006,9 @@ def get_new_entries(limit_override=None):
 
     Args:
         limit_override: Optional limit to override database.max_entries_to_send config
+
+    Returns all rows including denied ones — callers that should hide denied entries
+    (live preview, translation) must filter on entry[10] (denied flag) themselves.
     """
     global _db_cache
 
@@ -12044,9 +12048,10 @@ def get_new_entries(limit_override=None):
                 cursor.execute(
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                           confidence, needs_review, translated_text, translation_language, speech_type, COALESCE(denied, 0)
+                           confidence, needs_review, translated_text, translation_language, speech_type,
+                           COALESCE(denied, 0), denied_reason
                     FROM transcriptions
-                    WHERE timestamp != '' AND TRIM(text) != '' AND COALESCE(denied, 0) = 0
+                    WHERE timestamp != '' AND TRIM(text) != ''
                     ORDER BY id ASC
                 """
                 )
@@ -12055,11 +12060,12 @@ def get_new_entries(limit_override=None):
                 # Use subquery to get last N entries by id DESC, then re-order ASC for display
                 cursor.execute(
                     """
-                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied FROM (
+                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason FROM (
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
-                               confidence, needs_review, translated_text, translation_language, speech_type, COALESCE(denied, 0) as denied
+                               confidence, needs_review, translated_text, translation_language, speech_type,
+                               COALESCE(denied, 0) as denied, denied_reason
                         FROM transcriptions
-                        WHERE timestamp != '' AND TRIM(text) != '' AND COALESCE(denied, 0) = 0
+                        WHERE timestamp != '' AND TRIM(text) != ''
                         ORDER BY id DESC
                         LIMIT ?
                     ) ORDER BY id ASC
@@ -12114,7 +12120,7 @@ def emit_new_entries():
 
 
         # Convert entries to segment format with temporal data
-        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied)
+        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason)
         segments = []
         for entry in entries:
             seg = {
@@ -12133,6 +12139,8 @@ def emit_new_entries():
                 seg["speech_type"] = entry[9]
             if len(entry) > 10:
                 seg["denied"] = bool(entry[10]) if entry[10] is not None else False
+            if len(entry) > 11:
+                seg["denied_reason"] = entry[11]
             segments.append(seg)
 
         # Stable key matching db.segment_id (TEXT). Done before the output-delay split
@@ -12380,7 +12388,7 @@ def emit_translated_entries():
 
             max_translations_per_cycle = 3  # Limit new translations per cycle so cached segments emit fast
             translations_this_cycle = 0
-            for idx, entry in enumerate(entries):
+            for idx, entry in enumerate(e for e in entries if not e[10]):
                 seg_id = entry[0]
                 original_text = entry[2]
 
