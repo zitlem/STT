@@ -13160,8 +13160,119 @@ def remove_overlapping_prefix(new_text, previous_text, min_overlap_words=3):
     return new_text
 
 
+class _TimestampedStream:
+    """Wraps a text stream so each output line is prefixed with a local time.
+    Turns the app's bare '[TAG] msg' prints into greppable-by-time log lines
+    without touching the ~500 print() call sites. Buffers across writes so a
+    prefix only lands at a true line start."""
+
+    def __init__(self, wrapped):
+        self._w = wrapped
+        self._at_line_start = True
+        self.stt_timestamped = True  # marker so we never double-wrap
+
+    def write(self, s):
+        if not s:
+            return 0
+        ts = time.strftime("[%H:%M:%S] ")
+        prefix = ts if self._at_line_start else ""
+        self._at_line_start = s.endswith("\n")
+        body = s.replace("\n", "\n" + ts)
+        if self._at_line_start and body.endswith(ts):
+            body = body[: -len(ts)]  # don't prefix the not-yet-written next line
+        try:
+            self._w.write(prefix + body)
+        except Exception:
+            pass
+        return len(s)
+
+    def flush(self):
+        try:
+            self._w.flush()
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self._w, name)
+
+
+_diag_installed = False
+_faulthandler_fh = None  # kept open for the whole process so native crashes dump
+
+
+def install_crash_diagnostics(role="main"):
+    """Per-process observability: native-crash capture, uncaught-exception
+    logging, and timestamped stdout/stderr. Idempotent and best-effort; safe to
+    call in every process (fork children inherit an already-installed setup)."""
+    global _diag_installed, _faulthandler_fh
+    if _diag_installed:
+        return
+    _diag_installed = True
+
+    logs_dir = os.path.join(APP_DIR, "logs")
+    try:
+        os.makedirs(logs_dir, exist_ok=True)
+    except OSError:
+        pass
+
+    # Native crashes (CUDA/torch/native segfaults, aborts) -> C stack trace.
+    # A dedicated kept-open handle guarantees capture even if stdout/stderr are
+    # redirected or None (GUI builds).
+    try:
+        import faulthandler
+        _faulthandler_fh = open(os.path.join(logs_dir, "faulthandler.log"),
+                                "a", buffering=1, encoding="utf-8", errors="replace")
+        faulthandler.enable(file=_faulthandler_fh, all_threads=True)
+    except Exception:
+        try:
+            import faulthandler
+            faulthandler.enable()  # fall back to stderr
+        except Exception:
+            pass
+
+    # Timestamp stdout/stderr (covers every [TAG] print).
+    for _name in ("stdout", "stderr"):
+        _s = getattr(sys, _name, None)
+        if _s is not None and not getattr(_s, "stt_timestamped", False):
+            try:
+                setattr(sys, _name, _TimestampedStream(_s))
+            except Exception:
+                pass
+
+    # Uncaught exceptions (main + worker threads) -> full traceback before exit.
+    import traceback as _tb
+
+    def _excepthook(exc_type, exc, tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc, tb)
+            return
+        try:
+            print(f"[FATAL] Uncaught exception in {role} process:", flush=True)
+            _tb.print_exception(exc_type, exc, tb)
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+    sys.excepthook = _excepthook
+
+    try:
+        def _thread_hook(args):
+            if issubclass(args.exc_type, KeyboardInterrupt):
+                return
+            try:
+                print(f"[FATAL] Uncaught exception in thread {args.thread.name}:", flush=True)
+                _tb.print_exception(args.exc_type, args.exc_value, args.exc_traceback)
+                sys.stderr.flush()
+            except Exception:
+                pass
+        threading.excepthook = _thread_hook
+    except Exception:
+        pass
+
+
 def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
     """Main transcription process with start/stop support"""
+    install_crash_diagnostics("worker")
     # On macOS/Windows (spawn), shared state objects are passed as arguments because the spawned
     # child re-imports this module and cannot recreate them. Assign to module globals so
     # all existing code in this function works unchanged. On Linux (fork), the globals are
@@ -15494,6 +15605,14 @@ def signal_handler(signum, frame):
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+    install_crash_diagnostics("main")
+    # Bound server.log at startup (small breadcrumb log; rotated across launches)
+    try:
+        _srv_log = os.path.join(APP_DIR, "server.log")
+        if os.path.exists(_srv_log) and os.path.getsize(_srv_log) > 5_000_000:
+            os.replace(_srv_log, _srv_log + ".1")
+    except OSError:
+        pass
     signal.signal(signal.SIGINT, signal_handler)
     if sys.platform != "win32":
         signal.signal(signal.SIGTERM, signal_handler)

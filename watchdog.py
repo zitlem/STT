@@ -49,12 +49,9 @@ except Exception as e:
 IS_WINDOWS = sys.platform == "win32"
 
 # ---------------------------------------------------------------------------
-# Crash reporting endpoint — set after deploying cloudflare_worker.js
+# Crash reporting is fully local: crashes are written to logs/crashes/ and
+# nothing is ever sent off the machine.
 # ---------------------------------------------------------------------------
-# The Worker URL and key are baked into every release so all users can
-# report without any per-user setup. The GitHub token never leaves Cloudflare.
-_CRASH_WORKER_URL = "https://stt-crash-reporter.zitlem-a.workers.dev"
-_CRASH_API_KEY    = "stt-crash-v1"  # matched in the Worker; rate limiting is server-side
 
 _FROZEN = getattr(sys, 'frozen', False)
 APP_DIR = (
@@ -109,16 +106,34 @@ _UPDATE_PRESERVE = frozenset({
 # ---------------------------------------------------------------------------
 
 def setup_logging():
+    from logging.handlers import RotatingFileHandler
     fmt = "%(asctime)s [%(levelname)s] %(message)s"
     handlers = [logging.StreamHandler(sys.stdout)]
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
-        handlers.insert(0, logging.FileHandler(
-            os.path.join(LOG_DIR, "watchdog.log"), encoding="utf-8"
+        handlers.insert(0, RotatingFileHandler(
+            os.path.join(LOG_DIR, "watchdog.log"),
+            maxBytes=5_000_000, backupCount=3, encoding="utf-8",
         ))
     except OSError:
         pass
     logging.basicConfig(level=logging.INFO, format=fmt, handlers=handlers)
+
+
+def _rotate_if_large(path, max_bytes, backups):
+    """Roll path -> path.1 -> path.2 ... when it exceeds max_bytes. Called while
+    no process holds the file open (e.g. before (re)launching the STT worker), so
+    a plain rename is safe. Best-effort: never raises."""
+    try:
+        if not os.path.exists(path) or os.path.getsize(path) < max_bytes:
+            return
+        for i in range(backups - 1, 0, -1):
+            src, dst = f"{path}.{i}", f"{path}.{i + 1}"
+            if os.path.exists(src):
+                os.replace(src, dst)
+        os.replace(path, f"{path}.1")
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +271,9 @@ class ProcessManager:
                     self._log_fh.close()
                 except Exception:
                     pass
+            # Bound stt.log across restarts (the worker holds it open via Popen
+            # while running, so rotate now that the old handle is closed).
+            _rotate_if_large(log_path, max_bytes=10_000_000, backups=5)
             self._log_fh = open(log_path, "a", encoding="utf-8")
             cmd = [sys.executable, '--run-stt'] if _FROZEN else [self._python, STT_SCRIPT]
             proc = subprocess.Popen(
@@ -914,37 +932,8 @@ class GuiWindow:
 
 
 # ---------------------------------------------------------------------------
-# Crash reporting
+# Crash reporting (fully local — nothing is sent off the machine)
 # ---------------------------------------------------------------------------
-
-# Ordered list of (compiled-regex, replacement) sanitization rules.
-# Applied in sequence — later rules can operate on already-substituted text.
-_SANITIZE_RULES = [
-    # Auto-generated password printed at startup: [AUTH] Password: <secret>
-    (re.compile(r'(?i)(\[AUTH\]\s*Password\s*:)\s*\S+'), r'\1 [REDACTED]'),
-    # Generic key=value credential patterns (config dumps, debug prints)
-    (re.compile(r'(?i)(password|passwd|secret|api[_-]?key|token)\s*[=:\'\"]\s*\S+'),
-     r'\1=[REDACTED]'),
-    # IPv4 addresses
-    (re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b'), '[IP]'),
-    # SMB/UNC paths: //host/share or \\host\share
-    (re.compile(r'(?://|\\\\)[^\s/\\\'\"]+[/\\][^\s/\\\'\"]+'), '//[HOST]/[SHARE]'),
-    # Unix home dirs: /home/username/ and /Users/username/
-    (re.compile(r'(?<=/home/)[^/\s\'"\\]+'), '[USER]'),
-    (re.compile(r'(?<=/Users/)[^/\s\'"\\]+'), '[USER]'),
-    # Windows user dirs: C:\Users\username
-    (re.compile(r'(?<=\\Users\\)[^\\]+'), '[USER]'),
-    # Email addresses
-    (re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'), '[EMAIL]'),
-]
-
-
-def sanitize_log(text: str) -> str:
-    """Strip PII and credentials from log text before sending in a crash report."""
-    for pattern, replacement in _SANITIZE_RULES:
-        text = pattern.sub(replacement, text)
-    return text
-
 
 def _crash_fingerprint(log_tail: str) -> str:
     """Stable 12-char hash of the crash signature (traceback, minus line numbers)."""
@@ -961,17 +950,17 @@ def _crash_fingerprint(log_tail: str) -> str:
 
 
 class CrashReporter:
-    """Collects, sanitizes, and POSTs crash reports to a Cloudflare Worker.
-
-    The Worker holds the GitHub token in encrypted CF secrets and files
-    the issue on behalf of any user. The token never touches user machines.
-    All users get crash reporting just by having enabled=true in config.json.
+    """Writes crash reports to logs/crashes/ as self-contained files. Nothing is
+    ever sent off the machine. Reports are deduped by fingerprint (a hash of the
+    traceback) with a cooldown so a crash-loop writes one file per distinct bug,
+    and the directory is pruned to the most recent _MAX_FILES dumps.
     """
 
     _STATE_FILE    = os.path.join(LOG_DIR, 'crash_reporter.json')
-    _COOLDOWN      = 600    # client-side cooldown per fingerprint (seconds)
-    _MAX_LOG_BYTES = 8_000
-    _LOG_LINES     = 120
+    _CRASH_DIR     = os.path.join(LOG_DIR, 'crashes')
+    _COOLDOWN      = 600    # cooldown per fingerprint (seconds) — collapses crash-loops
+    _LOG_LINES     = 400    # lines of stt.log tail to embed (full detail, local only)
+    _MAX_FILES     = 50     # keep at most this many crash dumps
 
     def __init__(self):
         self._state = self._load_state()
@@ -993,12 +982,12 @@ class CrashReporter:
         except Exception:
             pass
 
-    # -- Rate limiting (client-side) -----------------------------------------
+    # -- Rate limiting -------------------------------------------------------
 
     def _is_rate_limited(self, fingerprint: str) -> bool:
         return (time.time() - self._state.get(fingerprint, 0)) < self._COOLDOWN
 
-    def _mark_sent(self, fingerprint: str):
+    def _mark_written(self, fingerprint: str):
         self._state[fingerprint] = time.time()
         cutoff = time.time() - 86400
         self._state = {k: v for k, v in self._state.items() if v > cutoff}
@@ -1008,13 +997,11 @@ class CrashReporter:
 
     def report(self, exit_code: int, consecutive_crashes: int):
         """Non-blocking: fire-and-forget daemon thread."""
-        if not _CRASH_WORKER_URL:
-            return
         cfg = load_config()
         if not cfg.get('crash_reporting', {}).get('enabled', True):
             return
         threading.Thread(
-            target=self._send,
+            target=self._write_local,
             args=(exit_code, consecutive_crashes, cfg),
             daemon=True,
             name='CrashReport',
@@ -1023,15 +1010,31 @@ class CrashReporter:
     # -- Internal ------------------------------------------------------------
 
     def _collect_log(self) -> str:
+        # Full detail, unsanitized — the file never leaves this machine.
         try:
             with open(os.path.join(LOG_DIR, 'stt.log'), 'r',
                       encoding='utf-8', errors='replace') as f:
-                raw = ''.join(f.readlines()[-self._LOG_LINES:])
+                return ''.join(f.readlines()[-self._LOG_LINES:])
         except Exception:
-            raw = '(stt.log unavailable)'
-        return sanitize_log(raw)
+            return '(stt.log unavailable)'
 
-    def _send(self, exit_code: int, consecutive_crashes: int, cfg: dict):
+    def _prune(self):
+        """Keep only the most recent _MAX_FILES crash dumps."""
+        try:
+            files = sorted(
+                (os.path.join(self._CRASH_DIR, n) for n in os.listdir(self._CRASH_DIR)
+                 if n.startswith('crash_') and n.endswith('.txt')),
+                key=os.path.getmtime,
+            )
+            for old in files[:-self._MAX_FILES]:
+                try:
+                    os.remove(old)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+    def _write_local(self, exit_code: int, consecutive_crashes: int, cfg: dict):
         log_tail    = self._collect_log()
         fingerprint = _crash_fingerprint(log_tail)
 
@@ -1039,40 +1042,33 @@ class CrashReporter:
             logging.debug(f'[CrashReport] Skipped — rate limited ({fingerprint})')
             return
 
-        payload = {
-            'version':             read_version(),
-            'platform':            f'{platform.system()} {platform.release()} {platform.machine()}',
-            'python_version':      platform.python_version(),
-            'exit_code':           exit_code,
-            'consecutive_crashes': consecutive_crashes,
-            'timestamp':           datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'log_tail':            log_tail[-self._MAX_LOG_BYTES:],
-            'fingerprint':         fingerprint,
-            'gpu_enabled':         cfg.get('performance', {}).get('use_gpu', False),
-            'whisper_model':       cfg.get('model', {}).get('whisper', {}).get('model', 'unknown'),
-            'audio_backend':       cfg.get('audio', {}).get('backend', 'unknown'),
-        }
+        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        header = (
+            f"STT crash report\n"
+            f"timestamp           : {datetime.datetime.now().isoformat(timespec='seconds')}\n"
+            f"version             : {read_version()}\n"
+            f"platform            : {platform.system()} {platform.release()} {platform.machine()}\n"
+            f"python_version      : {platform.python_version()}\n"
+            f"exit_code           : {exit_code}\n"
+            f"consecutive_crashes : {consecutive_crashes}\n"
+            f"fingerprint         : {fingerprint}\n"
+            f"gpu_enabled         : {cfg.get('performance', {}).get('use_gpu', False)}\n"
+            f"whisper_model       : {cfg.get('model', {}).get('whisper', {}).get('model', 'unknown')}\n"
+            f"audio_backend       : {cfg.get('audio', {}).get('backend', 'unknown')}\n"
+            f"{'-' * 60}\n"
+        )
 
         try:
-            data = json.dumps(payload).encode('utf-8')
-            req  = urllib.request.Request(
-                _CRASH_WORKER_URL,
-                data=data,
-                headers={
-                    'Content-Type': 'application/json',
-                    'X-Api-Key':    _CRASH_API_KEY,
-                    'User-Agent':   f'STT-Watchdog/{read_version()}',
-                },
-                method='POST',
-            )
-            with urllib.request.urlopen(req, timeout=20, context=_SSL_CTX) as resp:
-                result = json.loads(resp.read().decode())
-            logging.info(f'[CrashReport] Filed: {result.get("issue_url", "OK")}')
-            self._mark_sent(fingerprint)
-        except urllib.error.HTTPError as e:
-            logging.warning(f'[CrashReport] Worker {e.code}: {e.read().decode()[:120]}')
+            os.makedirs(self._CRASH_DIR, exist_ok=True)
+            path = os.path.join(self._CRASH_DIR, f'crash_{ts}_{fingerprint}.txt')
+            with open(path, 'w', encoding='utf-8', errors='replace') as f:
+                f.write(header)
+                f.write(log_tail)
+            logging.info(f'[CrashReport] Wrote {path}')
+            self._mark_written(fingerprint)
+            self._prune()
         except Exception as e:
-            logging.warning(f'[CrashReport] Failed: {e}')
+            logging.warning(f'[CrashReport] Could not write crash dump: {e}')
 
 
 # ---------------------------------------------------------------------------
@@ -1099,48 +1095,21 @@ def detect_gui():
 # ---------------------------------------------------------------------------
 
 def _run_crash_report_test():
-    import datetime, platform
     setup_logging()
-    print(f"[test] Worker URL : {_CRASH_WORKER_URL or '(not set)'}")
-    if not _CRASH_WORKER_URL:
-        print("[test] FAIL — _CRASH_WORKER_URL is empty. Deploy the Cloudflare Worker first.")
-        raise SystemExit(1)
-
-    fingerprint = "test-" + hashlib.sha256(b"test-crash-report").hexdigest()[:8]
-    payload = {
-        "version":             read_version(),
-        "platform":            f"{platform.system()} {platform.release()} {platform.machine()}",
-        "python_version":      platform.python_version(),
-        "timestamp":           datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "exit_code":           1,
-        "consecutive_crashes": 1,
-        "gpu_enabled":         False,
-        "whisper_model":       "test",
-        "audio_backend":       "test",
-        "fingerprint":         fingerprint,
-        "log_tail":            "RuntimeError: synthetic test crash — please ignore and close this issue",
-    }
-    data = json.dumps(payload).encode()
-    req  = urllib.request.Request(
-        _CRASH_WORKER_URL,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "X-Api-Key":    _CRASH_API_KEY,
-            "User-Agent":   f"STT-Watchdog/{read_version()}",
-        },
-        method="POST",
-    )
+    reporter = CrashReporter()
+    # Synthesize a crash and write it locally (bypass the cooldown for the test).
+    reporter._state = {}
+    reporter._write_local(exit_code=1, consecutive_crashes=1, cfg=load_config())
+    latest = None
     try:
-        with urllib.request.urlopen(req, timeout=20, context=_SSL_CTX) as resp:
-            result = json.loads(resp.read().decode())
-        print(f"[test] OK — issue filed: {result.get('issue_url', result)}")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()[:300]
-        print(f"[test] FAIL — HTTP {e.code}: {body}")
-        raise SystemExit(1)
-    except Exception as e:
-        print(f"[test] FAIL — {e}")
+        files = [os.path.join(reporter._CRASH_DIR, n) for n in os.listdir(reporter._CRASH_DIR)]
+        latest = max(files, key=os.path.getmtime) if files else None
+    except OSError:
+        pass
+    if latest:
+        print(f"[test] OK — wrote local crash dump: {latest}")
+    else:
+        print("[test] FAIL — no crash dump was written (check logs/ permissions)")
         raise SystemExit(1)
 
 
@@ -1196,7 +1165,7 @@ def main():
     parser.add_argument(
         "--test-crash-report",
         action="store_true",
-        help="Send a synthetic crash report and exit (tests the full pipeline)",
+        help="Write a synthetic local crash dump to logs/crashes/ and exit",
     )
     args = parser.parse_args()
 

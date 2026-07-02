@@ -470,6 +470,6 @@
   },
   "crash_reporting": {
     "enabled": true,
-    "_enabled_comment": "Send anonymous crash reports to help diagnose failures."
+    "_enabled_comment": "Write local crash dumps to logs/crashes/ when the app crashes. Nothing is ever sent off the machine."
   }
 }
