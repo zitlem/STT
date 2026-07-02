@@ -1,19 +1,19 @@
 """
-PyInstaller spec for the STT Watchdog — single binary that also runs the STT server.
+PyInstaller spec for the STT thin bootstrapper.
 
-The watchdog self-relaunches with --run-stt to start speech_to_text.py from within
-the same bundle, so users only need one executable.
+This builds a tiny (~10-20 MB) launcher from watchdog.py only. No ML libraries
+are bundled: on first run the bootstrapper provisions a local venv (via uv),
+clones the app source, and installs dependencies + ffmpeg on the user machine.
+The STT server then runs as a real script from that venv.
 
 Build:
     pyinstaller watchdog.spec
-
 Or via build.py:
     python build.py
 """
 
 import sys
 import os
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 block_cipher = None
 IS_WINDOWS = sys.platform == "win32"
@@ -22,60 +22,19 @@ IS_MACOS   = sys.platform == "darwin"
 _icon_file = "icon.icns" if IS_MACOS else "icon.ico"
 _icon = _icon_file if os.path.exists(_icon_file) else None
 
-# Heavy packages needed by speech_to_text.py
-_torch_d, _torch_b, _torch_h                     = collect_all("torch")
-_torchaudio_d, _torchaudio_b, _torchaudio_h      = collect_all("torchaudio")
-_transformers_d, _transformers_b, _transformers_h = collect_all("transformers")
-_fw_d, _fw_b, _fw_h                               = collect_all("faster_whisper")
-_hf_d, _hf_b, _hf_h                               = collect_all("huggingface_hub")
-
 a = Analysis(
     ["watchdog.py"],
     pathex=["."],
-    binaries=_torch_b + _torchaudio_b + _fw_b + _transformers_b,
+    binaries=[],
     datas=[
-        # Watchdog assets
         ("VERSION", "."),
-] + ([(_icon_file, ".")] if os.path.exists(_icon_file) else []) + [
-        # STT server script and local modules (launched via --run-stt self-relaunch)
-        ("speech_to_text.py",          "."),
-        ("file_mover.py",              "."),
-        ("audio_capture.py",           "."),
-        ("huggingface_manager.py",     "."),
-        # STT web assets and model lists
-        ("templates",                  "templates"),
-        ("static",                     "static"),
-        ("faster_whisper_models.json", "."),
-        ("whisper_models.json",        "."),
-        ("word_highlighting.json",     "."),
-        ("custom_dictionary.json",     "."),
-    ] + _torch_d + _torchaudio_d + _fw_d + _transformers_d + _hf_d,
+    ] + ([(_icon_file, ".")] if os.path.exists(_icon_file) else []),
+    # Bootstrapper needs only stdlib + tkinter (setup GUI) + certifi (TLS).
+    # Everything else arrives via `git clone` + `uv pip install` on first run.
     hiddenimports=[
-        # Watchdog GUI
-        "tkinter", "_tkinter", "tkinter.ttk",
-        # STT server deps
-        "engineio.async_drivers.threading",
-        "flask.templating",
-        "flask_socketio",
-        "flask_cors",
-        "speech_recognition",
-        "soundfile",
-        "librosa",
-        "numpy",
-        "torch",
-        "torchaudio",
-        "whisper",
-        "faster_whisper",
-        "transformers",
-        "huggingface_hub",
-        "silero_vad",
-        "edge_tts",
-        "pydub",
-        "pytz",
-        "smbprotocol",
-        "sqlite3",
+        "tkinter", "_tkinter", "tkinter.ttk", "tkinter.scrolledtext",
         "certifi",
-    ] + _torch_h + _torchaudio_h + _fw_h + _transformers_h + _hf_h,
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -85,8 +44,17 @@ a = Analysis(
         "IPython",
         "jupyter",
         "notebook",
-        "scipy.tests",
-        "torch.testing",
+        # Guard against accidentally sweeping a dev venv's ML libs into the exe.
+        "torch",
+        "torchaudio",
+        "transformers",
+        "faster_whisper",
+        "whisper",
+        "huggingface_hub",
+        "numpy",
+        "scipy",
+        "librosa",
+        "pandas",
     ],
     cipher=block_cipher,
     noarchive=False,

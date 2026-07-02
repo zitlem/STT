@@ -1,11 +1,15 @@
 """
-Local build script — wraps PyInstaller spec files for convenience.
+Local build script — wraps the PyInstaller spec for convenience.
+
+Builds the thin STT bootstrapper (watchdog.py only, ~10-20 MB). It provisions a
+local venv + downloads dependencies + models on first run; nothing heavy is
+bundled here.
 
 Usage:
     python build.py [--platform NAME]
 
 Output:
-    dist/STT/            — single application directory (one-dir)
+    dist/STT/            — tiny bootstrapper application directory (one-dir)
 """
 
 import os
@@ -43,7 +47,7 @@ def main():
     # Generate application icon (requires Pillow)
     run([sys.executable, "make_icon.py"])
 
-    # Single build: watchdog bundles speech_to_text.py and all STT deps
+    # Single build: the thin bootstrapper (no ML libs; deps installed on first run)
     run([sys.executable, "-m", "PyInstaller", "watchdog.spec", "--noconfirm"])
 
     # Clean intermediate build dir

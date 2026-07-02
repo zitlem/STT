@@ -59,18 +59,13 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: "3.11"
-      - name: Install dependencies
+      - name: Install build tools
         shell: bash
         run: |
+          # Thin bootstrapper only needs PyInstaller + certifi + pillow (icon).
+          # No torch/ML: those install on the end-user machine at first run.
           uv venv
-          uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          uv pip install pyinstaller certifi "numpy<2.0.0"
-          uv pip install flask flask-socketio flask-cors python-socketio
-          uv pip install transformers huggingface_hub
-          uv pip install "git+https://github.com/openai/whisper.git"
-          uv pip install faster-whisper silero-vad
-          uv pip install SpeechRecognition soundfile librosa pydub
-          uv pip install edge-tts piper-tts pytz smbprotocol pillow
+          uv pip install pyinstaller certifi pillow
       - name: Set version
         shell: bash
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
@@ -102,19 +97,11 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: "3.11"
-      - name: Install system deps
-        run: brew install portaudio libsndfile
-      - name: Install dependencies
+      - name: Install build tools
         run: |
+          # Thin bootstrapper only; runtime deps install on the user machine.
           uv venv
-          uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          uv pip install pyinstaller certifi "numpy<2.0.0"
-          uv pip install flask flask-socketio flask-cors python-socketio
-          uv pip install transformers huggingface_hub
-          uv pip install "git+https://github.com/openai/whisper.git"
-          uv pip install faster-whisper silero-vad
-          uv pip install SpeechRecognition soundfile librosa pydub
-          uv pip install edge-tts piper-tts pytz smbprotocol pillow
+          uv pip install pyinstaller certifi pillow
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Generate icon
@@ -159,21 +146,11 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: "3.11"
-      - name: Install system deps
+      - name: Install build tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y portaudio19-dev python3-dev libasound2-dev libsndfile1
-      - name: Install dependencies
-        run: |
+          # Thin bootstrapper only; runtime deps install on the user machine.
           uv venv
-          uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          uv pip install pyinstaller certifi "numpy<2.0.0"
-          uv pip install flask flask-socketio flask-cors python-socketio
-          uv pip install transformers huggingface_hub
-          uv pip install "git+https://github.com/openai/whisper.git"
-          uv pip install faster-whisper silero-vad
-          uv pip install SpeechRecognition soundfile librosa pydub
-          uv pip install edge-tts piper-tts pytz smbprotocol pillow
+          uv pip install pyinstaller certifi pillow
       - name: Set version
         run: echo "${{ needs.version.outputs.tag }}" > VERSION
       - name: Generate icon

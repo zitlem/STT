@@ -54,27 +54,32 @@ IS_WINDOWS = sys.platform == "win32"
 # ---------------------------------------------------------------------------
 
 _FROZEN = getattr(sys, 'frozen', False)
-APP_DIR = (
-    os.path.join(os.path.expanduser("~"), ".stt") if _FROZEN
-    else os.path.dirname(os.path.abspath(__file__))
-)
+
+# Thin-bootstrapper layout separates DATA (config/models/logs — never touched by
+# updates) from SOURCE (the git checkout + its venv). When frozen, the tiny
+# bootstrapper provisions SOURCE under DATA_DIR/app and runs the app from that
+# venv. In dev-from-repo, both collapse to the repo directory.
+if _FROZEN:
+    DATA_DIR   = os.path.join(os.path.expanduser("~"), ".stt")
+    SOURCE_DIR = os.path.join(DATA_DIR, "app")
+else:
+    DATA_DIR   = os.path.dirname(os.path.abspath(__file__))
+    SOURCE_DIR = DATA_DIR
+APP_DIR = DATA_DIR  # config/logs/crash dumps live in DATA
 os.makedirs(APP_DIR, exist_ok=True)
 
 GITHUB_REPO = "zitlem/STT"
+GITHUB_REPO_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
-VERSION_FILE = os.path.join(APP_DIR, "VERSION")
-CONFIG_FILE = os.path.join(APP_DIR, "config.json")
-LOG_DIR = os.path.join(APP_DIR, "logs")
+VERSION_FILE = os.path.join(SOURCE_DIR, "VERSION")  # git-managed
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+LOG_DIR = os.path.join(DATA_DIR, "logs")
 
-# When frozen the watchdog launches the bundled STT exe (same install dir).
-# In dev mode it launches the Python script via the venv.
-# Frozen: relaunch self with --run-stt (speech_to_text.py is bundled in _internal).
-# Dev: launch speech_to_text.py directly via the venv Python.
-STT_SCRIPT = (
-    None
-    if _FROZEN else
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "speech_to_text.py")
-)
+# The worker always runs as a real script from the venv (frozen or dev).
+STT_SCRIPT = os.path.join(SOURCE_DIR, "speech_to_text.py")
+
+# uv-provisioned Python for the venv (see requirements.txt / CI).
+UV_PYTHON_VERSION = "3.11"
 
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
@@ -83,22 +88,9 @@ BACKOFF = [5, 10, 30, 60]       # seconds between crash restarts; capped at last
 STABLE_RUN_THRESHOLD = 30        # seconds of uptime before resetting crash counter
 UPDATE_HOUR = 1                  # hour (24h) at which daily update check fires
 
-# Platform-specific binary installer asset name and install command.
-# None in the command list is replaced with the downloaded installer path.
-_PLATFORM_ASSET = {
-    'Darwin':  ('STT-macos.pkg',  ['installer', '-pkg', None, '-target', '/']),
-    'Linux':   ('STT-linux.deb',  ['dpkg', '-i', None]),
-    'Windows': ('STT-Setup.exe',  [None, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']),
-}
-
-# Files/dirs never overwritten during an update
-_UPDATE_PRESERVE = frozenset({
-    "config.json",
-    "config.json.backup",
-    ".venv",
-    "logs",
-    "VERSION",  # written explicitly via write_version() after copy
-})
+# Files/dirs inside SOURCE never discarded by the zipball-fallback update path
+# (DATA is a separate tree, so config/models/logs are already safe).
+_UPDATE_PRESERVE = frozenset({".venv"})
 
 
 # ---------------------------------------------------------------------------
@@ -140,17 +132,26 @@ def _rotate_if_large(path, max_bytes, backups):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def venv_python(venv_dir=None):
+    """Path the venv's Python would live at (whether or not it exists yet)."""
+    venv_dir = venv_dir or os.path.join(SOURCE_DIR, ".venv")
+    if IS_WINDOWS:
+        return os.path.join(venv_dir, "Scripts", "python.exe")
+    return os.path.join(venv_dir, "bin", "python3")
+
+
 def get_python_bin():
-    """Return the venv Python binary appropriate for the current OS."""
+    """Return the SOURCE venv Python if present, else the current interpreter."""
+    venv_dir = os.path.join(SOURCE_DIR, ".venv")
     if IS_WINDOWS:
         candidates = [
-            os.path.join(APP_DIR, ".venv", "Scripts", "python.exe"),
-            os.path.join(APP_DIR, ".venv", "Scripts", "python3.exe"),
+            os.path.join(venv_dir, "Scripts", "python.exe"),
+            os.path.join(venv_dir, "Scripts", "python3.exe"),
         ]
     else:
         candidates = [
-            os.path.join(APP_DIR, ".venv", "bin", "python3"),
-            os.path.join(APP_DIR, ".venv", "bin", "python"),
+            os.path.join(venv_dir, "bin", "python3"),
+            os.path.join(venv_dir, "bin", "python"),
         ]
     for c in candidates:
         if os.path.isfile(c):
@@ -174,7 +175,8 @@ def save_config(cfg):
 
 
 def read_version():
-    # Check user dir first (written by auto-updater), then fall back to bundle.
+    # SOURCE/VERSION is git-managed (updated by git reset). Fall back to the
+    # bundled VERSION inside the frozen bootstrapper before source is cloned.
     candidates = [VERSION_FILE]
     if _FROZEN:
         candidates.append(os.path.join(sys._MEIPASS, "VERSION"))
@@ -220,6 +222,346 @@ def acquire_lock(open_browser_if_taken=False):
         print("[ERROR] Another watchdog instance is already running.", file=sys.stderr)
         sys.exit(1)
     return sock  # keep reference alive; OS releases on process exit
+
+
+# ---------------------------------------------------------------------------
+# First-run provisioning (thin bootstrapper)
+# ---------------------------------------------------------------------------
+
+PROVISION_MARKER = os.path.join(DATA_DIR, ".provisioned")
+_FFMPEG_BIN_DIR = os.path.join(DATA_DIR, "bin")
+
+
+class ProvisionError(Exception):
+    pass
+
+
+def is_provisioned():
+    """True when SOURCE is checked out with a venv the worker can run from."""
+    have_source = os.path.isdir(os.path.join(SOURCE_DIR, ".git")) or os.path.exists(PROVISION_MARKER)
+    return (
+        have_source
+        and os.path.isfile(STT_SCRIPT)
+        and get_python_bin() != sys.executable
+    )
+
+
+def _augmented_path():
+    """PATH with the common uv/local install locations prepended."""
+    home = os.path.expanduser("~")
+    extra = [
+        os.path.join(home, ".local", "bin"),
+        os.path.join(home, ".cargo", "bin"),
+        _FFMPEG_BIN_DIR,
+    ]
+    if IS_WINDOWS:
+        extra.append(os.path.join(home, ".local", "bin"))
+    return os.pathsep.join(extra) + os.pathsep + os.environ.get("PATH", "")
+
+
+def _which(name):
+    return shutil.which(name, path=_augmented_path())
+
+
+class Provisioner:
+    """Builds the local runtime on first launch: uv, Python, git, ffmpeg, source
+    checkout, venv, and dependencies. Each step is idempotent and retriable; the
+    marker is only written once every step has succeeded. `log` is a callback
+    (message) -> None used by both the GUI pane and headless logging."""
+
+    # Ordered (label, method-name) — drives the "Step k/N" display.
+    STEPS = [
+        ("Checking disk space",        "_step_disk"),
+        ("Installing uv",              "_step_uv"),
+        ("Installing Python",          "_step_python"),
+        ("Installing git",             "_step_git"),
+        ("Installing ffmpeg",          "_step_ffmpeg"),
+        ("Downloading application",     "_step_source"),
+        ("Creating environment",       "_step_venv"),
+        ("Installing dependencies",    "_step_deps"),
+    ]
+
+    def __init__(self, log=None):
+        self.log = log or (lambda m: logging.info(m))
+        self._uv = None  # resolved uv path
+
+    # -- orchestration -------------------------------------------------------
+
+    def run(self):
+        """Run every step in order. Raises ProvisionError on the first failure."""
+        total = len(self.STEPS)
+        for i, (label, meth) in enumerate(self.STEPS, 1):
+            self.log(f"[{i}/{total}] {label}...")
+            getattr(self, meth)()
+        self._write_marker()
+        self.log("Setup complete.")
+
+    def _write_marker(self):
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(PROVISION_MARKER, "w", encoding="utf-8") as f:
+                json.dump({
+                    "version": read_version(),
+                    "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+                    "gpu": self._has_nvidia(),
+                    "source_dir": SOURCE_DIR,
+                }, f, indent=2)
+        except OSError as e:
+            self.log(f"[WARN] Could not write provision marker: {e}")
+
+    # -- process helper ------------------------------------------------------
+
+    def _run(self, cmd, desc=None, check=True, timeout=3600, extra_env=None):
+        """Run a subprocess, streaming stdout to the log callback."""
+        if desc:
+            self.log(f"  $ {desc}")
+        env = dict(os.environ)
+        env["PATH"] = _augmented_path()
+        if extra_env:
+            env.update(extra_env)
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env,
+                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
+            )
+        except FileNotFoundError as e:
+            if check:
+                raise ProvisionError(f"{cmd[0]} not found: {e}")
+            return 1
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                self.log("    " + line)
+        code = proc.wait(timeout=timeout)
+        if check and code != 0:
+            raise ProvisionError(f"command failed ({code}): {' '.join(str(c) for c in cmd)}")
+        return code
+
+    # -- environment detection ----------------------------------------------
+
+    def _has_nvidia(self):
+        return _which("nvidia-smi") is not None
+
+    def _is_mac_arm(self):
+        return sys.platform == "darwin" and platform.machine() == "arm64"
+
+    # -- steps ---------------------------------------------------------------
+
+    def _step_disk(self):
+        try:
+            free_gb = shutil.disk_usage(DATA_DIR).free / (1024 ** 3)
+        except OSError:
+            return
+        self.log(f"  {free_gb:.1f} GB free")
+        if free_gb < 8:
+            raise ProvisionError(
+                f"Only {free_gb:.1f} GB free; ~8 GB needed for PyTorch and models."
+            )
+
+    def _step_uv(self):
+        uv = _which("uv")
+        if uv:
+            self._uv = uv
+            self.log(f"  uv present: {uv}")
+            return
+        self.log("  downloading uv installer...")
+        if IS_WINDOWS:
+            ps = ("$ErrorActionPreference='Stop';"
+                  "irm https://astral.sh/uv/install.ps1 | iex")
+            self._run(["powershell", "-NoProfile", "-Command", ps],
+                      desc="install uv (astral.sh)")
+        else:
+            script = self._download_text("https://astral.sh/uv/install.sh")
+            tmp = os.path.join(tempfile.gettempdir(), "uv-install.sh")
+            with open(tmp, "w") as f:
+                f.write(script)
+            self._run(["sh", tmp], desc="install uv (astral.sh)")
+        self._uv = _which("uv")
+        if not self._uv:
+            raise ProvisionError("uv installation did not put 'uv' on PATH")
+        self.log(f"  uv installed: {self._uv}")
+
+    def _step_python(self):
+        # uv-managed Python removes any dependency on a system Python.
+        self._run([self._uv, "python", "install", UV_PYTHON_VERSION],
+                  desc=f"uv python install {UV_PYTHON_VERSION}")
+
+    def _step_git(self):
+        if _which("git"):
+            self.log("  git present")
+            return
+        self.log("  git missing; attempting to install...")
+        try:
+            if IS_WINDOWS and _which("winget"):
+                self._run(["winget", "install", "--id", "Git.Git", "-e",
+                           "--accept-source-agreements", "--accept-package-agreements"],
+                          desc="winget install Git.Git")
+            elif sys.platform == "darwin" and _which("brew"):
+                self._run(["brew", "install", "git"], desc="brew install git")
+            elif _which("apt-get"):
+                self._run(["sudo", "-n", "apt-get", "install", "-y", "git"],
+                          desc="apt-get install git", check=False)
+        except ProvisionError as e:
+            self.log(f"  [WARN] git install failed: {e}")
+        # Not fatal: source can still be fetched via zipball fallback.
+        if not _which("git"):
+            self.log("  [WARN] git unavailable; will fetch source as an archive "
+                     "(auto-updates will use archive fallback).")
+
+    def _step_ffmpeg(self):
+        if _which("ffmpeg"):
+            self.log("  ffmpeg present")
+            return
+        self.log("  ffmpeg missing; attempting to install...")
+        try:
+            if IS_WINDOWS and _which("winget"):
+                self._run(["winget", "install", "--id", "Gyan.FFmpeg", "-e",
+                           "--accept-source-agreements", "--accept-package-agreements"],
+                          desc="winget install Gyan.FFmpeg", check=False)
+            elif sys.platform == "darwin" and _which("brew"):
+                self._run(["brew", "install", "ffmpeg"], desc="brew install ffmpeg", check=False)
+            elif _which("apt-get"):
+                self._run(["sudo", "-n", "apt-get", "install", "-y", "ffmpeg"],
+                          desc="apt-get install ffmpeg", check=False)
+        except ProvisionError as e:
+            self.log(f"  [WARN] package-manager ffmpeg install failed: {e}")
+        if _which("ffmpeg"):
+            self.log("  ffmpeg installed")
+            return
+        # Static-binary fallback into DATA_DIR/bin (prepended to worker PATH).
+        self._install_static_ffmpeg()
+
+    def _install_static_ffmpeg(self):
+        os.makedirs(_FFMPEG_BIN_DIR, exist_ok=True)
+        if sys.platform.startswith("linux"):
+            url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+        elif sys.platform == "darwin":
+            url = "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip"
+        elif IS_WINDOWS:
+            url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        else:
+            raise ProvisionError("no static ffmpeg source for this platform")
+        self.log(f"  downloading static ffmpeg from {url}")
+        archive = os.path.join(tempfile.gettempdir(), os.path.basename(url.split("?")[0]) or "ffmpeg.pkg")
+        self._download_file(url, archive)
+        self._extract_ffmpeg(archive, _FFMPEG_BIN_DIR)
+        if not _which("ffmpeg"):
+            raise ProvisionError(
+                "ffmpeg could not be provisioned; install it manually and re-run setup."
+            )
+        self.log(f"  static ffmpeg installed to {_FFMPEG_BIN_DIR}")
+
+    def _extract_ffmpeg(self, archive, dest):
+        """Extract just the ffmpeg (+ffprobe) binaries from a static archive into dest."""
+        import tarfile
+        wanted = ("ffmpeg", "ffprobe", "ffmpeg.exe", "ffprobe.exe")
+        if archive.endswith((".tar.xz", ".tar.gz", ".txz", ".tgz")):
+            with tarfile.open(archive) as tf:
+                for m in tf.getmembers():
+                    base = os.path.basename(m.name)
+                    if base in wanted and m.isfile():
+                        m.name = base
+                        tf.extract(m, dest)
+                        os.chmod(os.path.join(dest, base), 0o755)
+        else:  # zip
+            with zipfile.ZipFile(archive) as zf:
+                for n in zf.namelist():
+                    base = os.path.basename(n)
+                    if base in wanted:
+                        with zf.open(n) as src, open(os.path.join(dest, base), "wb") as out:
+                            shutil.copyfileobj(src, out)
+                        if not IS_WINDOWS:
+                            os.chmod(os.path.join(dest, base), 0o755)
+
+    def _step_source(self):
+        if os.path.isfile(STT_SCRIPT) and os.path.isdir(os.path.join(SOURCE_DIR, ".git")):
+            if _which("git"):
+                self.log("  updating existing checkout...")
+                self._run(["git", "-C", SOURCE_DIR, "fetch", "--depth", "1", "origin"],
+                          desc="git fetch", check=False)
+                self._run(["git", "-C", SOURCE_DIR, "reset", "--hard", "origin/HEAD"],
+                          desc="git reset --hard", check=False)
+            return
+        os.makedirs(os.path.dirname(SOURCE_DIR) or DATA_DIR, exist_ok=True)
+        if _which("git"):
+            if os.path.isdir(SOURCE_DIR) and os.listdir(SOURCE_DIR):
+                # Non-git leftovers — clear so clone can proceed (DATA is separate).
+                shutil.rmtree(SOURCE_DIR, ignore_errors=True)
+            self._run(["git", "clone", "--depth", "1", GITHUB_REPO_URL, SOURCE_DIR],
+                      desc=f"git clone {GITHUB_REPO_URL}")
+        else:
+            self._fetch_source_zipball()
+        if not os.path.isfile(STT_SCRIPT):
+            raise ProvisionError("source checkout did not produce speech_to_text.py")
+
+    def _fetch_source_zipball(self):
+        """git-less fallback: download the default-branch source archive."""
+        url = f"{GITHUB_REPO_URL}/archive/refs/heads/main.zip"
+        self.log(f"  downloading source archive {url}")
+        archive = os.path.join(tempfile.gettempdir(), "stt-source.zip")
+        self._download_file(url, archive)
+        os.makedirs(SOURCE_DIR, exist_ok=True)
+        with zipfile.ZipFile(archive) as zf:
+            root = zf.namelist()[0].split("/")[0]
+            for member in zf.infolist():
+                rel = member.filename[len(root) + 1:]
+                if not rel:
+                    continue
+                target = os.path.join(SOURCE_DIR, rel)
+                # zip-slip guard
+                if not os.path.abspath(target).startswith(os.path.abspath(SOURCE_DIR)):
+                    continue
+                if member.is_dir():
+                    os.makedirs(target, exist_ok=True)
+                else:
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    with zf.open(member) as src, open(target, "wb") as out:
+                        shutil.copyfileobj(src, out)
+
+    def _step_venv(self):
+        venv_dir = os.path.join(SOURCE_DIR, ".venv")
+        if os.path.isfile(get_python_bin()) and get_python_bin() != sys.executable:
+            self.log("  venv present")
+            return
+        self._run([self._uv, "venv", venv_dir, "--python", UV_PYTHON_VERSION],
+                  desc="uv venv")
+
+    def install_deps_only(self, log=None):
+        """Resolve uv and (re)install dependencies — reused by the auto-updater."""
+        if log:
+            self.log = log
+        self._uv = _which("uv") or self._uv
+        if not self._uv:
+            self._step_uv()
+        self._step_deps()
+
+    def _step_deps(self):
+        req = os.path.join(SOURCE_DIR, "requirements.txt")
+        py = venv_python()
+        cmd = [self._uv, "pip", "install", "--python", py, "-r", req]
+        gpu = self._has_nvidia()
+        if gpu and sys.platform.startswith(("linux", "win")):
+            cmd += ["--extra-index-url", "https://download.pytorch.org/whl/cu121"]
+            self.log("  NVIDIA GPU detected — installing CUDA wheels")
+        elif self._is_mac_arm():
+            self.log("  Apple Silicon — installing MPS/CPU wheels")
+        else:
+            self.log("  no NVIDIA GPU — installing CPU wheels")
+        self._run(cmd, desc="uv pip install -r requirements.txt", timeout=7200)
+
+    # -- download helpers ----------------------------------------------------
+
+    def _download_text(self, url):
+        req = urllib.request.Request(url, headers={"User-Agent": "STT-Bootstrapper"})
+        with urllib.request.urlopen(req, timeout=60, context=_SSL_CTX) as resp:
+            return resp.read().decode("utf-8", "replace")
+
+    def _download_file(self, url, dest):
+        req = urllib.request.Request(url, headers={"User-Agent": "STT-Bootstrapper"})
+        with urllib.request.urlopen(req, timeout=120, context=_SSL_CTX) as resp, \
+                open(dest, "wb") as out:
+            shutil.copyfileobj(resp, out)
 
 
 # ---------------------------------------------------------------------------
@@ -275,10 +617,22 @@ class ProcessManager:
             # while running, so rotate now that the old handle is closed).
             _rotate_if_large(log_path, max_bytes=10_000_000, backups=5)
             self._log_fh = open(log_path, "a", encoding="utf-8")
-            cmd = [sys.executable, '--run-stt'] if _FROZEN else [self._python, STT_SCRIPT]
+            # Resolve the venv python fresh (provisioning may have created it after
+            # this manager was constructed). Always run the real script from SOURCE.
+            self._python = get_python_bin()
+            cmd = [self._python, STT_SCRIPT]
+            # Keep DATA and SOURCE separate for the worker, and expose any
+            # provisioned ffmpeg (DATA_DIR/bin) so audio_capture's bare 'ffmpeg' resolves.
+            env = dict(os.environ)
+            env["STT_DATA_DIR"] = DATA_DIR
+            env["PYTHONUNBUFFERED"] = "1"
+            _ffbin = os.path.join(DATA_DIR, "bin")
+            if os.path.isdir(_ffbin):
+                env["PATH"] = _ffbin + os.pathsep + env.get("PATH", "")
             proc = subprocess.Popen(
                 cmd,
-                cwd=APP_DIR,
+                cwd=SOURCE_DIR,
+                env=env,
                 stdout=self._log_fh,
                 stderr=self._log_fh,
                 close_fds=not IS_WINDOWS,
@@ -480,24 +834,69 @@ class AutoUpdater:
         self.state.set(last_update_result=f"Update available: {remote}")
 
     def apply_pending_update(self):
-        """Download and apply the pending update (if any)."""
+        """Apply the pending update (if any) via git; fall back to source archive."""
         if not self._pending_update:
             return
         remote, zipball_url, assets = self._pending_update
         self._pending_update = None
-        if _FROZEN:
-            self._apply_binary_update(remote, assets)
-        else:
-            self._apply_update(remote, zipball_url)
+        self._apply_git_update(remote, zipball_url)
 
     def check_and_update(self):
         """Check for update and immediately apply if one is found (manual update / 1am)."""
         self.check_for_update()
         self.apply_pending_update()
 
+    def _git(self, *args, check=True):
+        return subprocess.run(["git", "-C", SOURCE_DIR, *args],
+                              capture_output=True, text=True,
+                              check=check)
+
+    def _apply_git_update(self, remote, zipball_url):
+        """Update the managed checkout: git fetch + reset to the release, reinstall
+        dependencies (deps may have changed), then restart. Data dir is untouched."""
+        have_git = bool(shutil.which("git")) and os.path.isdir(os.path.join(SOURCE_DIR, ".git"))
+        if not have_git:
+            logging.info("[AU] git unavailable; using source-archive update")
+            self._apply_update(remote, zipball_url)
+            return
+
+        self.state.set(status="updating")
+        self.pm.stop(timeout=20)
+        try:
+            logging.info(f"[AU] Fetching {remote}...")
+            self._git("fetch", "--tags", "--force", "origin", check=False)
+            # Reset to the release tag (with or without a leading 'v'); else default branch.
+            target = None
+            for ref in (f"v{remote}", remote):
+                if self._git("rev-parse", "--verify", "--quiet", ref, check=False).returncode == 0:
+                    target = ref
+                    break
+            if target is None:
+                # Fall back to the fetched default branch head
+                self._git("fetch", "--depth", "1", "origin", check=False)
+                target = "origin/HEAD"
+            logging.info(f"[AU] Resetting to {target}")
+            self._git("reset", "--hard", target)
+            self._git("clean", "-fd", check=False)
+
+            logging.info("[AU] Reinstalling dependencies...")
+            Provisioner(log=lambda m: logging.info(f"[AU] {m}")).install_deps_only()
+
+            result = (f"Updated to {read_version()} "
+                      f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})")
+            logging.info(f"[AU] {result}")
+            self.state.set(last_update_result=result)
+        except Exception as e:
+            result = f"Update failed: {e}"
+            logging.error(f"[AU] {result}")
+            self.state.set(last_update_result=result)
+        finally:
+            self.pm.start()
+
     def _apply_update(self, remote, zipball_url):
+        # git-less fallback: refresh the SOURCE checkout from a release/source archive.
         # Download BEFORE stopping the app so it keeps running during the transfer
-        tmpdir = tempfile.mkdtemp(prefix="stt-update-", dir=APP_DIR)
+        tmpdir = tempfile.mkdtemp(prefix="stt-update-", dir=DATA_DIR)
         zip_path = os.path.join(tmpdir, "update.zip")
         extract_dir = os.path.join(tmpdir, "extracted")
 
@@ -534,13 +933,16 @@ class AutoUpdater:
         self.state.set(status="updating")
         self.pm.stop(timeout=20)
 
+        # Stop the app, refresh SOURCE (preserving .venv), reinstall deps, restart.
+        self.state.set(status="updating")
+        self.pm.stop(timeout=20)
         try:
             failed_items = []
             for item in os.listdir(src_root):
                 if item in _UPDATE_PRESERVE:
                     continue
                 src = os.path.join(src_root, item)
-                dst = os.path.join(APP_DIR, item)
+                dst = os.path.join(SOURCE_DIR, item)
                 try:
                     if os.path.isdir(src):
                         if os.path.exists(dst):
@@ -559,9 +961,10 @@ class AutoUpdater:
                 logging.error(f"[AU] {result}")
                 self.state.set(last_update_result=result)
             else:
-                write_version(remote)
+                logging.info("[AU] Reinstalling dependencies...")
+                Provisioner(log=lambda m: logging.info(f"[AU] {m}")).install_deps_only()
                 result = (
-                    f"Updated to {remote} "
+                    f"Updated to {read_version()} "
                     f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
                 )
                 logging.info(f"[AU] {result}")
@@ -575,76 +978,6 @@ class AutoUpdater:
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
             self.pm.start()   # clears _no_restart, starts fresh process
-
-    def _apply_binary_update(self, remote, assets):
-        """Download and run the platform-native installer for binary (frozen) builds.
-
-        The installer's pre-script stops this service; its post-script starts the
-        updated version.  This method blocks until the process is killed.
-        """
-        plat = platform.system()
-        if plat not in _PLATFORM_ASSET:
-            logging.warning(f"[AU] Binary update not supported on {plat}")
-            return
-
-        asset_name, cmd_template = _PLATFORM_ASSET[plat]
-        url = assets.get(asset_name)
-        if not url:
-            logging.warning(f"[AU] No {asset_name} asset in release {remote}; skipping")
-            return
-
-        tmpdir = tempfile.mkdtemp(prefix="stt-update-")
-        installer_path = os.path.join(tmpdir, asset_name)
-        try:
-            logging.info(f"[AU] Downloading {remote} installer ({asset_name})...")
-            headers = {"User-Agent": f"STT-Watchdog/{read_version()}"}
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=600, context=_SSL_CTX) as resp:
-                with open(installer_path, "wb") as f:
-                    shutil.copyfileobj(resp, f)
-        except Exception as e:
-            logging.error(f"[AU] Installer download failed: {e}")
-            shutil.rmtree(tmpdir, ignore_errors=True)
-            self.state.set(last_update_result=f"Download failed: {e}")
-            return
-
-        # Stop STT first so the installer can overwrite files cleanly.
-        self.state.set(status="updating")
-        self.pm.stop(timeout=20)
-
-        cmd = [installer_path if c is None else c for c in cmd_template]
-        if plat != "Windows":
-            os.chmod(installer_path, 0o755)
-
-        logging.info(f"[AU] Launching installer for {remote}; "
-                     "service will be stopped and restarted by installer scripts")
-        try:
-            if IS_WINDOWS:
-                subprocess.Popen(
-                    cmd,
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                )
-            else:
-                subprocess.Popen(cmd, start_new_session=True)
-        except Exception as e:
-            logging.error(f"[AU] Failed to launch installer: {e}")
-            shutil.rmtree(tmpdir, ignore_errors=True)
-            self.state.set(last_update_result=f"Installer launch failed: {e}")
-            self.pm.start()
-            return
-
-        # Block here; the installer's pre-script (launchctl unload / systemctl stop /
-        # taskkill) will send SIGTERM / kill this process, at which point the shutdown
-        # signal handler exits cleanly and the updated binary takes over.
-        # Bounded wait: if the installer never kills us, recover instead of hanging.
-        import time
-        deadline = time.time() + 600
-        while time.time() < deadline:
-            time.sleep(5)
-        logging.error("[AU] Installer did not stop the service within 10 minutes; "
-                      "resuming with current version")
-        self.state.set(last_update_result=f"Installer for {remote} did not complete")
-        self.pm.start()
 
     # -- Scheduler -----------------------------------------------------------
 
@@ -1113,38 +1446,132 @@ def _run_crash_report_test():
         raise SystemExit(1)
 
 
+# ---------------------------------------------------------------------------
+# First-run setup UI
+# ---------------------------------------------------------------------------
+
+def _run_provisioning_headless():
+    try:
+        Provisioner(log=lambda m: logging.info(f"[SETUP] {m}")).run()
+        return True
+    except Exception as e:
+        logging.error(f"[SETUP] Provisioning failed: {e}")
+        return False
+
+
+class ProvisionWindow:
+    """First-run setup window: runs the Provisioner on a worker thread, streams
+    its log into a text pane with a step label + progress bar, and offers
+    Retry/Cancel on failure. Returns success via mainloop()."""
+
+    def __init__(self):
+        import tkinter as tk
+        from tkinter import ttk, scrolledtext
+        import queue
+        self._tk = tk
+        self.root = tk.Tk()
+        self.root.title(f"STT Setup v{read_version()}")
+        self.root.geometry("580x440")
+        self._q = queue.Queue()
+        self.success = False
+        self._set_icon()
+
+        self._step = tk.Label(self.root, text="Preparing setup…", anchor="w",
+                              font=("", 11, "bold"))
+        self._step.pack(fill="x", padx=12, pady=(12, 4))
+        self._bar = ttk.Progressbar(self.root, mode="indeterminate")
+        self._bar.pack(fill="x", padx=12)
+        self._logw = scrolledtext.ScrolledText(self.root, height=18, state="disabled",
+                                                font=("monospace", 9))
+        self._logw.pack(fill="both", expand=True, padx=12, pady=8)
+        row = tk.Frame(self.root)
+        row.pack(fill="x", padx=12, pady=(0, 12))
+        self._retry = tk.Button(row, text="Retry", command=self._start, state="disabled")
+        self._retry.pack(side="right", padx=4)
+        tk.Button(row, text="Cancel", command=self._on_cancel).pack(side="right")
+
+        self.root.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.root.after(120, self._pump)
+        self._start()
+
+    def _set_icon(self):
+        try:
+            icon = os.path.join(sys._MEIPASS if _FROZEN else
+                                os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+            if os.path.exists(icon):
+                self.root.iconbitmap(icon)
+        except Exception:
+            pass
+
+    def _emit(self, m):
+        self._q.put(("log", m))
+
+    def _start(self):
+        self._retry.config(state="disabled")
+        self._bar.start(12)
+
+        def work():
+            try:
+                Provisioner(log=self._emit).run()
+                self._q.put(("done", True))
+            except Exception as e:
+                self._q.put(("log", f"[ERROR] {e}"))
+                self._q.put(("done", False))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _append(self, m):
+        self._logw.config(state="normal")
+        self._logw.insert("end", m + "\n")
+        self._logw.see("end")
+        self._logw.config(state="disabled")
+
+    def _pump(self):
+        try:
+            while True:
+                kind, payload = self._q.get_nowait()
+                if kind == "log":
+                    self._append(payload)
+                    if payload.startswith("[") and "/" in payload[:6]:
+                        self._step.config(text=payload.lstrip("[0123456789/] "))
+                else:  # done
+                    self.success = bool(payload)
+                    self._bar.stop()
+                    if self.success:
+                        self._step.config(text="Setup complete — starting STT…")
+                        self.root.after(700, self.root.destroy)
+                    else:
+                        self._step.config(text="Setup failed — see log below. Retry or Cancel.")
+                        self._retry.config(state="normal")
+        except Exception:
+            pass
+        self.root.after(150, self._pump)
+
+    def _on_cancel(self):
+        self.success = False
+        self.root.destroy()
+
+    def mainloop(self):
+        self.root.mainloop()
+        return self.success
+
+
+def run_provisioning(use_gui):
+    """Provision the runtime. GUI shows a progress window; headless logs to stdout."""
+    if use_gui:
+        try:
+            return ProvisionWindow().mainloop()
+        except Exception as e:
+            logging.warning(f"[SETUP] GUI unavailable ({e}); running headless setup")
+    return _run_provisioning_headless()
+
+
 def main():
-    # Must be first: intercepts multiprocessing child re-invocations
-    # (--multiprocessing-fork, -c ...) before argparse ever sees them.
+    # freeze_support() is harmless here; the STT worker runs as a real venv
+    # script (not via a frozen re-exec), so multiprocessing spawns re-import
+    # speech_to_text.py as __main__ natively — no --run-stt shim needed.
     import multiprocessing
     multiprocessing.freeze_support()
-
-    if '--run-stt' in sys.argv:
-        import importlib.util, io
-        # On Windows GUI builds sys.stdout/stderr are None; reconnect to the
-        # file handles that the watchdog's Popen set so logging actually works.
-        if sys.stdout is None:
-            try:
-                sys.stdout = io.TextIOWrapper(os.fdopen(1, 'wb'), errors='replace', line_buffering=True)
-            except Exception:
-                pass
-        if sys.stderr is None:
-            try:
-                sys.stderr = io.TextIOWrapper(os.fdopen(2, 'wb'), errors='replace', line_buffering=True)
-            except Exception:
-                pass
-        _stt = os.path.join(
-            sys._MEIPASS if _FROZEN else os.path.dirname(os.path.abspath(__file__)),
-            'speech_to_text.py',
-        )
-        # Replace sys.modules['__main__'] with the speech_to_text module so
-        # that multiprocessing can pickle functions (e.g. thread1_function)
-        # defined there when spawning worker processes on Windows.
-        _spec = importlib.util.spec_from_file_location('__main__', _stt)
-        _mod  = importlib.util.module_from_spec(_spec)
-        sys.modules['__main__'] = _mod
-        _spec.loader.exec_module(_mod)
-        sys.exit(0)
 
     setup_logging()
 
@@ -1156,6 +1583,11 @@ def main():
         "--check-update",
         action="store_true",
         help="Run one update check then exit",
+    )
+    parser.add_argument(
+        "--reprovision",
+        action="store_true",
+        help="Re-run first-time setup (rebuild venv, refresh source, reinstall deps)",
     )
     parser.add_argument(
         "--channel",
@@ -1223,6 +1655,13 @@ def main():
         f"[WATCHDOG] Starting STT Watchdog v{read_version()} "
         f"({'GUI' if use_gui else 'headless'} mode)"
     )
+
+    # First-run (or repair): provision the local runtime before starting the app.
+    if args.reprovision or not is_provisioned():
+        logging.info("[WATCHDOG] Runtime not provisioned; running first-time setup...")
+        if not run_provisioning(use_gui):
+            logging.error("[WATCHDOG] Setup did not complete; exiting.")
+            sys.exit(1)
 
     crash_thread.start()
     updater.run_scheduler()

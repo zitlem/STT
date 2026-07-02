@@ -6,12 +6,20 @@ import warnings
 # Determine application directory (works for both dev and PyInstaller bundle)
 # APP_DIR    = user data dir: config, models, logs (script dir in dev, ~/.stt when frozen)
 # BUNDLE_DIR = bundled read-only assets: templates, static (_MEIPASS when frozen)
-if getattr(sys, 'frozen', False):
+# STT_DATA_DIR (set by the thin bootstrapper) separates the user data dir from the
+# source checkout: the app runs un-frozen from a venv, so data must not resolve to
+# the source folder. BUNDLE_DIR = the checkout (templates/static/config.default).
+_data_override = os.environ.get("STT_DATA_DIR")
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _data_override:
+    APP_DIR    = os.path.abspath(os.path.expanduser(_data_override))
+    BUNDLE_DIR = _script_dir
+elif getattr(sys, 'frozen', False):
     APP_DIR    = os.path.join(os.path.expanduser("~"), ".stt")
     BUNDLE_DIR = sys._MEIPASS
 else:
-    APP_DIR    = os.path.dirname(os.path.abspath(__file__))
-    BUNDLE_DIR = APP_DIR
+    APP_DIR    = _script_dir
+    BUNDLE_DIR = _script_dir
 
 os.makedirs(APP_DIR, exist_ok=True)
 MODELS_DIR = os.path.join(APP_DIR, "models")

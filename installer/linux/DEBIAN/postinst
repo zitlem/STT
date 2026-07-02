@@ -3,13 +3,21 @@ set -e
 
 chmod +x /opt/STT/STT
 
-cat > /etc/systemd/system/stt-watchdog.service << 'EOF'
+# Run the bootstrapper as the installing user (not root) so first-run
+# provisioning and data live in that user's ~/.stt, with correct audio/GPU access.
+RUN_USER="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
+[ -n "$RUN_HOME" ] || RUN_HOME="/root"
+
+cat > /etc/systemd/system/stt-watchdog.service << EOF
 [Unit]
 Description=STT Watchdog
 After=network.target
 
 [Service]
 Type=simple
+User=${RUN_USER}
+Environment=HOME=${RUN_HOME}
 ExecStart=/opt/STT/STT --headless
 Restart=on-failure
 RestartSec=10
