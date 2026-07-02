@@ -101,6 +101,14 @@
       "_enabled_comment": "Feed the tail of the finalized transcript to Whisper as initial_prompt so each capture knows what came before (better continuity and punctuation)",
       "max_chars": 200,
       "_max_chars_comment": "How much trailing transcript to include in the prompt. Whisper's prompt budget is 224 tokens (~900 chars)"
+    },
+    "loudness_normalization": {
+      "enabled": false,
+      "_enabled_comment": "Boost quiet audio before transcription (single gain per pass, never clips). Only affects the audio sent to Whisper — energy threshold and calibration always see raw levels",
+      "target_rms_dbfs": -20,
+      "_target_rms_dbfs_comment": "Target loudness in dBFS. Audio quieter than this is boosted toward it; louder audio is left untouched",
+      "max_gain": 10,
+      "_max_gain_comment": "Maximum boost factor, caps amplification of very quiet audio (and its background noise)"
     }
   },
   "vad": {
@@ -193,17 +201,17 @@
     "_comment": "Advanced Whisper decoding parameters. Only modify if you understand Whisper internals. Defaults are optimized for each use case.",
     "live_transcription": {
       "beam_size": 3,
-      "_beam_size_comment": "Search breadth (1=greedy/fast, 5=thorough/slow). Default 1 for live reduces hallucinations.",
+      "_beam_size_comment": "Search breadth (1=greedy/fast, 5=thorough/slow). Default 3 balances accuracy and speed for live.",
       "best_of": 1,
       "_best_of_comment": "Number of sampling runs (1=single pass, higher=more options to choose from).",
       "temperature": 0,
-      "_temperature_comment": "Randomness (0.0=deterministic, higher=creative). Can be array like [0.0, 0.2, 0.4] for fallback.",
+      "_temperature_comment": "Must stay 0 for live: nonzero output varies between passes so segments never finalize and no rows save. Enforced at save and at runtime.",
       "condition_on_previous_text": false,
       "_condition_comment": "Use previous text as context. False for live because short chunks lack context.",
-      "compression_ratio_threshold": 1.8,
-      "_compression_ratio_threshold_comment": "Reject transcriptions with too much repetition. Lower = stricter (rejects more), higher = permissive.",
-      "logprob_threshold": -0.5,
-      "_logprob_threshold_comment": "Reject transcriptions with low confidence scores. Higher = stricter (rejects more).",
+      "compression_ratio_threshold": 2.4,
+      "_compression_ratio_threshold_comment": "Reject transcriptions with too much repetition. 2.4 is Whisper's standard; lower values (e.g. 1.8) reject legitimately repetitive speech.",
+      "logprob_threshold": -1.0,
+      "_logprob_threshold_comment": "Reject transcriptions with low confidence scores. -1.0 is Whisper's standard; higher values (e.g. -0.5) silently drop quiet/accented real speech.",
       "no_speech_threshold": 0.6,
       "_no_speech_threshold_comment": "Probability threshold for detecting silence (0.0-1.0)."
     },

@@ -263,7 +263,7 @@ import random
 
 # Whisper decoding parameters optimized for streaming (3s chunks)
 LIVE_TRANSCRIPTION_PARAMS = {
-    "beam_size": 1,  # Greedy decoding - fast, reduces hallucinations
+    "beam_size": 3,  # Matches config.default.json — accuracy win over greedy, live loop tolerates it
     "best_of": 1,  # No sampling
     "temperature": 0.0,  # Deterministic
     "condition_on_previous_text": False,  # Chunks lack context
@@ -713,9 +713,14 @@ def _apply_glossary(text, source_lang, target_lang):
             return text
 
         import re
-        for source_term, target_term in glossary.items():
-            # Case-insensitive replacement
-            text = re.sub(re.escape(source_term), target_term, text, flags=re.IGNORECASE)
+        # Longest terms first so a short term can't clobber a longer one containing it.
+        # Lookarounds instead of \b: terms may start/end with punctuation, where \b
+        # silently fails. Lambda replacement so backslashes in the target aren't
+        # treated as regex templates. Note: \w matches CJK, so terms embedded in
+        # unspaced CJK runs won't match.
+        for source_term, target_term in sorted(glossary.items(), key=lambda kv: -len(kv[0])):
+            pattern = r"(?<!\w)" + re.escape(source_term) + r"(?!\w)"
+            text = re.sub(pattern, lambda m, t=target_term: t, text, flags=re.IGNORECASE)
 
         return text
     except Exception as e:
@@ -848,8 +853,10 @@ def translate_segments(segments, source_lang, target_lang, model, tokenizer, pro
             context_text = " ".join(segments[j]["text"] for j in range(start_idx, i)).strip()
             if context_text:
                 num_ctx_sentences = count_sentence_units(context_text)
-                combined_translated = translate_text(context_text + " " + seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
-                translated_text = extract_context_translation(combined_translated, num_ctx_sentences)
+                combined_source = context_text + " " + seg["text"]
+                ctx_char_ratio = (len(context_text) + 1) / max(1, len(combined_source))
+                combined_translated = translate_text(combined_source, source_lang, target_lang, model, tokenizer, generation_params=generation_params)
+                translated_text = extract_context_translation(combined_translated, num_ctx_sentences, ctx_char_ratio)
         if not translated_text:
             # No context, or alignment failed - translate the segment alone
             translated_text = translate_text(seg["text"], source_lang, target_lang, model, tokenizer, generation_params=generation_params)
@@ -1802,12 +1809,44 @@ class ModelFactory:
                 if whisper_params:
                     if "beam_size" in whisper_params:
                         generate_kwargs["num_beams"] = whisper_params["beam_size"]
-                    if "temperature" in whisper_params and isinstance(whisper_params["temperature"], (int, float)):
-                        generate_kwargs["temperature"] = whisper_params["temperature"]
+                    if "temperature" in whisper_params:
+                        _hf_temp = whisper_params["temperature"]
+                        if isinstance(_hf_temp, (list, tuple)):
+                            # HF supports a fallback tuple in long-form generation
+                            generate_kwargs["temperature"] = tuple(float(t) for t in _hf_temp)
+                        elif isinstance(_hf_temp, (int, float)):
+                            generate_kwargs["temperature"] = _hf_temp
+                    # Quality thresholds: honored by HF Whisper long-form generation;
+                    # stripped via the retry below when the installed transformers
+                    # version doesn't accept them.
+                    if "compression_ratio_threshold" in whisper_params:
+                        generate_kwargs["compression_ratio_threshold"] = whisper_params["compression_ratio_threshold"]
+                    if "logprob_threshold" in whisper_params:
+                        generate_kwargs["logprob_threshold"] = whisper_params["logprob_threshold"]
+                    if "no_speech_threshold" in whisper_params:
+                        generate_kwargs["no_speech_threshold"] = whisper_params["no_speech_threshold"]
+                    if "condition_on_previous_text" in whisper_params:
+                        # HF names this condition_on_prev_tokens
+                        generate_kwargs["condition_on_prev_tokens"] = whisper_params["condition_on_previous_text"]
+
+                _hf_optional_keys = (
+                    "compression_ratio_threshold", "logprob_threshold",
+                    "no_speech_threshold", "condition_on_prev_tokens",
+                )
+
+                def _hf_pipeline_call(**call_kwargs):
+                    try:
+                        return model(audio_data, generate_kwargs=generate_kwargs, **call_kwargs) if generate_kwargs else model(audio_data, **call_kwargs)
+                    except (TypeError, ValueError) as hf_err:
+                        stripped = {k: v for k, v in generate_kwargs.items() if k not in _hf_optional_keys}
+                        if len(stripped) == len(generate_kwargs):
+                            raise
+                        print(f"[WARNING] HF pipeline rejected quality thresholds ({hf_err}); retrying without them")
+                        return model(audio_data, generate_kwargs=stripped, **call_kwargs) if stripped else model(audio_data, **call_kwargs)
 
                 if return_segments:
                     # Request timestamps from HuggingFace pipeline
-                    result = model(audio_data, return_timestamps=True, generate_kwargs=generate_kwargs) if generate_kwargs else model(audio_data, return_timestamps=True)
+                    result = _hf_pipeline_call(return_timestamps=True)
                     chunks = result.get("chunks", [])
                     segments = []
                     for chunk in chunks:
@@ -1819,7 +1858,7 @@ class ModelFactory:
                             segments.append({"text": text, "start": start, "end": end})
                     return segments
 
-                result = model(audio_data, generate_kwargs=generate_kwargs) if generate_kwargs else model(audio_data)
+                result = _hf_pipeline_call()
                 return result["text"].strip()
 
             elif model_type == "huggingface_wav2vec2":
@@ -4258,6 +4297,17 @@ def update_config():
         # Merge new config into existing config (preserves backend and other fields)
         config = deep_merge(config, new_config)
 
+        # Live transcription requires temperature 0: nonzero output varies between
+        # re-transcription passes, so same_output_threshold finalization never
+        # triggers and no rows are ever saved.
+        live_temp_clamped = False
+        _live_decode = config.get("whisper_decoding", {}).get("live_transcription")
+        if isinstance(_live_decode, dict) and "temperature" in _live_decode:
+            _temp = _live_decode["temperature"]
+            if isinstance(_temp, (list, tuple)) or (_temp or 0) != 0:
+                _live_decode["temperature"] = 0.0
+                live_temp_clamped = True
+
         # If the audio device selection changed, also persist a stable name-based
         # identifier so the correct card can be re-found after ALSA index reshuffles
         # across reboots (USB vs onboard/GPU HDA enumeration order is not stable).
@@ -4306,6 +4356,8 @@ def update_config():
             restart_reason.append("VAD enabled/disabled")
 
         message = "Configuration updated successfully!"
+        if live_temp_clamped:
+            message += " Live temperature forced to 0 — nonzero values prevent segment finalization."
         if needs_restart:
             message += ' Some changes require restarting the transcription process. Use the "Restart Transcription" button.'
         else:
@@ -5356,9 +5408,16 @@ def save_translation_settings():
 
     # Update settings
     for key in ["enabled", "target_language", "source_language", "translate_in_progress",
-                "display_mode", "translation_model", "use_gpu", "context_window", "translation_method"]:
+                "display_mode", "translation_model", "use_gpu", "translation_method"]:
         if key in data:
             config["live_translation"][key] = data[key]
+
+    # Clamp to match the UI slider (1-5); larger windows approach NLLB's 1024-token truncation
+    if "context_window" in data:
+        try:
+            config["live_translation"]["context_window"] = max(1, min(5, int(data["context_window"])))
+        except (TypeError, ValueError):
+            pass
 
     # Save generation parameters
     if "generation_params" in data:
@@ -12384,7 +12443,8 @@ def emit_translated_entries():
             want_confidence = corrections_cfg.get("enabled", True) and corrections_cfg.get("confidence_highlighting", True)
             n_alternatives = corrections_cfg.get("n_best_alternatives", {}).get("translation_count", 3) if corrections_cfg.get("enabled", True) else 0
 
-            context_window = max(1, min(10, int(trans_config.get("context_window", 1) or 1)))
+            # Max 5: beyond that the combined NLLB input approaches the 1024-token truncation
+            context_window = max(1, min(5, int(trans_config.get("context_window", 1) or 1)))
 
             max_translations_per_cycle = 3  # Limit new translations per cycle so cached segments emit fast
             translations_this_cycle = 0
@@ -12469,6 +12529,7 @@ def emit_translated_entries():
                     # alone - never emit the combined translation.
                     text_to_translate = original_text
                     num_ctx_sentences = 0
+                    ctx_char_ratio = None
                     if context_window > 1 and idx > 0:
                         ctx_start = max(0, idx - (context_window - 1))
                         context_texts = [entries[j][2] for j in range(ctx_start, idx)]
@@ -12476,6 +12537,9 @@ def emit_translated_entries():
                             context_prefix = " ".join(context_texts)
                             num_ctx_sentences = count_sentence_units(context_prefix)
                             text_to_translate = context_prefix + " " + original_text
+                            # Context share of the source — guides the proportional
+                            # split when the translator merges sentences
+                            ctx_char_ratio = (len(context_prefix) + 1) / max(1, len(text_to_translate))
 
                     # Translate with confidence/alternatives if corrections enabled
                     if want_confidence or n_alternatives > 0:
@@ -12484,12 +12548,12 @@ def emit_translated_entries():
                             return_extras=True, num_alternatives=n_alternatives,
                         )
                         if num_ctx_sentences:
-                            extracted = extract_context_translation(result.get("text", ""), num_ctx_sentences)
+                            extracted = extract_context_translation(result.get("text", ""), num_ctx_sentences, ctx_char_ratio)
                             if extracted:
                                 result["text"] = extracted
                                 result["alternatives"] = [
                                     alt_extracted for alt_extracted in (
-                                        extract_context_translation(a, num_ctx_sentences)
+                                        extract_context_translation(a, num_ctx_sentences, ctx_char_ratio)
                                         for a in result.get("alternatives", [])
                                     ) if alt_extracted
                                 ]
@@ -12504,7 +12568,7 @@ def emit_translated_entries():
                     else:
                         translated_text = translate_live_text(text_to_translate, source_lang, target_lang)
                         if num_ctx_sentences and isinstance(translated_text, str):
-                            extracted = extract_context_translation(translated_text, num_ctx_sentences)
+                            extracted = extract_context_translation(translated_text, num_ctx_sentences, ctx_char_ratio)
                             translated_text = extracted if extracted else translate_live_text(original_text, source_lang, target_lang)
                         extras = None
 
@@ -12876,14 +12940,21 @@ def count_sentence_units(text):
     return len(sentences) + (1 if remainder else 0)
 
 
-def extract_context_translation(combined_translated, num_context_sentences):
+_ctx_align_stats = {"exact": 0, "proportional": 0, "failed": 0}
+
+
+def extract_context_translation(combined_translated, num_context_sentences, source_char_ratio=None):
     """
     Extract the target portion from a translation of (context + target) text.
 
     Splits the combined translation into sentences and drops the first
-    num_context_sentences. Returns None when the sentence counts don't align
-    (e.g. the translator merged sentences) so the caller can fall back to
-    translating the target in isolation.
+    num_context_sentences. When the translator merged sentences (fewer output
+    units than context units) and source_char_ratio is given (context chars /
+    total source chars), falls back to splitting at the sentence boundary whose
+    cumulative character share is closest to that ratio — sentence boundaries
+    stay intact, and the context benefit isn't discarded. Returns None only
+    when no sensible split exists, so the caller can retranslate the target
+    in isolation.
     """
     if num_context_sentences <= 0:
         return combined_translated
@@ -12892,9 +12963,98 @@ def extract_context_translation(combined_translated, num_context_sentences):
     out_sentences, out_remainder = split_into_sentences(combined_translated)
     if out_remainder:
         out_sentences = out_sentences + [out_remainder]
-    if len(out_sentences) <= num_context_sentences:
+    if len(out_sentences) > num_context_sentences:
+        _ctx_align_stats["exact"] += 1
+        _log_ctx_align_stats()
+        return " ".join(out_sentences[num_context_sentences:]).strip() or None
+    if source_char_ratio is not None and len(out_sentences) >= 2:
+        total_len = max(1, len(combined_translated))
+        best_k, best_diff = 1, None
+        cum = 0
+        for k in range(1, len(out_sentences)):
+            cum += len(out_sentences[k - 1]) + 1
+            diff = abs(cum / total_len - source_char_ratio)
+            if best_diff is None or diff < best_diff:
+                best_k, best_diff = k, diff
+        _ctx_align_stats["proportional"] += 1
+        _log_ctx_align_stats()
+        return " ".join(out_sentences[best_k:]).strip() or None
+    _ctx_align_stats["failed"] += 1
+    _log_ctx_align_stats()
+    return None
+
+
+def _log_ctx_align_stats():
+    """Log alignment mix every 50 extractions so the mismatch rate is measurable."""
+    total = sum(_ctx_align_stats.values())
+    if total and total % 50 == 0:
+        print(f"[CTX-ALIGN] exact={_ctx_align_stats['exact']} proportional={_ctx_align_stats['proportional']} failed={_ctx_align_stats['failed']}", flush=True)
+
+
+def distribute_whisper_translation(translated_text, row_texts):
+    """
+    Split a whole-chunk Whisper translation across the rows saved from that chunk.
+
+    Pass 2 of whisper_translate translates the entire audio chunk in one call,
+    but that chunk may have produced several DB rows. Sentence-count alignment
+    is used when it matches; otherwise the translation is split into word spans
+    proportional to each source row's length. Callers first narrow the text to
+    the batch's time span via scope_whisper_translation; the split here is
+    still approximate when sentence counts don't match.
+
+    Returns a list of len(row_texts) strings.
+    """
+    n = len(row_texts)
+    if n == 0:
+        return []
+    if n == 1:
+        return [translated_text]
+
+    units, rem = split_into_sentences(translated_text)
+    if rem.strip():
+        units.append(rem.strip())
+    if len(units) == n:
+        return units
+
+    words = translated_text.split()
+    if len(words) < n:
+        # Too little text to split meaningfully; keep it on the first row
+        return [translated_text] + [""] * (n - 1)
+
+    src_counts = [max(1, len(t.split())) for t in row_texts]
+    total = sum(src_counts)
+    parts = []
+    start = 0
+    for i, count in enumerate(src_counts):
+        if i == n - 1:
+            end = len(words)
+        else:
+            end = start + max(1, round(len(words) * count / total))
+            # Leave at least one word for every remaining row
+            end = min(end, len(words) - (n - 1 - i))
+            end = max(end, start + 1)
+        parts.append(" ".join(words[start:end]))
+        start = end
+    return parts
+
+
+def scope_whisper_translation(pass2_timed, span_end, margin=0.5):
+    """
+    Keep only pass-2 translation segments that fall within the finalized span.
+
+    Pass 2 of whisper_translate covers the whole unfinalized buffer, including
+    the still-in-progress tail; that tail's translation belongs to future rows,
+    not this batch. Dropping segments whose midpoint lies past span_end keeps
+    the distributed translation aligned with the rows actually being saved.
+
+    pass2_timed: list of (session_start, session_end, text).
+    Returns the joined in-span text, or None if nothing/nothing usable remains
+    (caller falls back to the full pass-2 text).
+    """
+    if not pass2_timed or span_end is None:
         return None
-    return " ".join(out_sentences[num_context_sentences:]).strip() or None
+    parts = [t for (s, e, t) in pass2_timed if (s + e) / 2 <= span_end + margin]
+    return " ".join(parts).strip() or None
 
 
 def is_fuzzy_duplicate(new_sentence, saved_sentences, threshold=0.85):
@@ -14266,6 +14426,25 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     sleep(0.1)
                                     continue
 
+                                # Optional pre-ASR loudness normalization: one gain per pass,
+                                # boost-only, applied to the transcription copy. The rolling
+                                # buffer, energy gate, and calibration always see raw levels.
+                                _norm_cfg = process_config.get("audio", {}).get("loudness_normalization", {})
+                                if _norm_cfg.get("enabled", False) and audio_chunk is not None and len(audio_chunk) > 0:
+                                    try:
+                                        _rms = float(np.sqrt(np.mean(np.square(audio_chunk.astype(np.float64)))))
+                                        if _rms > 1e-6:
+                                            _target_rms = 10.0 ** (float(_norm_cfg.get("target_rms_dbfs", -20)) / 20.0)
+                                            _gain = min(float(_norm_cfg.get("max_gain", 10.0)), _target_rms / _rms)
+                                            if _gain > 1.01:
+                                                _peak = float(np.max(np.abs(audio_chunk)))
+                                                if _peak > 0:
+                                                    _gain = min(_gain, 0.99 / _peak)  # never clip
+                                                if _gain > 1.01:
+                                                    audio_chunk = (audio_chunk * np.float32(_gain)).astype(np.float32)
+                                    except Exception as _norm_err:
+                                        print(f"[WARNING] Loudness normalization failed: {_norm_err}")
+
                                 try:
                                     # Get language from config
                                     live_language = process_config.get("audio", {}).get("language", "auto")
@@ -14273,6 +14452,17 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     whisper_params = process_config.get("whisper_decoding", {}).get(
                                         "live_transcription", LIVE_TRANSCRIPTION_PARAMS
                                     )
+
+                                    # Live requires temperature 0: nonzero output varies between
+                                    # passes, same_output_threshold never triggers, and no rows
+                                    # save. Covers hand-edited configs the save endpoint missed.
+                                    _temp_val = whisper_params.get("temperature", 0)
+                                    if isinstance(_temp_val, (list, tuple)) or (_temp_val or 0) != 0:
+                                        whisper_params = dict(whisper_params)
+                                        whisper_params["temperature"] = 0.0
+                                        if not globals().get("_live_temp_clamp_warned"):
+                                            globals()["_live_temp_clamp_warned"] = True
+                                            print(f"[LIVE] temperature {_temp_val!r} forced to 0.0 — nonzero temperature prevents segment finalization (no rows would save)")
 
                                     # Enable word_timestamps for confidence highlighting if configured
                                     corrections_config = process_config.get("corrections", {})
@@ -14323,6 +14513,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     # === Whisper Translation Pass (dual-pass) ===
                                     # If Whisper-based translation is active, run a second pass on the same audio
                                     _whisper_translated_text = None
+                                    _pass2_timed = []  # (session_start, session_end, text) per pass-2 segment
                                     _trans_cfg = process_config.get("live_translation", {})
                                     _trans_method = _trans_cfg.get("translation_method", "nllb")
                                     _trans_enabled = _trans_cfg.get("enabled", False)
@@ -14355,6 +14546,18 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 _whisper_translated_text = " ".join(
                                                     s.get("text", "").strip() for s in _pass2_segments if s.get("text", "").strip()
                                                 )
+                                                # Session-time pass-2 segments (timestamp_offset hasn't
+                                                # advanced yet — update_segments runs after this) so the
+                                                # translation can later be scoped to the batch's time span
+                                                _pass2_offset = live_transcriber.timestamp_offset
+                                                _pass2_timed = [
+                                                    (
+                                                        _pass2_offset + (s.get("start") or 0),
+                                                        _pass2_offset + (s.get("end") or 0),
+                                                        s.get("text", "").strip(),
+                                                    )
+                                                    for s in _pass2_segments if s.get("text", "").strip()
+                                                ]
                                                 if _whisper_translated_text:
                                                     print(f"[WHISPER-TRANSLATE] Pass 2: '{_whisper_translated_text[:80]}'", flush=True)
                                         except Exception as _wt_err:
@@ -14453,6 +14656,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                             # Save substantial sentences to DB
                                             MIN_WORDS = min_words_threshold
                                             _newly_inserted_ids = []  # Track IDs for Whisper translation caching
+                                            _accepted_rows = []  # (row_id, text) of non-denied rows — whisper translation targets
                                             with _db_lock:
                                                 try:
                                                     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -14492,6 +14696,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             if not _denied:
+                                                                _accepted_rows.append((_newly_inserted_ids[-1], sentence))
                                                                 saved_sentences.append(sentence)
                                                                 conf_str = f", conf={segment_confidence:.2f}" if segment_confidence is not None else ""
                                                                 print(f"[DB INSERT] '{sentence[:50]}...'{conf_str}" if len(sentence) > 50 else f"[DB INSERT] '{sentence}'{conf_str}", flush=True)
@@ -14563,6 +14768,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             )
                                                             _newly_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                             if not _rem_denied:
+                                                                _accepted_rows.append((_newly_inserted_ids[-1], remainder))
                                                                 saved_sentences.append(remainder)
                                                                 print(f"[DB INSERT REMAINDER] '{remainder[:50]}...'" if len(remainder) > 50 else f"[DB INSERT REMAINDER] '{remainder}'", flush=True)
                                                             if _rem_cjk_shadow:
@@ -14594,16 +14800,27 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             [(str(_rid), _rid) for _rid in _newly_inserted_ids],
                                                         )
                                                     persistent_db_conn.commit()
-                                                    # Cache Whisper translation for newly inserted rows
-                                                    if _whisper_translated_text and _newly_inserted_ids:
+                                                    # Cache Whisper translation for accepted rows only, distributing
+                                                    # the whole-chunk pass-2 translation across them instead of
+                                                    # duplicating it on every row. Denied rows are never emitted
+                                                    # as translations, so they get none.
+                                                    if _whisper_translated_text and _accepted_rows:
                                                         _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
                                                         _tcache = get_translation_cache()
-                                                        for _row_id in _newly_inserted_ids:
-                                                            _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
+                                                        # Scope pass-2 text to this batch's time span (drops the
+                                                        # in-progress tail's translation); fall back to full text
+                                                        _wt_text = scope_whisper_translation(_pass2_timed, batch_end) or _whisper_translated_text
+                                                        _parts = distribute_whisper_translation(
+                                                            _wt_text, [t for _, t in _accepted_rows]
+                                                        )
+                                                        for (_row_id, _), _part in zip(_accepted_rows, _parts):
+                                                            if not _part:
+                                                                continue
+                                                            _tcache.set(_row_id, "", _part, _target_lang)
                                                             # Also save to DB translated_text column
                                                             persistent_db_cursor.execute(
                                                                 "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                                                (_whisper_translated_text, _target_lang, _row_id),
+                                                                (_part, _target_lang, _row_id),
                                                             )
                                                         persistent_db_conn.commit()
                                                     # Track saved_sentences and database row count
@@ -14684,6 +14901,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                 _phrase_word_groups = attribute_words_to_sentences(_phrase_stream, len(sentences))
                                                 _phrase_words_source = model_type
                                                 _phrase_inserted_ids = []
+                                                _phrase_accepted_rows = []  # (row_id, text) of non-denied rows — whisper translation targets
                                                 with _db_lock:
                                                     try:
                                                         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -14720,6 +14938,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 if not _denied:
+                                                                    _phrase_accepted_rows.append((_phrase_inserted_ids[-1], sentence))
                                                                     saved_sentences.append(sentence)
                                                                     print(f"[DB INSERT PHRASE] '{sentence[:50]}...'" if len(sentence) > 50 else f"[DB INSERT PHRASE] '{sentence}'", flush=True)
                                                                 if _cjk_shadow:
@@ -14771,6 +14990,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 )
                                                                 _phrase_inserted_ids.append(persistent_db_cursor.lastrowid)
                                                                 if not _rem_denied:
+                                                                    _phrase_accepted_rows.append((_phrase_inserted_ids[-1], remainder))
                                                                     saved_sentences.append(remainder)
                                                                 if _rem_cjk_shadow:
                                                                     persistent_db_cursor.execute(
@@ -14798,15 +15018,24 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 [(str(_rid), _rid) for _rid in _phrase_inserted_ids],
                                                             )
                                                         persistent_db_conn.commit()
-                                                        # Cache Whisper translation for phrase-completed rows
-                                                        if _whisper_translated_text and _phrase_inserted_ids:
+                                                        # Cache Whisper translation for accepted phrase rows only,
+                                                        # distributing the whole-chunk pass-2 translation across
+                                                        # them instead of duplicating it on every row.
+                                                        if _whisper_translated_text and _phrase_accepted_rows:
                                                             _target_lang = process_config.get("live_translation", {}).get("target_language", "en")
                                                             _tcache = get_translation_cache()
-                                                            for _row_id in _phrase_inserted_ids:
-                                                                _tcache.set(_row_id, "", _whisper_translated_text, _target_lang)
+                                                            # Scope pass-2 text to the finalized span; fall back to full text
+                                                            _wt_text = scope_whisper_translation(_pass2_timed, segment_end) or _whisper_translated_text
+                                                            _parts = distribute_whisper_translation(
+                                                                _wt_text, [t for _, t in _phrase_accepted_rows]
+                                                            )
+                                                            for (_row_id, _), _part in zip(_phrase_accepted_rows, _parts):
+                                                                if not _part:
+                                                                    continue
+                                                                _tcache.set(_row_id, "", _part, _target_lang)
                                                                 persistent_db_cursor.execute(
                                                                     "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                                                    (_whisper_translated_text, _target_lang, _row_id),
+                                                                    (_part, _target_lang, _row_id),
                                                                 )
                                                             persistent_db_conn.commit()
                                                     except Exception as db_error:

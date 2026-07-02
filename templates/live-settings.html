@@ -546,6 +546,12 @@
                     <input type="number" id="energy_threshold" min="500" max="10000" step="100" value="3500" oninput="updateThresholdDisplay(this.value)">
                 </div>
 
+                <div class="checkbox-group">
+                    <input type="checkbox" id="loudness_normalization">
+                    <label for="loudness_normalization">Boost Quiet Audio Before Transcription</label>
+                </div>
+                <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">Amplifies quiet input toward a target loudness before it reaches Whisper. Never clips; energy threshold and calibration still see raw levels</div>
+
                 <div class="slider-container">
                     <div class="slider-label">
                         <label for="phrase_timeout">Phrase Timeout</label>
@@ -709,14 +715,15 @@
                         <div class="slider-container">
                             <div class="slider-label">
                                 <label for="beam_size">Beam Size</label>
-                                <span class="slider-value"><span id="beamSizeValue">1</span></span>
+                                <span class="slider-value"><span id="beamSizeValue">3</span></span>
                             </div>
-                            <input type="range" id="beam_size" min="1" max="5" value="1" step="1" oninput="document.getElementById('beamSizeValue').textContent = this.value">
+                            <input type="range" id="beam_size" min="1" max="5" value="3" step="1" oninput="document.getElementById('beamSizeValue').textContent = this.value">
                             <details class="hint-details">
-                                <summary><span class="hint-icon">ⓘ</span> 1 = fast/greedy (recommended) · 5 = slower, higher quality</summary>
+                                <summary><span class="hint-icon">ⓘ</span> 3 = balanced (recommended) · 1 = fastest · 5 = highest quality</summary>
                                 <div class="hint-body">
                                     Search breadth for transcription candidates.<br>
-                                    <strong>1</strong> = Greedy/Fast — recommended for live, reduces hallucinations.<br>
+                                    <strong>1</strong> = Greedy/Fast — fastest, fallback for weak CPUs.<br>
+                                    <strong>3</strong> = Balanced — recommended default for live.<br>
                                     <strong>5</strong> = Thorough/Slow — best quality, slower processing.
                                 </div>
                             </details>
@@ -727,13 +734,13 @@
                                 <label for="temperature">Temperature</label>
                                 <span class="slider-value"><span id="temperatureValue">0.0</span></span>
                             </div>
-                            <input type="range" id="temperature" min="0" max="1.0" value="0.0" step="0.1" oninput="document.getElementById('temperatureValue').textContent = this.value">
+                            <input type="range" id="temperature" min="0" max="1.0" value="0.0" step="0.1" disabled oninput="document.getElementById('temperatureValue').textContent = this.value">
                             <details class="hint-details">
-                                <summary><span class="hint-icon">ⓘ</span> 0.0 = deterministic (recommended) · higher = more variation</summary>
+                                <summary><span class="hint-icon">ⓘ</span> Locked at 0.0 for live transcription</summary>
                                 <div class="hint-body">
-                                    Controls transcription randomness.<br>
-                                    <strong>0.0</strong> = Deterministic — recommended for live, most stable output.<br>
-                                    <strong>0.5–1.0</strong> = Creative — more variation, may help with difficult audio.
+                                    Nonzero temperature makes each re-transcription pass vary, so segments
+                                    never repeat identically and never finalize — no lines would save.
+                                    Live mode therefore always runs deterministic (0.0).
                                 </div>
                             </details>
                         </div>
@@ -741,9 +748,9 @@
                         <div class="slider-container">
                             <div class="slider-label">
                                 <label for="compression_ratio">Compression Ratio Threshold</label>
-                                <span class="slider-value"><span id="compressionRatioValue">1.8</span></span>
+                                <span class="slider-value"><span id="compressionRatioValue">2.4</span></span>
                             </div>
-                            <input type="range" id="compression_ratio" min="1.0" max="3.0" value="1.8" step="0.1" oninput="document.getElementById('compressionRatioValue').textContent = this.value">
+                            <input type="range" id="compression_ratio" min="1.0" max="3.0" value="2.4" step="0.1" oninput="document.getElementById('compressionRatioValue').textContent = this.value">
                             <details class="hint-details">
                                 <summary><span class="hint-icon">ⓘ</span> Lower = reject more repetition · Higher = allow more</summary>
                                 <div class="hint-body">
@@ -756,10 +763,26 @@
 
                         <div class="slider-container">
                             <div class="slider-label">
-                                <label for="logprob_threshold">Log Probability Threshold</label>
-                                <span class="slider-value"><span id="logprobValue">-0.5</span></span>
+                                <label for="no_speech_threshold">No-Speech Threshold</label>
+                                <span class="slider-value"><span id="noSpeechValue">0.6</span></span>
                             </div>
-                            <input type="range" id="logprob_threshold" min="-1.0" max="0.0" value="-0.5" step="0.1" oninput="document.getElementById('logprobValue').textContent = this.value">
+                            <input type="range" id="no_speech_threshold" min="0.1" max="1.0" value="0.6" step="0.05" oninput="document.getElementById('noSpeechValue').textContent = this.value">
+                            <details class="hint-details">
+                                <summary><span class="hint-icon">ⓘ</span> 0.6 = balanced (recommended) · lower = keep more borderline audio</summary>
+                                <div class="hint-body">
+                                    Probability threshold for treating a segment as silence and discarding it.<br>
+                                    <strong>Lower</strong> (0.2–0.5) = Keeps more borderline/quiet segments.<br>
+                                    <strong>Higher</strong> (0.7–1.0) = Discards segments more aggressively as non-speech.
+                                </div>
+                            </details>
+                        </div>
+
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <label for="logprob_threshold">Log Probability Threshold</label>
+                                <span class="slider-value"><span id="logprobValue">-1.0</span></span>
+                            </div>
+                            <input type="range" id="logprob_threshold" min="-1.0" max="0.0" value="-1.0" step="0.1" oninput="document.getElementById('logprobValue').textContent = this.value">
                             <details class="hint-details">
                                 <summary><span class="hint-icon">ⓘ</span> Higher = only high-confidence text · Lower = accept more</summary>
                                 <div class="hint-body">
@@ -1029,6 +1052,7 @@
 
             const threshold = config.audio?.energy_threshold || 3500;
             document.getElementById('energy_threshold').value = threshold;
+            document.getElementById('loudness_normalization').checked = config.audio?.loudness_normalization?.enabled === true;
             document.getElementById('threshold_display').textContent = threshold;
             energyThreshold = threshold; // Update the histogram threshold
 
@@ -1060,12 +1084,15 @@
             const whisperDecoding = config.whisper_decoding?.live_transcription || {};
             document.getElementById('beam_size').value = whisperDecoding.beam_size || 3;
             document.getElementById('beamSizeValue').textContent = whisperDecoding.beam_size || 3;
-            document.getElementById('temperature').value = whisperDecoding.temperature || 0.0;
-            document.getElementById('temperatureValue').textContent = whisperDecoding.temperature || 0.0;
-            document.getElementById('compression_ratio').value = whisperDecoding.compression_ratio_threshold || 1.8;
-            document.getElementById('compressionRatioValue').textContent = whisperDecoding.compression_ratio_threshold || 1.8;
-            document.getElementById('logprob_threshold').value = whisperDecoding.logprob_threshold || -0.5;
-            document.getElementById('logprobValue').textContent = whisperDecoding.logprob_threshold || -0.5;
+            // Temperature is locked at 0 for live (nonzero prevents segment finalization)
+            document.getElementById('temperature').value = 0.0;
+            document.getElementById('temperatureValue').textContent = '0.0';
+            document.getElementById('compression_ratio').value = whisperDecoding.compression_ratio_threshold ?? 2.4;
+            document.getElementById('compressionRatioValue').textContent = whisperDecoding.compression_ratio_threshold ?? 2.4;
+            document.getElementById('logprob_threshold').value = whisperDecoding.logprob_threshold ?? -1.0;
+            document.getElementById('logprobValue').textContent = whisperDecoding.logprob_threshold ?? -1.0;
+            document.getElementById('no_speech_threshold').value = whisperDecoding.no_speech_threshold ?? 0.6;
+            document.getElementById('noSpeechValue').textContent = whisperDecoding.no_speech_threshold ?? 0.6;
 
             // Load corrections settings
             const corr = config.corrections || {};
@@ -1220,7 +1247,10 @@
                         language: document.getElementById('live_language').value,
                         same_output_threshold: parseInt(document.getElementById('same_output_threshold').value),
                         fuzzy_duplicate_threshold: parseFloat(document.getElementById('fuzzy_duplicate_threshold').value),
-                        min_words: parseInt(document.getElementById('min_words').value)
+                        min_words: parseInt(document.getElementById('min_words').value),
+                        loudness_normalization: {
+                            enabled: document.getElementById('loudness_normalization').checked
+                        }
                     },
                     vad: {
                         enabled: document.getElementById('vad_enabled').checked,
@@ -1240,11 +1270,11 @@
                         live_transcription: {
                             beam_size: parseInt(document.getElementById('beam_size').value),
                             best_of: 1,  // Keep fixed at 1 for live
-                            temperature: parseFloat(document.getElementById('temperature').value),
+                            temperature: 0.0,  // Locked: nonzero prevents segment finalization in live mode
                             condition_on_previous_text: false,  // Keep fixed at false for live
                             compression_ratio_threshold: parseFloat(document.getElementById('compression_ratio').value),
                             logprob_threshold: parseFloat(document.getElementById('logprob_threshold').value),
-                            no_speech_threshold: 0.6
+                            no_speech_threshold: parseFloat(document.getElementById('no_speech_threshold').value)
                         }
                     },
                     corrections: {
