@@ -12108,7 +12108,7 @@ def get_new_entries(limit_override=None):
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
                            confidence, needs_review, translated_text, translation_language, speech_type,
-                           COALESCE(denied, 0), denied_reason
+                           COALESCE(denied, 0), denied_reason, music_prob
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
                     ORDER BY id ASC
@@ -12119,10 +12119,10 @@ def get_new_entries(limit_override=None):
                 # Use subquery to get last N entries by id DESC, then re-order ASC for display
                 cursor.execute(
                     """
-                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason FROM (
+                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob FROM (
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
                                confidence, needs_review, translated_text, translation_language, speech_type,
-                               COALESCE(denied, 0) as denied, denied_reason
+                               COALESCE(denied, 0) as denied, denied_reason, music_prob
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
                         ORDER BY id DESC
@@ -12179,7 +12179,7 @@ def emit_new_entries():
 
 
         # Convert entries to segment format with temporal data
-        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason)
+        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob)
         segments = []
         for entry in entries:
             seg = {
@@ -12200,6 +12200,8 @@ def emit_new_entries():
                 seg["denied"] = bool(entry[10]) if entry[10] is not None else False
             if len(entry) > 11:
                 seg["denied_reason"] = entry[11]
+            if len(entry) > 12:
+                seg["music_prob"] = entry[12]
             segments.append(seg)
 
         # Stable key matching db.segment_id (TEXT). Done before the output-delay split
@@ -14382,22 +14384,15 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 # Check if audio contains speech using VAD
                                 speech_detected = has_speech(accumulated_new_data, source.SAMPLE_RATE)
 
-                                # Optionally let confidently-detected music through to
-                                # transcription even when VAD would drop it.
+                                # Let confidently-detected music through to transcription even
+                                # when VAD would drop it. Music is always transcribed; the
+                                # transcribe_detected_music toggle only controls whether its
+                                # rows are visible or auto-denied ('music') at insert time.
                                 _std_cfg = process_config.get("speech_type_detection", {})
                                 if (not speech_detected
-                                        and _std_cfg.get("transcribe_detected_music", False)
                                         and (transcription_state.get("music_prob") or 0.0)
                                             > _std_cfg.get("music_prob_threshold", 0.5)):
                                     speech_detected = True
-
-                                # Block transcription when PANNs has classified the audio as
-                                # Music and the user hasn't opted in to transcribing music.
-                                # Handles the case where VAD detects speech in vocal music.
-                                if (speech_detected
-                                        and not _std_cfg.get("transcribe_detected_music", False)
-                                        and transcription_state.get("audio_type") == "Music"):
-                                    speech_detected = False
 
                                 # Check if phrase is complete (silence after speech)
                                 phrase_complete = False
@@ -14568,6 +14563,13 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     result = live_transcriber.update_segments(segments, chunk_duration)
 
                                     _cjk_filter_enabled = config.get("hallucination_filter", {}).get("cjk_filter_enabled", True)
+                                    # Music rows are transcribed but auto-denied when the user
+                                    # hasn't opted in to seeing lyrics (restorable in /corrections).
+                                    # The threshold in effect is recorded in the deny reason
+                                    # ('music:<thr>') so Music Sensitivity can be tuned against
+                                    # each denied row's stored music_prob.
+                                    _transcribe_music_enabled = process_config.get("speech_type_detection", {}).get("transcribe_detected_music", False)
+                                    _music_deny_reason = f"music:{process_config.get('speech_type_detection', {}).get('music_prob_threshold', 0.5):g}"
 
                                     # Handle completed segments (save to DB)
                                     if result['completed_segments']:
@@ -14678,8 +14680,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         if _is_hallucination:
                                                             print(f"[HALLUCINATION→DENIED] '{sentence[:40]}'", flush=True)
 
-                                                        _denied = 1 if (_is_hallucination or _cjk_deny) else 0
-                                                        _denied_reason = ('hallucination' if _is_hallucination else 'cjk') if _denied else None
+                                                        _music_deny = (not _transcribe_music_enabled) and segment_speech_type == "Music"
+                                                        if _music_deny and not (_is_hallucination or _cjk_deny):
+                                                            print(f"[MUSIC→DENIED] '{sentence[:40]}'", flush=True)
+                                                        _denied = 1 if (_is_hallucination or _cjk_deny or _music_deny) else 0
+                                                        _denied_reason = ('hallucination' if _is_hallucination else 'cjk' if _cjk_deny else _music_deny_reason) if _denied else None
 
                                                         # original_text = verbatim ASR before profanity normalization
                                                         # (words_json `w` tokens are the fullest-raw form, never filtered)
@@ -14689,7 +14694,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                         needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
                                                         _words_json = words_json_or_none(_sentence_word_groups[_sidx] if _sidx < len(_sentence_word_groups) else None)
-                                                        if _is_hallucination or _cjk_deny or (word_count >= MIN_WORDS and not is_dup):
+                                                        if _denied or (word_count >= MIN_WORDS and not is_dup):
                                                             persistent_db_cursor.execute(
                                                                 "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, needs_review, speech_type, audio_tag, music_prob, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
                                                                 (timestamp, sentence, segment_start, segment_end, segment_confidence, needs_review, segment_speech_type, segment_audio_tag, segment_music_prob, ts_ms, src_lang, _verbatim, _words_json, _words_source, live_session_id, _denied, _denied_reason),
@@ -14752,14 +14757,17 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                         _rem_is_hallucination = is_whisper_hallucination(remainder)
                                                         if _rem_is_hallucination:
                                                             print(f"[HALLUCINATION REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
-                                                        _rem_denied = 1 if (_rem_is_hallucination or _rem_cjk_deny) else 0
-                                                        _rem_denied_reason = ('hallucination' if _rem_is_hallucination else 'cjk') if _rem_denied else None
+                                                        _rem_music_deny = (not _transcribe_music_enabled) and segment_speech_type == "Music"
+                                                        if _rem_music_deny and not (_rem_is_hallucination or _rem_cjk_deny):
+                                                            print(f"[MUSIC REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
+                                                        _rem_denied = 1 if (_rem_is_hallucination or _rem_cjk_deny or _rem_music_deny) else 0
+                                                        _rem_denied_reason = ('hallucination' if _rem_is_hallucination else 'cjk' if _rem_cjk_deny else _music_deny_reason) if _rem_denied else None
                                                         _verbatim_rem = remainder
                                                         remainder = apply_profanity_filter(remainder)
                                                         rem_word_count = len(remainder.split())
                                                         rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
                                                         rem_needs_review = 1 if (segment_confidence is not None and segment_confidence < confidence_threshold) else 0
-                                                        if _rem_is_hallucination or _rem_cjk_deny or (rem_word_count >= MIN_WORDS and not rem_is_dup):
+                                                        if _rem_denied or (rem_word_count >= MIN_WORDS and not rem_is_dup):
                                                             # words_json NULL: the remainder is the trailing fragment, not one of
                                                             # the attributed `sentences` (and may be carried text with no words).
                                                             persistent_db_cursor.execute(
@@ -14923,15 +14931,18 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             if _is_hallucination:
                                                                 print(f"[HALLUCINATION→DENIED] '{sentence[:40]}'", flush=True)
 
-                                                            _denied = 1 if (_is_hallucination or _cjk_deny) else 0
-                                                            _denied_reason = ('hallucination' if _is_hallucination else 'cjk') if _denied else None
+                                                            _music_deny = (not _transcribe_music_enabled) and _phrase_speech_type == "Music"
+                                                            if _music_deny and not (_is_hallucination or _cjk_deny):
+                                                                print(f"[MUSIC→DENIED] '{sentence[:40]}'", flush=True)
+                                                            _denied = 1 if (_is_hallucination or _cjk_deny or _music_deny) else 0
+                                                            _denied_reason = ('hallucination' if _is_hallucination else 'cjk' if _cjk_deny else _music_deny_reason) if _denied else None
 
                                                             _verbatim = sentence
                                                             sentence = apply_profanity_filter(sentence)
                                                             word_count = len(sentence.split())
                                                             is_dup = is_fuzzy_duplicate(sentence, saved_sentences, fuzzy_threshold)
                                                             _phrase_words_json = words_json_or_none(_phrase_word_groups[_sidx] if _sidx < len(_phrase_word_groups) else None)
-                                                            if _is_hallucination or _cjk_deny or (word_count >= MIN_WORDS and not is_dup):
+                                                            if _denied or (word_count >= MIN_WORDS and not is_dup):
                                                                 persistent_db_cursor.execute(
                                                                     "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_json, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
                                                                     (timestamp, sentence, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim, _phrase_words_json, _phrase_words_source, live_session_id, _denied, _denied_reason),
@@ -14977,13 +14988,16 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             _rem_is_hallucination = is_whisper_hallucination(remainder)
                                                             if _rem_is_hallucination:
                                                                 print(f"[HALLUCINATION REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
-                                                            _rem_denied = 1 if (_rem_is_hallucination or _rem_cjk_deny) else 0
-                                                            _rem_denied_reason = ('hallucination' if _rem_is_hallucination else 'cjk') if _rem_denied else None
+                                                            _rem_music_deny = (not _transcribe_music_enabled) and _phrase_speech_type == "Music"
+                                                            if _rem_music_deny and not (_rem_is_hallucination or _rem_cjk_deny):
+                                                                print(f"[MUSIC REMAINDER→DENIED] '{remainder[:40]}'", flush=True)
+                                                            _rem_denied = 1 if (_rem_is_hallucination or _rem_cjk_deny or _rem_music_deny) else 0
+                                                            _rem_denied_reason = ('hallucination' if _rem_is_hallucination else 'cjk' if _rem_cjk_deny else _music_deny_reason) if _rem_denied else None
                                                             _verbatim_rem = remainder
                                                             remainder = apply_profanity_filter(remainder)
                                                             rem_word_count = len(remainder.split())
                                                             rem_is_dup = is_fuzzy_duplicate(remainder, saved_sentences, fuzzy_threshold)
-                                                            if _rem_is_hallucination or _rem_cjk_deny or (rem_word_count >= MIN_WORDS and not rem_is_dup):
+                                                            if _rem_denied or (rem_word_count >= MIN_WORDS and not rem_is_dup):
                                                                 persistent_db_cursor.execute(
                                                                     "INSERT INTO transcriptions (timestamp, text, start_time, end_time, speech_type, audio_tag, music_prob, confidence, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
                                                                     (timestamp, remainder, segment_start, segment_end, _phrase_speech_type, _phrase_audio_tag, _phrase_music_prob, _phrase_conf, _phrase_needs_review, ts_ms, _phrase_src, _verbatim_rem, _phrase_words_source, live_session_id, _rem_denied, _rem_denied_reason),
@@ -15131,6 +15145,11 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 _flush_words_source = model_type
                             except NameError:
                                 _flush_words_source = None
+                            _flush_std_cfg = process_config.get("speech_type_detection", {})
+                            if not _flush_denied and _flush_speech_type == "Music" and not _flush_std_cfg.get("transcribe_detected_music", False):
+                                _flush_denied = 1
+                                _flush_denied_reason = f"music:{_flush_std_cfg.get('music_prob_threshold', 0.5):g}"
+                                print(f"[MUSIC STOP-FLUSH→DENIED] '{_flush_text[:40]}'", flush=True)
                             if not _flush_denied and not _flush_word_ok:
                                 _flush_denied = 1
                                 _flush_denied_reason = 'short' if _flush_word_count < min_words_threshold else 'dup'

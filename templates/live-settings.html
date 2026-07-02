@@ -664,9 +664,9 @@
                     <details class="hint-details">
                         <summary><span class="hint-icon">ⓘ</span> Lower = block more music · Higher = let more through</summary>
                         <div class="hint-body">
-                            Music/singing probability above which audio is classified Music and blocked from transcription.<br>
-                            <strong>Lower</strong> = more aggressive blocking. <strong>Higher</strong> = stricter threshold (more music passes through).<br>
-                            Only applies when <strong>Transcribe detected music</strong> is disabled.
+                            Music/singing probability above which audio is classified Music.<br>
+                            <strong>Lower</strong> = more audio labeled Music. <strong>Higher</strong> = stricter threshold.<br>
+                            Music is always transcribed; lines from Music-labeled audio are hidden (restorable on /corrections) unless <strong>Show transcribed music</strong> is enabled.
                         </div>
                     </details>
                 </div>
@@ -698,8 +698,9 @@
 
                 <div class="checkbox-group" style="margin-top: 8px;">
                     <input type="checkbox" id="transcribe_detected_music">
-                    <label for="transcribe_detected_music">Transcribe detected music (attempt lyrics even if VAD would skip it)</label>
+                    <label for="transcribe_detected_music">Show transcribed music in the transcript</label>
                 </div>
+                <div class="slider-hint" style="color: var(--text-muted); font-size: 0.8em; margin: -8px 0 8px 0;">Music is always transcribed. When off, its lines are hidden and marked "Transcribe detected music not enabled" on /corrections, where they can be restored</div>
 
                 <!-- Advanced Whisper Decoding -->
                 <details class="section-collapse">

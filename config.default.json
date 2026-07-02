@@ -462,7 +462,7 @@
     "checkpoint_path": "",
     "_checkpoint_path_comment": "Optional path to the CNN14 checkpoint. Empty = default ~/.stt/panns_data/Cnn14_mAP=0.431.pth",
     "transcribe_detected_music": false,
-    "_transcribe_detected_music_comment": "When true, audio PANNs is confident is music is sent to Whisper even if VAD would drop it (attempts lyrics). When false, music is only labelled, not transcribed."
+    "_transcribe_detected_music_comment": "Music is always transcribed (even when VAD would drop it). When true, its rows show in the transcript. When false, they are saved hidden with denied_reason 'music' and can be restored on /corrections."
   },
   "watchdog": {
     "update_channel": "stable",

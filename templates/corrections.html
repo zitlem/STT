@@ -297,7 +297,7 @@
             let changed = false;
             segs.forEach(s => {
                 if (!segments[s.id]) {
-                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null, denied: !!s.denied, denied_reason: s.denied_reason || null };
+                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null, denied: !!s.denied, denied_reason: s.denied_reason || null, music_prob: s.music_prob ?? null };
                     changed = true;
                     if (!autoScroll) pendingNew++;  // arrived while user is reading above
                 } else {
@@ -306,6 +306,7 @@
                     if (s.speech_type != null) segments[s.id].speech_type = s.speech_type;
                     if (s.denied !== undefined && segments[s.id].denied !== !!s.denied) { segments[s.id].denied = !!s.denied; changed = true; }
                     if (s.denied_reason !== undefined) segments[s.id].denied_reason = s.denied_reason || null;
+                    if (s.music_prob != null) segments[s.id].music_prob = s.music_prob;
                 }
             });
             segOrder = Object.keys(segments).map(Number).sort((a, b) => a - b);
@@ -446,8 +447,22 @@
                 }
 
                 const DENY_REASON_LABELS = { hallucination: 'Hallucination', cjk: 'Non-Latin script', cjk_shadow: 'Script mismatch', short: 'Too short', dup: 'Duplicate' };
+                let denyLabel = null;
+                if (s.denied_reason) {
+                    if (s.denied_reason.startsWith('music')) {
+                        // 'music:<thr>' records the Music Sensitivity in effect at deny time;
+                        // showing it next to the row's own music_prob makes the slider tunable
+                        const thr = s.denied_reason.split(':')[1] || null;
+                        const prob = (s.music_prob != null) ? Number(s.music_prob).toFixed(2) : null;
+                        denyLabel = 'Transcribe detected music not enabled'
+                            + (prob ? ` · music ${prob}` : '')
+                            + (thr ? ` ≥ ${thr}` : '');
+                    } else {
+                        denyLabel = DENY_REASON_LABELS[s.denied_reason] || s.denied_reason;
+                    }
+                }
                 const denyHtml = s.denied
-                    ? `<div class="seg-actions">${s.denied_reason ? `<span class="denied-reason-pill">${esc(DENY_REASON_LABELS[s.denied_reason] || s.denied_reason)}</span>` : ''}<button class="seg-btn restore" onclick="toggleDenied(${id}, false)">Restore</button></div>`
+                    ? `<div class="seg-actions"><button class="seg-btn restore" onclick="toggleDenied(${id}, false)">Restore</button>${denyLabel ? `<span class="denied-reason-pill">${esc(denyLabel)}</span>` : ''}</div>`
                     : `<div class="seg-actions"><button class="seg-btn deny" onclick="toggleDenied(${id}, true)">Deny</button></div>`;
 
                 html += `<div class="${cardCls}" data-seg-id="${id}">` +
