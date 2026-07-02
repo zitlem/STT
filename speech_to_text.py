@@ -2415,33 +2415,51 @@ def panns_labels_home_path():
 
 def ensure_panns_labels_csv():
     """Guarantee a valid class_labels_indices.csv exists where panns_inference expects
-    it, BEFORE the library is imported. Repairs the missing/empty (0-byte) file that
-    a failed import-time download leaves behind. Best-effort: never raises."""
+    it, BEFORE the library is imported (it hardcodes ~/panns_data at import time).
+    All PANNs data lives in APP_DIR/panns_data; ~/panns_data is kept as a symlink
+    into it so nothing real is stored outside the app folder. Best-effort: never
+    raises."""
     global _panns_labels_ready
     if _panns_labels_ready:
         return
     try:
         home_csv = panns_labels_home_path()
-        if os.path.exists(home_csv) and os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES:
-            _panns_labels_ready = True
-            return
-        os.makedirs(os.path.dirname(home_csv), exist_ok=True)
-        # Prefer the bundled copy (offline-safe); fall back to an https download
-        # (the library only tries plain http, which is often blocked).
-        if os.path.exists(PANNS_LABELS_BUNDLED) and os.path.getsize(PANNS_LABELS_BUNDLED) >= _PANNS_LABELS_MIN_BYTES:
-            shutil.copyfile(PANNS_LABELS_BUNDLED, home_csv)
-            print(f"[PANNS] Installed AudioSet labels from bundled copy -> {home_csv}")
-        else:
+        home_dir = os.path.dirname(home_csv)
+        app_dir = os.path.dirname(PANNS_LABELS_BUNDLED)
+
+        # The app-folder copy is the real storage — make sure it's valid first
+        # (https download; the library itself only tries plain http, often blocked).
+        if not (os.path.exists(PANNS_LABELS_BUNDLED) and os.path.getsize(PANNS_LABELS_BUNDLED) >= _PANNS_LABELS_MIN_BYTES):
+            os.makedirs(app_dir, exist_ok=True)
             import urllib.request
-            urllib.request.urlretrieve(PANNS_LABELS_URL, home_csv)
-            print(f"[PANNS] Downloaded AudioSet labels -> {home_csv}")
-            # Cache for future offline starts (root can write under APP_DIR).
+            urllib.request.urlretrieve(PANNS_LABELS_URL, PANNS_LABELS_BUNDLED)
+            print(f"[PANNS] Downloaded AudioSet labels -> {PANNS_LABELS_BUNDLED}")
+        if not (os.path.exists(PANNS_LABELS_BUNDLED) and os.path.getsize(PANNS_LABELS_BUNDLED) >= _PANNS_LABELS_MIN_BYTES):
+            print("[PANNS] AudioSet labels unavailable; music detection will be unavailable")
+            return
+
+        # Point ~/panns_data at the app folder. Migrate a stale real directory
+        # only when it holds nothing but the label CSV (never delete unknown data).
+        if os.path.islink(home_dir):
+            if os.path.realpath(home_dir) != os.path.realpath(app_dir):
+                os.unlink(home_dir)
+        elif os.path.isdir(home_dir):
+            if all(name == PANNS_LABELS_FILENAME for name in os.listdir(home_dir)):
+                shutil.rmtree(home_dir)
+        if not os.path.lexists(home_dir):
             try:
-                if os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES:
-                    os.makedirs(os.path.dirname(PANNS_LABELS_BUNDLED), exist_ok=True)
-                    shutil.copyfile(home_csv, PANNS_LABELS_BUNDLED)
+                os.symlink(app_dir, home_dir)
+                print(f"[PANNS] Linked {home_dir} -> {app_dir}")
             except OSError:
                 pass
+
+        # Fallback when the symlink couldn't be made (or a real dir with other
+        # content remains): copy the CSV like before.
+        if not (os.path.exists(home_csv) and os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES):
+            os.makedirs(home_dir, exist_ok=True)
+            shutil.copyfile(PANNS_LABELS_BUNDLED, home_csv)
+            print(f"[PANNS] Installed AudioSet labels from bundled copy -> {home_csv}")
+
         if os.path.exists(home_csv) and os.path.getsize(home_csv) >= _PANNS_LABELS_MIN_BYTES:
             _panns_labels_ready = True
         else:
