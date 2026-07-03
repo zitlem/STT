@@ -1,3 +1,21 @@
 #!/bin/bash
-# Stop any running STT daemon before overwriting files
+# Stop any running STT instance before overwriting files, and migrate away from
+# the old root LaunchDaemon model if a previous version installed one.
+set +e
+
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || echo '')"
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
+    CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+    USER_HOME="$(dscl . -read /Users/"$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+    [ -n "$USER_HOME" ] || USER_HOME="/Users/$CONSOLE_USER"
+    AGENT_PLIST="$USER_HOME/Library/LaunchAgents/com.stt.watchdog.plist"
+    launchctl bootout "gui/$CONSOLE_UID" "$AGENT_PLIST" 2>/dev/null \
+        || launchctl asuser "$CONSOLE_UID" launchctl unload "$AGENT_PLIST" 2>/dev/null || true
+fi
+
+# Remove any stale root LaunchDaemon from versions <= the daemon era.
+launchctl bootout system /Library/LaunchDaemons/com.stt.watchdog.plist 2>/dev/null || true
 launchctl unload /Library/LaunchDaemons/com.stt.watchdog.plist 2>/dev/null || true
+rm -f /Library/LaunchDaemons/com.stt.watchdog.plist 2>/dev/null || true
+
+exit 0

@@ -1,9 +1,27 @@
 #!/bin/bash
+# Install STT as a per-user LaunchAgent (runs in the user's login session, NOT a
+# root LaunchDaemon). The thin bootstrapper needs the real user session: the
+# setup GUI, the microphone TCC consent prompt, and ~/.stt all require it.
 set -e
 
-PLIST=/Library/LaunchDaemons/com.stt.watchdog.plist
+chmod +x /Applications/STT.app/Contents/MacOS/STT || true
 
-cat > "$PLIST" << 'PLIST_EOF'
+# The pkg postinstall runs as root — resolve the actual logged-in user.
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || echo '')"
+if [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
+    echo "[STT] No console user; skipping LaunchAgent install (open STT.app manually to set up)."
+    exit 0
+fi
+CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+USER_HOME="$(dscl . -read /Users/"$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+[ -n "$USER_HOME" ] || USER_HOME="/Users/$CONSOLE_USER"
+
+AGENT_DIR="$USER_HOME/Library/LaunchAgents"
+PLIST="$AGENT_DIR/com.stt.watchdog.plist"
+LOG_DIR="$USER_HOME/.stt/logs"
+mkdir -p "$AGENT_DIR" "$LOG_DIR"
+
+cat > "$PLIST" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
     "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -26,14 +44,21 @@ cat > "$PLIST" << 'PLIST_EOF'
         <string>1</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>/var/log/stt-watchdog.log</string>
+    <string>$LOG_DIR/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/var/log/stt-watchdog.log</string>
+    <string>$LOG_DIR/launchd.out.log</string>
 </dict>
 </plist>
 PLIST_EOF
 
-chmod 644 "$PLIST"
-chown root:wheel "$PLIST"
-chmod +x /Applications/STT.app/Contents/MacOS/STT
-launchctl load "$PLIST" 2>/dev/null || true
+chown "$CONSOLE_USER":staff "$PLIST"
+chown -R "$CONSOLE_USER":staff "$USER_HOME/.stt" 2>/dev/null || true
+
+# Load into the user's GUI session so it starts now and at every login.
+launchctl bootout "gui/$CONSOLE_UID" "$PLIST" 2>/dev/null || true
+launchctl bootstrap "gui/$CONSOLE_UID" "$PLIST" 2>/dev/null \
+    || launchctl asuser "$CONSOLE_UID" launchctl load -w "$PLIST" 2>/dev/null \
+    || true
+
+echo "[STT] LaunchAgent installed for $CONSOLE_USER."
+exit 0
