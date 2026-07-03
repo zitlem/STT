@@ -3941,6 +3941,25 @@ socket_io_logger.setLevel(logging.WARNING)
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 
+
+class _SuppressBenignWSGINoise(logging.Filter):
+    """Drop the harmless 'write() before start_response' AssertionError that the
+    werkzeug dev server logs for Socket.IO polling/transport requests under
+    async_mode='threading' (the request finishes without the normal WSGI
+    response path). The connection still works; this is cosmetic noise. All
+    other werkzeug errors pass through unchanged."""
+
+    def filter(self, record):
+        try:
+            if "write() before start_response" in record.getMessage():
+                return False
+        except Exception:
+            pass
+        return True
+
+
+log.addFilter(_SuppressBenignWSGINoise())
+
 # Password-based authentication sessions
 # Format: {session_token: {"ip": client_ip, "expires": datetime}}
 auth_sessions = {}
