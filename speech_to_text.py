@@ -13182,6 +13182,12 @@ class _TimestampedStream:
     def write(self, s):
         if not s:
             return 0
+        n = len(s)
+        # Some writers (Flask/click banner) push bytes at stdout; decode so the
+        # str-based prefixing works, then let the underlying stream handle it.
+        if isinstance(s, (bytes, bytearray)):
+            enc = getattr(self._w, "encoding", None) or "utf-8"
+            s = bytes(s).decode(enc, "replace")
         ts = time.strftime("[%H:%M:%S] ")
         prefix = ts if self._at_line_start else ""
         self._at_line_start = s.endswith("\n")
@@ -13192,7 +13198,7 @@ class _TimestampedStream:
             self._w.write(prefix + body)
         except Exception:
             pass
-        return len(s)
+        return n
 
     def flush(self):
         try:
