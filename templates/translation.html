@@ -986,18 +986,24 @@
                     document.getElementById('transcription_status').textContent =
                         data.is_transcription_running ? 'Running' : 'Stopped';
 
-                    // Grey out local-only settings, unless remote is unreachable and falling
-                    // back to local translation — then local settings are actually in use.
-                    const localInUse = !data.remote_active ||
-                        (data.remote_reachable === false && data.remote_fallback === 'local');
-                    const tip = localInUse
-                        ? (data.remote_active ? 'Currently in use — remote is unreachable, falling back to local translation' : '')
-                        : 'Not used when remote translation is active';
+                    // Grey out local-only settings only when they can never apply
+                    // (remote active with fallback="skip"). When fallback="local", keep them
+                    // editable at all times so the fallback model can be configured ahead of
+                    // an outage, not just discovered missing after one starts.
+                    const localRelevant = !data.remote_active || data.remote_fallback === 'local';
+                    let tip = '';
+                    if (data.remote_active) {
+                        tip = data.remote_fallback === 'local'
+                            ? (data.remote_reachable === false
+                                ? 'Currently in use — remote is unreachable, falling back to local translation'
+                                : 'Standing by as fallback — used if remote becomes unreachable')
+                            : 'Not used when remote translation is active';
+                    }
                     for (const id of ['local_translation_settings', 'local_model_settings']) {
                         const el = document.getElementById(id);
                         if (el) {
-                            el.style.opacity = localInUse ? '' : '0.4';
-                            el.style.pointerEvents = localInUse ? '' : 'none';
+                            el.style.opacity = localRelevant ? '' : '0.4';
+                            el.style.pointerEvents = localRelevant ? '' : 'none';
                             el.title = tip;
                         }
                     }
