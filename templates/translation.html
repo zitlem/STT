@@ -225,7 +225,7 @@
                         </select>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
-                        <button onclick="requestPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Request Pairing</button>
+                        <button id="request_pairing_btn" onclick="requestPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Request Pairing</button>
                         <span id="pair_status_text" style="font-size: 0.85em; color: var(--text-secondary);"></span>
                     </div>
                     <div id="pair_code_entry" style="display:none; margin-top: 8px; padding: 10px; background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: var(--radius-sm);">
@@ -986,13 +986,18 @@
                     document.getElementById('transcription_status').textContent =
                         data.is_transcription_running ? 'Running' : 'Stopped';
 
-                    // Grey out local-only settings when remote is active
-                    const tip = data.remote_active ? 'Not used when remote translation is active' : '';
+                    // Grey out local-only settings, unless remote is unreachable and falling
+                    // back to local translation — then local settings are actually in use.
+                    const localInUse = !data.remote_active ||
+                        (data.remote_reachable === false && data.remote_fallback === 'local');
+                    const tip = localInUse
+                        ? (data.remote_active ? 'Currently in use — remote is unreachable, falling back to local translation' : '')
+                        : 'Not used when remote translation is active';
                     for (const id of ['local_translation_settings', 'local_model_settings']) {
                         const el = document.getElementById(id);
                         if (el) {
-                            el.style.opacity = data.remote_active ? '0.4' : '';
-                            el.style.pointerEvents = data.remote_active ? 'none' : '';
+                            el.style.opacity = localInUse ? '' : '0.4';
+                            el.style.pointerEvents = localInUse ? '' : 'none';
                             el.title = tip;
                         }
                     }
@@ -1124,6 +1129,7 @@
                     document.getElementById('pair_code_entry').style.display = 'none';
                     document.getElementById('pair_code_input').value = '';
                     document.getElementById('pair_status_text').textContent = 'Paired ✓';
+                    document.getElementById('request_pairing_btn').style.display = 'none';
                 } else {
                     document.getElementById('pair_status_text').textContent = (data.error || 'Wrong code') + ' — try again';
                 }
@@ -1160,11 +1166,13 @@
                             '<button onclick="unpairFromMachineB()" style="margin-left:6px; padding:2px 8px; font-size:0.75em; background:#5a2020; border:1px solid #a04040; border-radius:4px; color:#eee; cursor:pointer;">Unpair</button>';
                     }
                     document.getElementById('pair_code_entry').style.display = 'none';
+                    document.getElementById('request_pairing_btn').style.display = 'none';
                     return true;
                 } else {
                     if (statusEl.innerHTML.includes('Paired')) {
                         statusEl.textContent = 'Not paired';
                     }
+                    document.getElementById('request_pairing_btn').style.display = '';
                     return false;
                 }
             } catch (_) { return false; }
@@ -1177,6 +1185,7 @@
                 const data = await resp.json();
                 if (data.success) {
                     document.getElementById('pair_status_text').textContent = 'Unpaired';
+                    document.getElementById('request_pairing_btn').style.display = '';
                     showAlert('Unpaired from Machine B', 'success');
                 } else {
                     showAlert('Unpair failed: ' + (data.error || data.message), 'error');
