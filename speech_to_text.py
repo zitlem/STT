@@ -5479,6 +5479,7 @@ def save_translation_settings():
         config["live_translation"]["remote"] = {
             "enabled": bool(data["remote"].get("enabled", False)),
             "endpoint": str(data["remote"].get("endpoint", "")),
+            "fallback": "local" if data["remote"].get("fallback") == "local" else "skip",
         }
 
     # Save translation alternatives count to corrections config
@@ -5687,6 +5688,8 @@ def get_translation_status():
         "translation_method": _method,
         "remote_active": remote_active,
         "remote_endpoint": remote_cfg.get("endpoint", "") if remote_active else "",
+        "remote_reachable": _check_remote_reachable(_get_remote_endpoint_safe()) if remote_active else None,
+        "remote_fallback": remote_cfg.get("fallback", "skip"),
         "cache_size": get_translation_cache().get_size(),
         "is_transcription_running": transcription_state.get("running", False),
     }
@@ -6270,6 +6273,10 @@ class _RemoteEndpointError(Exception):
     pass
 
 
+class _RemoteTranslateError(Exception):
+    pass
+
+
 def _probe_remote_port(base_url):
     """Try common ports to find which one the STT app is listening on."""
     from urllib.parse import urlparse
@@ -6285,6 +6292,30 @@ def _probe_remote_port(base_url):
         except Exception:
             continue
     return None
+
+
+_remote_reachable_cache = {}  # {endpoint: (reachable: bool, checked_at: float)}
+_remote_reachable_cache_lock = threading.Lock()
+
+
+def _check_remote_reachable(endpoint, timeout=1.5, ttl=5.0):
+    """Cheap, cached liveness check for a paired remote translation endpoint."""
+    if not endpoint:
+        return False
+    now = time.time()
+    with _remote_reachable_cache_lock:
+        cached = _remote_reachable_cache.get(endpoint)
+        if cached and (now - cached[1]) < ttl:
+            return cached[0]
+    try:
+        import requests as _requests
+        r = _requests.get(endpoint.rstrip("/") + "/api/translation/status", timeout=timeout)
+        reachable = r.status_code == 200
+    except Exception:
+        reachable = False
+    with _remote_reachable_cache_lock:
+        _remote_reachable_cache[endpoint] = (reachable, now)
+    return reachable
 
 
 def _get_remote_endpoint():
@@ -12343,7 +12374,8 @@ def emit_new_entries():
 
 
 def _translate_via_remote(text, source_lang, target_lang, endpoint,
-                          return_extras=False, num_alternatives=0, generation_params=None):
+                          return_extras=False, num_alternatives=0, generation_params=None,
+                          raise_on_error=False):
     """Send text to a remote machine's /api/translate endpoint."""
     import requests as _requests
     try:
@@ -12372,6 +12404,8 @@ def _translate_via_remote(text, source_lang, target_lang, endpoint,
         return data.get("translated_text", text)
     except Exception as e:
         print(f"[REMOTE_TRANSLATE] Failed: {e}")
+        if raise_on_error:
+            raise _RemoteTranslateError(str(e)) from e
         if return_extras:
             return {"text": text, "confidence": None, "alternatives": []}
         return text
@@ -12386,15 +12420,32 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
     # Skip remote offload if this machine is itself serving remote clients (prevents chaining)
     remote_cfg = config.get("live_translation", {}).get("remote", {})
     if remote_cfg.get("enabled") and remote_cfg.get("endpoint") and not _trusted_translation_clients:
+        remote_failed = False
         try:
             _remote_ep = _get_remote_endpoint()
         except _RemoteEndpointError as e:
             print(f"[REMOTE_TRANSLATE] Endpoint error: {e}")
             _remote_ep = None
+            remote_failed = True
         if _remote_ep:
-            return _translate_via_remote(text, source_lang, target_lang, _remote_ep,
-                                         return_extras=return_extras, num_alternatives=num_alternatives,
-                                         generation_params=gen_params)
+            if _check_remote_reachable(_remote_ep):
+                try:
+                    return _translate_via_remote(text, source_lang, target_lang, _remote_ep,
+                                                 return_extras=return_extras, num_alternatives=num_alternatives,
+                                                 generation_params=gen_params, raise_on_error=True)
+                except _RemoteTranslateError as e:
+                    print(f"[REMOTE_TRANSLATE] Call failed: {e}")
+                    remote_failed = True
+            else:
+                print(f"[REMOTE_TRANSLATE] {_remote_ep} unreachable")
+                remote_failed = True
+
+        # Remote path failed — apply configured fallback ("skip" preserves the
+        # untranslated text as-is; anything else falls through to local translation below)
+        if remote_failed and remote_cfg.get("fallback", "skip") == "skip":
+            if return_extras:
+                return {"text": text, "confidence": None, "alternatives": []}
+            return text
 
     if not text or not text.strip():
         if return_extras:

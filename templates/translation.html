@@ -217,6 +217,13 @@
                         <label for="remote_translation_endpoint">Machine B URL</label>
                         <input type="text" id="remote_translation_endpoint" placeholder="http://192.168.X.X:80" style="width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); font-size: 0.9em;">
                     </div>
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <label for="remote_translation_fallback">If Machine B is unreachable</label>
+                        <select id="remote_translation_fallback" style="width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); font-size: 0.9em;">
+                            <option value="skip">Skip translation (show original text)</option>
+                            <option value="local">Fall back to local translation</option>
+                        </select>
+                    </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
                         <button onclick="requestPairing()" class="btn-save btn-primary" style="margin: 0; padding: 6px 14px;">Request Pairing</button>
                         <span id="pair_status_text" style="font-size: 0.85em; color: var(--text-secondary);"></span>
@@ -675,6 +682,7 @@
                     const remoteCfg = currentSettings.remote || {};
                     document.getElementById('remote_translation_enabled').checked = remoteCfg.enabled || false;
                     document.getElementById('remote_translation_endpoint').value = remoteCfg.endpoint || '';
+                    document.getElementById('remote_translation_fallback').value = remoteCfg.fallback || 'skip';
                     toggleRemoteFields();
 
                     // Set translation model (wait for dropdown to be populated)
@@ -822,6 +830,7 @@
                 remote: {
                     enabled: document.getElementById('remote_translation_enabled').checked,
                     endpoint: document.getElementById('remote_translation_endpoint').value.trim(),
+                    fallback: document.getElementById('remote_translation_fallback').value,
                 },
                 translation_count: parseInt(document.getElementById('translation_alternatives').value),
             };
@@ -943,7 +952,17 @@
                     const isWhisperMethod = data.translation_method && data.translation_method !== 'nllb';
                     document.getElementById('model_label').textContent = isWhisperMethod ? 'Whisper Model' : (data.remote_active ? 'Local Model' : 'Model');
                     document.getElementById('model_loaded_label').textContent = data.remote_active ? 'Remote Model' : 'Model Loaded';
-                    if (data.remote_active) {
+                    if (data.remote_active && data.remote_reachable === false) {
+                        // Known unreachable — skip the proxied round-trips, which would just
+                        // time out and misleadingly report "not paired".
+                        lastRemoteModel = '';
+                        const modelEl = document.getElementById('model_loaded');
+                        modelEl.textContent = 'Remote (unreachable — ' +
+                            (data.remote_fallback === 'local' ? 'using local fallback' : 'skipping translation') + ')';
+                        modelEl.style.color = '#f44336';
+                        document.getElementById('pair_status_text').innerHTML =
+                            '<span style="color: #f44336;">Paired, but unreachable</span>';
+                    } else if (data.remote_active) {
                         // Only fetch Machine B's status if we're actually paired
                         checkPairedStatus().then(paired => {
                             if (paired) {
