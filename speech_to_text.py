@@ -891,6 +891,25 @@ def translate_segments(segments, source_lang, target_lang, model, tokenizer, pro
     return translated_segments
 
 
+def _empty_device_cache():
+    """Release cached accelerator memory back to the OS (CUDA and MPS).
+
+    Call AFTER gc.collect(): the allocators can only release blocks whose
+    tensors have been collected. On MPS this is what actually returns model
+    memory to macOS — without it the process keeps the freed memory reserved
+    and a reload allocates a second full copy (swap death on ARM Macs)."""
+    if torch is None:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    _mps = getattr(torch, "mps", None)
+    if _mps is not None and hasattr(_mps, "empty_cache") and torch.backends.mps.is_available():
+        try:
+            _mps.empty_cache()
+        except Exception:
+            pass
+
+
 def cleanup_translation_model(model, tokenizer):
     """Clean up translation model to free memory"""
     import gc
@@ -898,10 +917,8 @@ def cleanup_translation_model(model, tokenizer):
     del model
     del tokenizer
 
-    if torch is not None and torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
     gc.collect()
+    _empty_device_cache()
     print("[CLEANUP] Translation model unloaded")
 
 
@@ -917,6 +934,10 @@ _live_translation_model_loaded = False
 _live_translation_model_loading = False  # Track when model is being loaded
 _live_translation_model_id = None  # Track which model is loaded to detect config changes
 _live_translation_target_lang = None
+# Set True by load/preload, False by unload. A queued unload re-checks this under
+# the lock and aborts if a preload re-requested the model in the meantime, so a
+# quick stop->start doesn't ack "already loaded" and then lose the model.
+_live_translation_model_wanted = False
 
 
 def is_live_translation_ready():
@@ -933,7 +954,7 @@ def is_live_translation_ready():
 def get_live_translation_model(use_gpu=True, model_id=None):
     """Get or load the live translation model (singleton pattern).
     If model_id differs from the currently loaded model, unloads and reloads."""
-    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_loading, _live_translation_model_id
+    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_loading, _live_translation_model_id, _live_translation_model_wanted
 
     with _live_translation_lock:
         # Don't load model if transcription is actively stopping (to prevent GPU memory leak)
@@ -941,6 +962,8 @@ def get_live_translation_model(use_gpu=True, model_id=None):
         if _live_translation_model is None and status == "stopping":
             print("[LIVE-TRANSLATION] Skipping model load - transcription is stopping")
             return None, None
+
+        _live_translation_model_wanted = True
 
         # If model_id changed, unload the stale model so it reloads with the correct one
         if _live_translation_model is not None and model_id and _live_translation_model_id and model_id != _live_translation_model_id:
@@ -952,9 +975,8 @@ def get_live_translation_model(use_gpu=True, model_id=None):
             _live_translation_tokenizer = None
             _live_translation_model_loaded = False
             _live_translation_model_id = None
-            if torch is not None and torch.cuda.is_available():
-                torch.cuda.empty_cache()
             gc.collect()
+            _empty_device_cache()
 
         if _live_translation_model is None:
             _live_translation_model_loading = True
@@ -974,10 +996,16 @@ def get_live_translation_model(use_gpu=True, model_id=None):
 
 def unload_live_translation_model():
     """Unload the live translation model to free GPU memory"""
-    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_id
+    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_id, _live_translation_model_wanted
     import gc
 
+    _live_translation_model_wanted = False
     with _live_translation_lock:
+        if _live_translation_model_wanted:
+            # A preload re-requested the model while this unload waited on the
+            # lock (quick stop->start) — keep it loaded
+            print("[LIVE-TRANSLATION] Unload cancelled: model re-requested")
+            return
         if _live_translation_model is not None:
             print("[LIVE-TRANSLATION] Unloading live translation model...")
             del _live_translation_model
@@ -986,9 +1014,8 @@ def unload_live_translation_model():
             _live_translation_tokenizer = None
             _live_translation_model_loaded = False
             _live_translation_model_id = None
-            if torch is not None and torch.cuda.is_available():
-                torch.cuda.empty_cache()
             gc.collect()
+            _empty_device_cache()
             print("[LIVE-TRANSLATION] Live translation model unloaded")
 
 
@@ -1438,11 +1465,10 @@ class ModelFactory:
         # This is CRITICAL for ctranslate2/faster-whisper to release GPU memory
         gc.collect()
 
-        # Now clear CUDA cache
+        # Now clear the accelerator cache (CUDA or MPS)
         try:
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                print("[OK] All models cleaned up from memory, GPU cache cleared")
+            _empty_device_cache()
+            print("[OK] All models cleaned up from memory, GPU cache cleared")
         except Exception as e:
             print(f"[OK] All models cleaned up from memory (GPU cleanup: {e})")
 
@@ -5822,6 +5848,11 @@ def translate_preload():
     if not _is_trusted_translation_client(client_ip):
         return jsonify({"error": "Not paired"}), 403
 
+    # Mark wanted BEFORE the early returns: a queued unload (quick stop->start)
+    # would otherwise remove the model right after we ack "already loaded"
+    global _live_translation_model_wanted
+    _live_translation_model_wanted = True
+
     if is_live_translation_model_loaded():
         return jsonify({"success": True, "message": "Model already loaded"})
 
@@ -7034,9 +7065,8 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
                     processor = None
 
                 ModelFactory.cleanup_models()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
                 gc.collect()
+                _empty_device_cache()
                 print("[CLEANUP] Transcription model unloaded before translation")
 
                 socketio.emit(
@@ -7074,9 +7104,8 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
                 if translation_tokenizer:
                     del translation_tokenizer
                     translation_tokenizer = None
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
                 gc.collect()
+                _empty_device_cache()
 
             target_language_name = TRANSLATION_LANGUAGES.get(translate_to, translate_to)
             print(f"[INFO] Translation complete: {len(translated_segments)} segments translated to {target_language_name}")
@@ -7127,10 +7156,9 @@ def process_file_transcription(file_path, output_format, session_id, filename, l
             ModelFactory.cleanup_models()
             print("[CLEANUP] Model cache cleared after file transcription")
 
-            # GPU cleanup
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                print("[CLEANUP] GPU cache cleared")
+            # Accelerator cleanup (CUDA or MPS)
+            _empty_device_cache()
+            print("[CLEANUP] GPU cache cleared")
 
             gc.collect()
 
@@ -13550,8 +13578,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         except Exception as e:
                             print(f"[UNLOAD] Warning: ModelFactory cleanup error: {e}")
                         gc.collect()
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
+                        _empty_device_cache()
                         print("[UNLOAD] Models unloaded, GPU memory released")
             except Exception as e:
                 print(f"[WARNING] Error processing control command: {e}", flush=True)
@@ -13916,9 +13943,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                         # Clear orphaned GPU memory from failed model load
                         try:
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
-                                print("[CLEANUP] GPU cache cleared after failed model load")
+                            _empty_device_cache()
+                            print("[CLEANUP] GPU cache cleared after failed model load")
                         except (RuntimeError, AttributeError):
                             pass
 
