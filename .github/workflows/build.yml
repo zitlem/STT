@@ -26,9 +26,33 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  # ── Tests & lint gate ──────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.11"
+      - name: Install test deps
+        run: |
+          # The suite inspects speech_to_text.py via ast (see tests/conftest.py),
+          # so no ML runtime deps are needed here.
+          uv venv
+          uv pip install -r requirements-dev.txt certifi
+      - name: Lint
+        run: uv run ruff check .
+      - name: Test
+        run: uv run pytest
+
   # ── Version computation ────────────────────────────────────────────────────
   version:
+    needs: test
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.v.outputs.tag }}
@@ -39,13 +63,24 @@ jobs:
       - id: v
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.ref_name }}"
+            # A hand-pushed tag must ship a matching VERSION file, or every
+            # deployed watchdog will loop on "update available" forever.
+            if [ "$(cat VERSION)" != "${TAG#v}" ]; then
+              echo "::error::VERSION file ($(cat VERSION)) does not match tag $TAG — commit the bump before tagging"
+              exit 1
+            fi
           else
             COUNT=$(git rev-list --count HEAD)
             MINOR=$((COUNT / 256))
             PATCH=$((COUNT % 256))
-            echo "tag=$(date +%y).$MINOR.$PATCH" >> $GITHUB_OUTPUT
+            TAG="$(date +%y).$MINOR.$PATCH"
+            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "::error::tag $TAG already exists — push a commit before re-releasing"
+              exit 1
+            fi
           fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
   # ── Per-platform build jobs ────────────────────────────────────────────────
   build-windows:
@@ -68,7 +103,9 @@ jobs:
           uv pip install pyinstaller certifi pillow
       - name: Set version
         shell: bash
-        run: echo "${{ needs.version.outputs.tag }}" > VERSION
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          echo "${TAG#v}" > VERSION
       - name: Generate icon
         shell: bash
         run: uv run python make_icon.py
@@ -103,7 +140,9 @@ jobs:
           uv venv
           uv pip install pyinstaller certifi pillow
       - name: Set version
-        run: echo "${{ needs.version.outputs.tag }}" > VERSION
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          echo "${TAG#v}" > VERSION
       - name: Generate icon
         run: uv run python make_icon.py
       - name: Build
@@ -152,7 +191,9 @@ jobs:
           uv venv
           uv pip install pyinstaller certifi pillow
       - name: Set version
-        run: echo "${{ needs.version.outputs.tag }}" > VERSION
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          echo "${TAG#v}" > VERSION
       - name: Generate icon
         run: uv run python make_icon.py
       - name: Build
@@ -183,15 +224,43 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Commit the VERSION bump and tag it, so the tag's tree carries the
+      # version it was released as. Deployed watchdogs read SOURCE/VERSION
+      # after updating — without this they'd see "update available" forever.
+      - name: Bump VERSION and tag (dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          echo "${TAG#v}" > VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): bump VERSION to ${TAG#v}"
+          fi
+          git tag "$TAG"
+          # Checkout is detached at the trigger SHA; push back to the branch
+          # the workflow was dispatched from, plus the new tag.
+          git push origin "HEAD:refs/heads/${{ github.ref_name }}" "refs/tags/$TAG"
+
       - uses: actions/download-artifact@v7
         with:
           path: artifacts/
+
+      - name: Generate checksums
+        run: |
+          for f in artifacts/*/*; do
+            (cd "$(dirname "$f")" && shasum -a 256 "$(basename "$f")")
+          done > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           name: STT ${{ needs.version.outputs.tag }}
           prerelease: ${{ inputs.prerelease == true }}
-          files: artifacts/**/*
+          files: |
+            artifacts/**/*
+            SHA256SUMS.txt
           generate_release_notes: true
 
