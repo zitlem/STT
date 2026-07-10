@@ -12501,6 +12501,7 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
 def emit_translated_entries():
     """Background task that emits translated transcription updates"""
     update_interval = config.get("web_server", {}).get("update_interval", 0.5)
+    _translation_backlog_state = {"active": False}  # Log backlog transitions once, not per cycle
 
     while True:
         trans_config = config.get("live_translation", {})
@@ -12568,7 +12569,38 @@ def emit_translated_entries():
             context_window = max(1, min(5, int(trans_config.get("context_window", 1) or 1)))
 
             max_translations_per_cycle = 3  # Limit new translations per cycle so cached segments emit fast
-            translations_this_cycle = 0
+
+            # Budget the cycle's fresh translations newest-first (with one slot
+            # reserved for the oldest so the tail still clears). FIFO drain would
+            # translate the segment a live consumer needs *last* during a backlog.
+            _allowed_fresh = set()
+            _backlogged = False
+            if not _whisper_translation_active:
+                _pending_fresh = []
+                for _e in entries:
+                    if _e[10]:
+                        continue
+                    if len(_e) > 7 and _e[7]:
+                        continue  # translation already stored in DB
+                    if cache.get(_e[0], _e[2], target_lang) or cache.get(_e[0], _e[2], target_lang, accept_stale_lang=True):
+                        continue
+                    _pending_fresh.append(_e[0])
+                if len(_pending_fresh) > max_translations_per_cycle:
+                    _backlogged = True
+                    _allowed_fresh = set(_pending_fresh[-(max_translations_per_cycle - 1):]) | {_pending_fresh[0]}
+                else:
+                    _allowed_fresh = set(_pending_fresh)
+                if _backlogged != _translation_backlog_state["active"]:
+                    _translation_backlog_state["active"] = _backlogged
+                    if _backlogged:
+                        print(f"[TRANSLATION] Backlog: {len(_pending_fresh)} segments pending — draining newest-first, extras paused", flush=True)
+                    else:
+                        print("[TRANSLATION] Backlog cleared", flush=True)
+
+            # While backlogged, skip confidence/alternatives on fresh translations
+            # to raise drain throughput (cached extras still display normally)
+            _want_conf_cycle = want_confidence and not _backlogged
+            _n_alt_cycle = 0 if _backlogged else n_alternatives
             for idx, entry in enumerate(e for e in entries if not e[10]):
                 seg_id = entry[0]
                 original_text = entry[2]
@@ -12643,6 +12675,11 @@ def emit_translated_entries():
                                 "completed": True,
                             })
                         continue
+                    # Over this cycle's translation budget — a later cycle picks it
+                    # up (newest-first); skip emission until it's translated
+                    if seg_id not in _allowed_fresh:
+                        continue
+
                     # Build context from preceding segments if context_window > 1.
                     # The combined (context + target) text is translated in one call, then the
                     # target's portion is extracted by sentence-count alignment. If alignment
@@ -12663,10 +12700,10 @@ def emit_translated_entries():
                             ctx_char_ratio = (len(context_prefix) + 1) / max(1, len(text_to_translate))
 
                     # Translate with confidence/alternatives if corrections enabled
-                    if want_confidence or n_alternatives > 0:
+                    if _want_conf_cycle or _n_alt_cycle > 0:
                         result = translate_live_text(
                             text_to_translate, source_lang, target_lang,
-                            return_extras=True, num_alternatives=n_alternatives,
+                            return_extras=True, num_alternatives=_n_alt_cycle,
                         )
                         if num_ctx_sentences:
                             extracted = extract_context_translation(result.get("text", ""), num_ctx_sentences, ctx_char_ratio)
@@ -12682,7 +12719,7 @@ def emit_translated_entries():
                                 # Alignment failed - retranslate without context
                                 result = translate_live_text(
                                     original_text, source_lang, target_lang,
-                                    return_extras=True, num_alternatives=n_alternatives,
+                                    return_extras=True, num_alternatives=_n_alt_cycle,
                                 )
                         translated_text = result["text"]
                         extras = {"confidence": result.get("confidence"), "alternatives": result.get("alternatives", [])}
@@ -12718,11 +12755,6 @@ def emit_translated_entries():
                         # Translation still shows from cache, but won't survive a
                         # page reload — surface the reason instead of hiding it
                         print(f"[TRANSLATION] DB save failed for segment {seg_id}: {e}", flush=True)
-
-                    # Limit new translations per cycle so cached segments emit quickly on page load
-                    translations_this_cycle += 1
-                    if translations_this_cycle >= max_translations_per_cycle:
-                        break
 
                 # Skip known Whisper hallucinations in translated text
                 if is_whisper_hallucination(translated_text):
