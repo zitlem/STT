@@ -13926,7 +13926,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         model_config["whisper"]["model"] = args.model
 
                     print(
-                        f"[INIT] Step 3/5: Loading model ({model_config.get('type', 'whisper')})..."
+                        f"[INIT] Step 3/5: Loading model ({model_config.get('type', 'whisper')}, backend={model_config.get('backend', 'whisper')})..."
                     )
 
                     try:
