@@ -395,9 +395,18 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
         print(f"[OK] Loaded configuration from '{CONFIG_FILE}'")
+    except OSError as e:
+        # A read failure (permissions, I/O) is NOT corruption: the file's content
+        # may be perfectly good, so displacing it and seeding defaults would
+        # silently discard the user's settings. Fail loudly instead.
+        raise RuntimeError(
+            f"Cannot read '{CONFIG_FILE}': {e}. If the file is owned by another "
+            f"user (e.g. root after running the server with sudo), fix it with: "
+            f"sudo chmod 644 {CONFIG_FILE}"
+        ) from e
     except Exception as e:
-        # Corrupted / unreadable config.json: back up the bad file, then rewrite a
-        # fresh one from the template so the app can still start.
+        # Corrupted config.json (readable but unparseable): back up the bad file,
+        # then rewrite a fresh one from the template so the app can still start.
         print(f"[CONFIG] ERROR: could not parse '{CONFIG_FILE}': {e}")
         from datetime import datetime
         import shutil
