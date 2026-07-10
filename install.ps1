@@ -185,7 +185,7 @@ function Install-PythonDeps {
     if (Test-Command "uv") {
         if ($hasGpu) {
             Print-Status "Installing GPU-enabled packages (CUDA)..."
-            & uv pip install --python $PYTHON_BIN -r $reqFile --extra-index-url https://download.pytorch.org/whl/cu121
+            & uv pip install --python $PYTHON_BIN -r $reqFile --extra-index-url https://download.pytorch.org/whl/cu128
         } else {
             Print-Status "Installing CPU-only packages..."
             & uv pip install --python $PYTHON_BIN -r $reqFile
@@ -195,7 +195,7 @@ function Install-PythonDeps {
         & $PYTHON_BIN -m pip install --upgrade pip
         if ($hasGpu) {
             Print-Status "Installing GPU-enabled packages (CUDA)..."
-            & $PYTHON_BIN -m pip install -r $reqFile --extra-index-url https://download.pytorch.org/whl/cu121
+            & $PYTHON_BIN -m pip install -r $reqFile --extra-index-url https://download.pytorch.org/whl/cu128
         } else {
             Print-Status "Installing CPU-only packages..."
             & $PYTHON_BIN -m pip install -r $reqFile

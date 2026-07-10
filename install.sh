@@ -236,7 +236,7 @@ install_python_deps() {
         # Linux: install CUDA PyTorch if NVIDIA GPU present, otherwise CPU
         if detect_gpu; then
             print_status "Installing GPU-enabled packages (CUDA)..."
-            uv pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
+            uv pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
         else
             print_status "Installing CPU-only packages..."
             uv pip install -r requirements.txt

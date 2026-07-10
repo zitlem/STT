@@ -71,9 +71,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### Linux with NVIDIA GPU (CUDA 12.1):
+#### Linux with NVIDIA GPU (CUDA 12.8):
 ```bash
-pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
 ```
 
 Note: The install.sh script detects your platform and GPU automatically.
@@ -231,7 +231,7 @@ Alternatively, run `start_watchdog.bat` or `start_watchdog.ps1` from the Startup
 - **CPU:** 8 cores
 - **RAM:** 16 GB
 - **GPU:** NVIDIA GPU with 4GB+ VRAM (RTX 2060 or better)
-- **CUDA:** 12.1 compatible drivers
+- **CUDA:** 12.8 compatible drivers (NVIDIA driver R570+)
 - **Storage:** 20 GB free space
 - **Python:** 3.10 - 3.13
 

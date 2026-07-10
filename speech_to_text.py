@@ -910,6 +910,63 @@ def _empty_device_cache():
             pass
 
 
+def _preload_cudnn(use_gpu):
+    """Make cuDNN 9 loadable before faster_whisper/ctranslate2 is imported.
+
+    ctranslate2 >= 4.5 dlopens cuDNN 9 itself and knows nothing about the
+    venv's nvidia-cudnn wheel or torch's bundled copy, so resolve the lib
+    directory from the running interpreter (works for any Python version/venv)
+    instead of trusting the loader search path. No-op on macOS or CPU-only."""
+    if not use_gpu or platform == "darwin":
+        return
+    import ctypes
+    import importlib.util
+
+    lib_dirs = []
+    for mod in ("nvidia.cudnn", "torch"):
+        try:
+            spec = importlib.util.find_spec(mod)
+        except (ImportError, AttributeError, ValueError):
+            spec = None
+        for loc in (spec.submodule_search_locations or []) if spec else []:
+            lib_dirs.append(os.path.join(loc, "lib"))
+            if platform.startswith("win"):
+                lib_dirs.append(os.path.join(loc, "bin"))
+
+    if platform.startswith("win"):
+        # cuDNN DLLs live in the wheel's bin/ (nvidia-cudnn) or torch/lib;
+        # register them explicitly instead of relying on PATH.
+        for d in lib_dirs:
+            if os.path.isdir(d):
+                try:
+                    os.add_dll_directory(d)
+                except OSError:
+                    pass
+        return
+
+    cudnn_libs = [
+        "libcudnn_ops.so.9",
+        "libcudnn_cnn.so.9",
+        "libcudnn_adv.so.9",
+        "libcudnn_graph.so.9",
+        "libcudnn_engines_precompiled.so.9",
+        "libcudnn_engines_runtime_compiled.so.9",
+        "libcudnn_heuristic.so.9",
+        "libcudnn.so.9",
+    ]
+    lib_dir = next((d for d in lib_dirs
+                    if os.path.exists(os.path.join(d, "libcudnn.so.9"))), None)
+    if not lib_dir:
+        return
+    for lib in cudnn_libs:
+        lib_full_path = os.path.join(lib_dir, lib)
+        if os.path.exists(lib_full_path):
+            try:
+                ctypes.CDLL(lib_full_path, mode=ctypes.RTLD_GLOBAL)
+            except OSError as e:
+                print(f"Warning: Could not preload {lib}: {e}")
+
+
 def cleanup_translation_model(model, tokenizer):
     """Clean up translation model to free memory"""
     import gc
@@ -1515,30 +1572,8 @@ class ModelFactory:
     @staticmethod
     def _load_faster_whisper(whisper_config, use_gpu=True):
         """Load faster-whisper model (CTranslate2-based, 4-10x faster)"""
-        import ctypes
-
-        # Preload cuDNN libraries from nvidia-cudnn-cu12 pip package if available
-        # This must happen BEFORE importing faster_whisper/ctranslate2
-        # On Windows, cuDNN DLLs are auto-discovered via PATH — skip manual preloading
-        cudnn_lib_path = os.path.expanduser("~/.local/lib/python3.12/site-packages/nvidia/cudnn/lib")
-        if not platform.startswith('win') and os.path.exists(cudnn_lib_path) and use_gpu:
-            cudnn_libs = [
-                "libcudnn_ops.so.9",
-                "libcudnn_cnn.so.9",
-                "libcudnn_adv.so.9",
-                "libcudnn_graph.so.9",
-                "libcudnn_engines_precompiled.so.9",
-                "libcudnn_engines_runtime_compiled.so.9",
-                "libcudnn_heuristic.so.9",
-                "libcudnn.so.9",
-            ]
-            for lib in cudnn_libs:
-                lib_full_path = os.path.join(cudnn_lib_path, lib)
-                if os.path.exists(lib_full_path):
-                    try:
-                        ctypes.CDLL(lib_full_path, mode=ctypes.RTLD_GLOBAL)
-                    except OSError as e:
-                        print(f"Warning: Could not preload {lib}: {e}")
+        # Must happen BEFORE importing faster_whisper/ctranslate2
+        _preload_cudnn(use_gpu)
 
         from faster_whisper import WhisperModel
 

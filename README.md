@@ -124,7 +124,7 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions, system requ
 ### Recommended (with GPU)
 - **CPU:** 8 cores | **RAM:** 16 GB | **Storage:** 20 GB
 - **GPU:** NVIDIA with 4GB+ VRAM (RTX 2060 or better)
-- **CUDA:** 12.1 compatible drivers
+- **CUDA:** 12.8 compatible drivers (NVIDIA driver R570+)
 
 ## Configuration
 
@@ -145,7 +145,7 @@ Edit `config.json` or use the web interface. Key settings include:
 - **Translation:** Facebook NLLB-200 via Hugging Face Transformers
 - **TTS:** Edge-TTS and Piper-TTS
 - **Audio:** FFmpeg for capture and processing, Silero VAD
-- **ML:** PyTorch with CUDA 12.1 support
+- **ML:** PyTorch with CUDA 12.8 support
 - **Frontend:** Bootstrap, jQuery, Socket.IO
 - **Database:** SQLite (per-session)
 

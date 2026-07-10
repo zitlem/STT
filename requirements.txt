@@ -7,16 +7,19 @@ wheel
 pyaudio>=0.2.13
 SpeechRecognition>=3.10.0
 
-# PyTorch - standard PyPI build supports CUDA (Linux/Windows) and MPS (macOS ARM) automatically
-# On Linux with NVIDIA GPU, install CUDA-enabled PyTorch manually:
-#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-torch>=2.0.0
-torchaudio>=2.0.0
+# PyTorch - standard PyPI build supports CUDA (Linux) and MPS (macOS ARM) automatically.
+# On Windows/Linux with NVIDIA GPU the installers add the CUDA wheel index:
+#   pip install torch torchaudio --extra-index-url https://download.pytorch.org/whl/cu128
+# Pinned: torch/ctranslate2/cuDNN must move together (ctranslate2 >= 4.5 needs
+# the cuDNN 9 that torch 2.8 cu12x wheels bundle) — bump the trio deliberately.
+torch==2.8.0
+torchaudio==2.8.0
 
 # Core ML dependencies
 numpy<2.0.0
 git+https://github.com/openai/whisper.git
-faster-whisper>=1.0.0
+faster-whisper==1.2.1
+ctranslate2==4.7.1
 transformers>=4.35.0
 huggingface_hub>=0.19.0
 accelerate>=0.24.0
