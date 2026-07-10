@@ -185,7 +185,9 @@ install_uv() {
 # Function to create Python virtual environment
 create_venv() {
     print_status "Creating Python virtual environment..."
-    uv venv "$INSTALL_DIR/.venv"
+    # --clear replaces an existing .venv without the interactive y/n prompt
+    # (unattended/headless installs would otherwise hang on a keypress)
+    uv venv --clear "$INSTALL_DIR/.venv"
     export VIRTUAL_ENV="$INSTALL_DIR/.venv"
     PYTHON_BIN="$INSTALL_DIR/.venv/bin/python3"
     print_success "Virtual environment created at $INSTALL_DIR/.venv"

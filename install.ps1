@@ -139,7 +139,8 @@ function Create-Venv {
     Print-Status "Creating Python virtual environment..."
 
     if (Test-Command "uv") {
-        & uv venv $VENV_DIR
+        # --clear replaces an existing venv without the interactive y/n prompt
+        & uv venv --clear $VENV_DIR
     } else {
         & python -m venv $VENV_DIR
     }
