@@ -175,8 +175,21 @@ def save_config(cfg):
 
 
 def read_version():
-    # SOURCE/VERSION is git-managed (updated by git reset). Fall back to the
-    # bundled VERSION inside the frozen bootstrapper before source is cloned.
+    # The release tag the checkout is pinned to is the truth; the VERSION file
+    # in historic tags can lag behind the tag itself. Fall back to
+    # SOURCE/VERSION, then the bundled VERSION inside the frozen bootstrapper
+    # before source is cloned.
+    if shutil.which("git") and os.path.isdir(os.path.join(SOURCE_DIR, ".git")):
+        try:
+            r = subprocess.run(
+                ["git", "-C", SOURCE_DIR, "describe", "--tags", "--exact-match", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            )
+            tag = r.stdout.strip().lstrip("v") if r.returncode == 0 else ""
+            if tag:
+                return tag
+        except (OSError, subprocess.SubprocessError):
+            pass
     candidates = [VERSION_FILE]
     if _FROZEN:
         candidates.append(os.path.join(sys._MEIPASS, "VERSION"))
@@ -476,12 +489,9 @@ class Provisioner:
 
     def _step_source(self):
         if os.path.isfile(STT_SCRIPT) and os.path.isdir(os.path.join(SOURCE_DIR, ".git")):
-            if _which("git"):
-                self.log("  updating existing checkout...")
-                self._run(["git", "-C", SOURCE_DIR, "fetch", "--depth", "1", "origin"],
-                          desc="git fetch", check=False)
-                self._run(["git", "-C", SOURCE_DIR, "reset", "--hard", "origin/HEAD"],
-                          desc="git reset --hard", check=False)
+            # Valid checkout — leave it on whatever ref the auto-updater pinned;
+            # resetting to origin/HEAD here would drag releases back to main.
+            self.log("  source checkout present")
             return
         os.makedirs(os.path.dirname(SOURCE_DIR) or DATA_DIR, exist_ok=True)
         if _which("git"):
@@ -490,14 +500,45 @@ class Provisioner:
                 shutil.rmtree(SOURCE_DIR, ignore_errors=True)
             self._run(["git", "clone", "--depth", "1", GITHUB_REPO_URL, SOURCE_DIR],
                       desc=f"git clone {GITHUB_REPO_URL}")
+            self._pin_latest_release()
         else:
             self._fetch_source_zipball()
         if not os.path.isfile(STT_SCRIPT):
             raise ProvisionError("source checkout did not produce speech_to_text.py")
 
+    def _pin_latest_release(self):
+        """Move a fresh clone from the default branch to the newest release tag so
+        installs and auto-updates track the same refs. No tags → stay on main."""
+        self._run(["git", "-C", SOURCE_DIR, "fetch", "--depth", "1", "--force",
+                   "origin", "+refs/tags/*:refs/tags/*"],
+                  desc="git fetch --tags", check=False)
+        r = subprocess.run(["git", "-C", SOURCE_DIR, "tag", "--list"],
+                           capture_output=True, text=True)
+        tags = [t.strip() for t in r.stdout.splitlines() if t.strip()] if r.returncode == 0 else []
+        if not tags:
+            self.log("  no release tags — staying on default branch")
+            return
+        latest = max(tags, key=parse_version)
+        self.log(f"  pinning to release {latest}")
+        self._run(["git", "-C", SOURCE_DIR, "reset", "--hard", latest],
+                  desc=f"git reset --hard {latest}", check=False)
+
+    def _latest_release_tag(self):
+        """Latest release tag from the GitHub API, or None (offline / no releases)."""
+        try:
+            data = json.loads(self._download_text(f"{GITHUB_API_BASE}/releases/latest"))
+            return data.get("tag_name") or None
+        except Exception:
+            return None
+
     def _fetch_source_zipball(self):
-        """git-less fallback: download the default-branch source archive."""
-        url = f"{GITHUB_REPO_URL}/archive/refs/heads/main.zip"
+        """git-less fallback: download the latest-release source archive (default
+        branch when no releases exist)."""
+        tag = self._latest_release_tag()
+        if tag:
+            url = f"{GITHUB_REPO_URL}/archive/refs/tags/{tag}.zip"
+        else:
+            url = f"{GITHUB_REPO_URL}/archive/refs/heads/main.zip"
         self.log(f"  downloading source archive {url}")
         archive = os.path.join(tempfile.gettempdir(), "stt-source.zip")
         self._download_file(url, archive)
@@ -542,7 +583,7 @@ class Provisioner:
         cmd = [self._uv, "pip", "install", "--python", py, "-r", req]
         gpu = self._has_nvidia()
         if gpu and sys.platform.startswith(("linux", "win")):
-            cmd += ["--extra-index-url", "https://download.pytorch.org/whl/cu121"]
+            cmd += ["--extra-index-url", "https://download.pytorch.org/whl/cu128"]
             self.log("  NVIDIA GPU detected — installing CUDA wheels")
         elif self._is_mac_arm():
             self.log("  Apple Silicon — installing MPS/CPU wheels")
@@ -875,13 +916,33 @@ class AutoUpdater:
                 # Fall back to the fetched default branch head
                 self._git("fetch", "--depth", "1", "origin", check=False)
                 target = "origin/HEAD"
+            prev = self._git("rev-parse", "HEAD", check=False).stdout.strip() or None
             logging.info(f"[AU] Resetting to {target}")
             self._git("reset", "--hard", target)
             self._git("clean", "-fd", check=False)
 
-            logging.info("[AU] Reinstalling dependencies...")
-            Provisioner(log=lambda m: logging.info(f"[AU] {m}")).install_deps_only()
+            try:
+                logging.info("[AU] Reinstalling dependencies...")
+                Provisioner(log=lambda m: logging.info(f"[AU] {m}")).install_deps_only()
+            except Exception as e:
+                # New source with old/broken deps won't run — put the old source
+                # back so the restarted app matches the venv it has.
+                if prev:
+                    logging.error(f"[AU] Dependency install failed; rolling back to {prev[:12]}")
+                    self._git("reset", "--hard", prev, check=False)
+                    self._git("clean", "-fd", check=False)
+                    try:
+                        Provisioner(log=lambda m: logging.info(f"[AU] {m}")).install_deps_only()
+                    except Exception as e2:
+                        logging.error(f"[AU] Dep reinstall after rollback also failed: {e2}")
+                    result = f"Update to {remote} failed (deps); rolled back: {e}"
+                else:
+                    result = f"Update to {remote} failed (deps): {e}"
+                logging.error(f"[AU] {result}")
+                self.state.set(last_update_result=result)
+                return
 
+            write_version(remote)
             result = (f"Updated to {read_version()} "
                       f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})")
             logging.info(f"[AU] {result}")
@@ -929,49 +990,60 @@ class AutoUpdater:
             self.state.set(last_update_result=f"Download failed: {e}")
             return
 
-        # Stop the app (pm.stop() sets _no_restart so crash thread stays quiet)
+        # Stop the app (pm.stop() sets _no_restart so crash thread stays quiet),
+        # swap SOURCE items with the staged tree (preserving .venv), reinstall
+        # deps, restart. Old items are parked in a backup dir so any failure
+        # restores the previous version instead of leaving a mixed tree.
         self.state.set(status="updating")
         self.pm.stop(timeout=20)
+        backup_dir = os.path.join(tmpdir, "backup")
+        os.makedirs(backup_dir, exist_ok=True)
+        moved = []  # (item, had_backup) in swap order
 
-        # Stop the app, refresh SOURCE (preserving .venv), reinstall deps, restart.
-        self.state.set(status="updating")
-        self.pm.stop(timeout=20)
-        try:
-            failed_items = []
-            for item in os.listdir(src_root):
-                if item in _UPDATE_PRESERVE:
-                    continue
-                src = os.path.join(src_root, item)
+        def _restore():
+            for item, had_backup in reversed(moved):
                 dst = os.path.join(SOURCE_DIR, item)
+                bak = os.path.join(backup_dir, item)
                 try:
-                    if os.path.isdir(src):
-                        if os.path.exists(dst):
-                            shutil.rmtree(dst)
-                        shutil.copytree(src, dst)
-                    else:
-                        shutil.copy2(src, dst)
-                except Exception as e:
-                    failed_items.append(item)
-                    logging.warning(f"[AU] Failed to copy {item}: {e}")
+                    if os.path.lexists(dst):
+                        if os.path.isdir(dst) and not os.path.islink(dst):
+                            shutil.rmtree(dst, ignore_errors=True)
+                        else:
+                            os.remove(dst)
+                    if had_backup:
+                        shutil.move(bak, dst)
+                except OSError as re:
+                    logging.error(f"[AU] Rollback of {item} failed: {re}")
 
-            if failed_items:
-                # Don't record the new version: the install is partial, and writing
-                # it would stop the next update cycle from retrying.
-                result = f"Update to {remote} incomplete; failed: {', '.join(failed_items)}"
-                logging.error(f"[AU] {result}")
-                self.state.set(last_update_result=result)
-            else:
+        try:
+            try:
+                for item in os.listdir(src_root):
+                    if item in _UPDATE_PRESERVE:
+                        continue
+                    src = os.path.join(src_root, item)
+                    dst = os.path.join(SOURCE_DIR, item)
+                    had_backup = os.path.lexists(dst)
+                    if had_backup:
+                        shutil.move(dst, os.path.join(backup_dir, item))
+                    moved.append((item, had_backup))
+                    shutil.move(src, dst)
+
                 logging.info("[AU] Reinstalling dependencies...")
                 Provisioner(log=lambda m: logging.info(f"[AU] {m}")).install_deps_only()
-                result = (
-                    f"Updated to {read_version()} "
-                    f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
-                )
-                logging.info(f"[AU] {result}")
-                self.state.set(last_update_result=result)
+            except Exception:
+                _restore()
+                raise
+
+            write_version(remote)
+            result = (
+                f"Updated to {read_version()} "
+                f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
+            )
+            logging.info(f"[AU] {result}")
+            self.state.set(last_update_result=result)
 
         except Exception as e:
-            result = f"Apply failed: {e}"
+            result = f"Update to {remote} failed; previous version restored: {e}"
             logging.error(f"[AU] {result}")
             self.state.set(last_update_result=result)
 
