@@ -137,7 +137,13 @@
     "srt_enabled": true,
     "_srt_enabled_comment": "Automatically generate SRT subtitle files alongside database",
     "html_enabled": true,
-    "_html_enabled_comment": "Automatically generate HTML transcript files alongside database"
+    "_html_enabled_comment": "Automatically generate HTML transcript files alongside database",
+    "record_partials": true,
+    "_record_partials_comment": "Persist in-progress (partial) transcription snapshots as is_final=0 rows for offline replay/tuning. Partials are hidden from the web UI, corrections, and exports",
+    "partials_min_interval_ms": 1000,
+    "_partials_min_interval_ms_comment": "Minimum milliseconds between partial snapshots of the same segment. Lower = finer replay fidelity, Higher = smaller databases",
+    "partials_retention_days": 0,
+    "_partials_retention_days_comment": "Delete is_final=0 rows from session databases older than N days at server startup. 0 = keep partials forever. Final rows are never touched"
   },
   "web_server": {
     "host": "0.0.0.0",

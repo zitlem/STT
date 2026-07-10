@@ -3000,6 +3000,14 @@ def initialize_database():
                 db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN denied_reason TEXT DEFAULT NULL")
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added denied_reason column)")
+            if "translation_ts_ms" not in columns:
+                # Epoch-ms when translated_text was written. Translation arrives via a
+                # later async UPDATE, so the row's ts_ms alone can't reproduce the
+                # source-vs-translation timing a live consumer experienced.
+                print("[DB] Migrating database: adding translation_ts_ms column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN translation_ts_ms INTEGER DEFAULT NULL")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added translation_ts_ms column)")
 
             # Insert a blank first entry with default values
             default_timestamp = " "
@@ -3188,6 +3196,7 @@ def convert_db_to_srt(db_path):
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND text IS NOT NULL AND TRIM(text) != '' AND TRIM(text) != ' '
                 AND COALESCE(denied, 0) = 0
+                AND COALESCE(is_final, 1) = 1
                 ORDER BY id ASC
             """
             )
@@ -3281,6 +3290,7 @@ def convert_db_to_translation_srt(db_path):
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND translated_text IS NOT NULL AND TRIM(translated_text) != ''
                 AND COALESCE(denied, 0) = 0
+                AND COALESCE(is_final, 1) = 1
                 ORDER BY id ASC
             """
             )
@@ -3434,6 +3444,7 @@ def convert_db_to_html(db_path):
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND text IS NOT NULL AND TRIM(text) != '' AND TRIM(text) != ' '
                 AND COALESCE(denied, 0) = 0
+                AND COALESCE(is_final, 1) = 1
                 ORDER BY id ASC
             """
             )
@@ -8434,6 +8445,7 @@ def get_review_queue():
                 """SELECT id, timestamp, text, COALESCE(start_time, 0), COALESCE(end_time, 0), confidence
                    FROM transcriptions
                    WHERE needs_review = 1 AND COALESCE(denied, 0) = 0
+                   AND COALESCE(is_final, 1) = 1
                    ORDER BY id DESC
                    LIMIT 50"""
             )
@@ -12187,6 +12199,7 @@ def get_new_entries(limit_override=None):
                            COALESCE(denied, 0), denied_reason, music_prob
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
+                    AND COALESCE(is_final, 1) = 1
                     ORDER BY id ASC
                 """
                 )
@@ -12201,6 +12214,7 @@ def get_new_entries(limit_override=None):
                                COALESCE(denied, 0) as denied, denied_reason, music_prob
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
+                        AND COALESCE(is_final, 1) = 1
                         ORDER BY id DESC
                         LIMIT ?
                     ) ORDER BY id ASC
@@ -12687,8 +12701,8 @@ def emit_translated_entries():
                         if current_db and os.path.exists(current_db):
                             with sqlite3.connect(current_db) as _tconn:
                                 _tconn.execute(
-                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                    (translated_text, target_lang, seg_id),
+                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ?, translation_ts_ms = ? WHERE id = ?",
+                                    (translated_text, target_lang, int(time.time() * 1000), seg_id),
                                 )
                                 _tconn.commit()
                     except Exception as e:
@@ -13629,6 +13643,17 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                     pending_remainder = ""       # Incomplete sentence fragment held back from DB
                     pending_remainder_since = None  # When the current fragment was first buffered
                     pending_remainder_meta = None   # (start_time, end_time, confidence) of fragment
+
+                    # Partial-snapshot recording: persist throttled is_final=0 rows of the
+                    # live in-progress text so offline replay can reproduce the timing a
+                    # live consumer experienced (final rows alone can't).
+                    _partials_db_cfg = process_config.get("database", {})
+                    record_partials = _partials_db_cfg.get("record_partials", True)
+                    partials_min_interval_ms = _partials_db_cfg.get("partials_min_interval_ms", 1000)
+                    last_partial_write_ms = 0
+                    last_partial_text = ""        # Last snapshot text (skip unchanged)
+                    current_partial_seq = 0       # Increments per snapshot, resets per segment
+                    current_partial_row_ids = []  # Partial rows awaiting segment_id linkage
 
                     # Full session audio file path (append mode)
                     session_audio_file = None
@@ -15020,7 +15045,18 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
                                                             [(str(_rid), _rid) for _rid in _newly_inserted_ids],
                                                         )
+                                                        # Link this segment's partial snapshots to the first
+                                                        # final row so replay can pair partials with their final
+                                                        if current_partial_row_ids:
+                                                            persistent_db_cursor.executemany(
+                                                                "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                                                [(str(_newly_inserted_ids[0]), _pid) for _pid in current_partial_row_ids],
+                                                            )
                                                     persistent_db_conn.commit()
+                                                    # Start a fresh partial run for the next segment
+                                                    current_partial_row_ids = []
+                                                    current_partial_seq = 0
+                                                    last_partial_text = ""
                                                     # Cache Whisper translation for accepted rows only, distributing
                                                     # the whole-chunk pass-2 translation across them instead of
                                                     # duplicating it on every row. Denied rows are never emitted
@@ -15040,14 +15076,14 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                             _tcache.set(_row_id, "", _part, _target_lang)
                                                             # Also save to DB translated_text column
                                                             persistent_db_cursor.execute(
-                                                                "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                                                (_part, _target_lang, _row_id),
+                                                                "UPDATE transcriptions SET translated_text = ?, translation_language = ?, translation_ts_ms = ? WHERE id = ?",
+                                                                (_part, _target_lang, int(time.time() * 1000), _row_id),
                                                             )
                                                         persistent_db_conn.commit()
                                                     # Track saved_sentences and database row count
                                                     # Periodically verify database row count matches
                                                     if len(saved_sentences) % 10 == 0:
-                                                        db_count = persistent_db_cursor.execute("SELECT COUNT(*) FROM transcriptions").fetchone()[0]
+                                                        db_count = persistent_db_cursor.execute("SELECT COUNT(*) FROM transcriptions WHERE COALESCE(is_final, 1) = 1").fetchone()[0]
                                                         if db_count != len(saved_sentences) + 1:  # +1 for default first entry
                                                             pass  # Row count mismatch — non-critical
                                                     # print(f"[LOOP-DEBUG] {time.strftime('%H:%M:%S')} - DB commit done", flush=True)
@@ -15244,7 +15280,18 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                 "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
                                                                 [(str(_rid), _rid) for _rid in _phrase_inserted_ids],
                                                             )
+                                                            # Link this segment's partial snapshots to the first
+                                                            # final row so replay can pair partials with their final
+                                                            if current_partial_row_ids:
+                                                                persistent_db_cursor.executemany(
+                                                                    "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                                                    [(str(_phrase_inserted_ids[0]), _pid) for _pid in current_partial_row_ids],
+                                                                )
                                                         persistent_db_conn.commit()
+                                                        # Start a fresh partial run for the next segment
+                                                        current_partial_row_ids = []
+                                                        current_partial_seq = 0
+                                                        last_partial_text = ""
                                                         # Cache Whisper translation for accepted phrase rows only,
                                                         # distributing the whole-chunk pass-2 translation across
                                                         # them instead of duplicating it on every row.
@@ -15261,8 +15308,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                                                     continue
                                                                 _tcache.set(_row_id, "", _part, _target_lang)
                                                                 persistent_db_cursor.execute(
-                                                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ? WHERE id = ?",
-                                                                    (_part, _target_lang, _row_id),
+                                                                    "UPDATE transcriptions SET translated_text = ?, translation_language = ?, translation_ts_ms = ? WHERE id = ?",
+                                                                    (_part, _target_lang, int(time.time() * 1000), _row_id),
                                                                 )
                                                             persistent_db_conn.commit()
                                                     except Exception as db_error:
@@ -15297,6 +15344,37 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                         if hasattr(live_transcriber, '_last_seg_confidence'):
                                             _live_update["live_word_confidences"] = live_transcriber._last_seg_confidence.get('words', [])
                                         transcription_state.update(_live_update)
+
+                                        # Throttled partial snapshot (is_final=0): the row's own
+                                        # ts_ms is the arrival time — what makes replay faithful
+                                        if record_partials and current_text != last_partial_text:
+                                            _p_now_ms = int(time.time() * 1000)
+                                            if _p_now_ms - last_partial_write_ms >= partials_min_interval_ms:
+                                                try:
+                                                    _p_words = _live_update.get("live_word_confidences")
+                                                    with _db_lock:
+                                                        persistent_db_cursor.execute(
+                                                            "INSERT INTO transcriptions (timestamp, text, start_time, end_time, ts_ms, original_text, words_json, words_source, session_id, is_final, partial_seq, denied) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)",
+                                                            (
+                                                                datetime.now(configured_timezone).strftime("%Y-%m-%d %H:%M:%S"),
+                                                                current_text,
+                                                                _live_update["live_start"],
+                                                                _live_update["live_end"],
+                                                                _p_now_ms,
+                                                                current_text,
+                                                                json.dumps(_p_words) if _p_words else None,
+                                                                model_type,
+                                                                live_session_id,
+                                                                current_partial_seq,
+                                                            ),
+                                                        )
+                                                        current_partial_row_ids.append(persistent_db_cursor.lastrowid)
+                                                        persistent_db_conn.commit()
+                                                    current_partial_seq += 1
+                                                    last_partial_write_ms = _p_now_ms
+                                                    last_partial_text = current_text
+                                                except Exception as _p_err:
+                                                    print(f"[PARTIAL] Snapshot write failed: {_p_err}", flush=True)
 
                                 except Exception as transcribe_error:
                                     print(f"[ERROR] Transcription failed: {transcribe_error}")
@@ -15377,6 +15455,13 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
                                     (str(_flush_row_id), _flush_row_id),
                                 )
+                                # Link any remaining partial snapshots to the flushed row
+                                if current_partial_row_ids:
+                                    persistent_db_cursor.executemany(
+                                        "UPDATE transcriptions SET segment_id = ? WHERE id = ?",
+                                        [(str(_flush_row_id), _pid) for _pid in current_partial_row_ids],
+                                    )
+                                    current_partial_row_ids = []
                                 if _flush_cjk_shadow:
                                     persistent_db_cursor.execute(
                                         "INSERT INTO transcriptions (timestamp, text, start_time, end_time, confidence, speech_type, audio_tag, music_prob, needs_review, ts_ms, source_language, original_text, words_source, session_id, is_final, denied, denied_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'cjk_shadow')",
@@ -15628,6 +15713,48 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
         os._exit(0)
 
 
+def cleanup_old_partials():
+    """Retention valve for partial snapshots: delete is_final=0 rows from session
+    databases older than database.partials_retention_days (0 = keep forever).
+    Final rows are never touched, so long-term archives shrink while recent
+    sessions stay replay-complete."""
+    try:
+        db_cfg = load_config().get("database", {})
+        retention_days = db_cfg.get("partials_retention_days", 0)
+        if not retention_days or retention_days <= 0:
+            return
+        base_dirs = [BACKUP_DIR]
+        custom_base = (db_cfg.get("path", "") or "").strip()
+        if custom_base and os.path.abspath(custom_base) != os.path.abspath(BACKUP_DIR):
+            base_dirs.append(custom_base)
+        cutoff = time.time() - retention_days * 86400
+        cleaned = 0
+        for base in base_dirs:
+            if not os.path.isdir(base):
+                continue
+            for root, _dirs, files in os.walk(base):
+                for fname in files:
+                    if not fname.endswith(".db"):
+                        continue
+                    fpath = os.path.join(root, fname)
+                    try:
+                        if os.path.getmtime(fpath) >= cutoff:
+                            continue
+                        with sqlite3.connect(fpath) as _conn:
+                            _cur = _conn.execute(
+                                "DELETE FROM transcriptions WHERE COALESCE(is_final, 1) = 0"
+                            )
+                            if _cur.rowcount > 0:
+                                _conn.commit()
+                                cleaned += _cur.rowcount
+                    except Exception:
+                        continue  # Locked/foreign .db files are not ours to touch
+        if cleaned:
+            print(f"[PARTIALS] Retention cleanup removed {cleaned} partial rows from sessions older than {retention_days} days", flush=True)
+    except Exception as _cleanup_err:
+        print(f"[PARTIALS] Retention cleanup failed: {_cleanup_err}", flush=True)
+
+
 def thread2_function():
     try:
         # Get web server config
@@ -15636,6 +15763,9 @@ def thread2_function():
         port = web_config.get("port", 80)
 
         print(f"Starting web server on {host}:{port}")
+
+        # Housekeeping off the boot path: strip expired partial rows from old sessions
+        threading.Thread(target=cleanup_old_partials, daemon=True).start()
 
         # Start the background task for emitting transcriptions
         socketio.start_background_task(emit_new_entries)
