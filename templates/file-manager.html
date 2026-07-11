@@ -239,6 +239,21 @@
             font-size: 0.9em;
         }
 
+        .select-cell {
+            width: 34px;
+            text-align: center;
+        }
+
+        .select-cell input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .file-table tr.row-selected td {
+            background: rgba(41, 121, 255, 0.10);
+        }
+
         .filter-bar select {
             /* base.html styles select { width: 100% } — keep these compact and inline */
             width: auto;
@@ -420,6 +435,7 @@
                 </div>
                 <div class="toolbar-buttons">
                     <button class="btn up-button" onclick="navigateUp()">⬆ Up</button>
+                    <button class="btn btn-secondary" id="selectModeBtn" onclick="toggleSelectMode()">☑ Select</button>
                     <button class="btn btn-secondary" onclick="showCreateFolderModal()">+ New Folder</button>
                     <button class="btn btn-primary" onclick="refreshFiles()">🔄 Refresh</button>
                 </div>
@@ -436,6 +452,14 @@
                     <input type="checkbox" id="showHiddenCheckbox" onchange="toggleHiddenFiles()">
                     <label for="showHiddenCheckbox">Show hidden items</label>
                 </div>
+            </div>
+
+            <!-- Bulk actions for the current selection -->
+            <div class="filter-bar" id="bulkBar" style="display: none;">
+                <span id="bulkCount" style="color: var(--text-primary); font-weight: 600;"></span>
+                <button class="btn btn-primary" onclick="bulkDownload()">⬇ Download</button>
+                <button class="btn" style="background: var(--danger); color: white;" onclick="bulkDelete()">🗑 Delete</button>
+                <button class="btn btn-secondary" onclick="bulkHide()">🙈 Hide</button>
             </div>
 
             <!-- File Mover Configuration -->
@@ -594,6 +618,8 @@
         let currentParentPath = null;
         let filterType = '';         // '' = all; '.ts', '.wav', ... or 'noext'
         let filterDay = '';          // '' = all; 'YYYY-MM-DD'
+        let selectMode = false;      // Bulk-select mode (checkbox column visible)
+        let selectedPaths = new Set();
         // Load files and disk space on page load
         window.addEventListener('DOMContentLoaded', () => {
             loadFiles();
@@ -620,6 +646,7 @@
                     renderBreadcrumb(currentPath);
                     currentItems = data.items;
                     currentParentPath = data.parent_path;
+                    selectedPaths.clear();  // fresh listing, fresh selection
                     applyFilters();
                 } else {
                     showNotification(data.error || 'Failed to load files', 'error');
@@ -741,6 +768,11 @@
                 if (filterDay && fileDay(i) !== filterDay) return false;
                 return true;
             });
+            // Selections must never survive out of view
+            if (selectedPaths.size) {
+                const visible = new Set(filtered.map(i => i.path));
+                [...selectedPaths].forEach(p => { if (!visible.has(p)) selectedPaths.delete(p); });
+            }
             if (filtered.length === 0 && currentItems.length > 0 && (filterType || filterDay)) {
                 document.getElementById('fileTableContainer').innerHTML = `
                     <div class="empty-state">
@@ -749,9 +781,12 @@
                         <button class="btn btn-secondary" onclick="clearFilters()">Clear filters</button>
                     </div>
                 `;
+                lastRenderedItems = [];
+                updateSelectionUI();
                 return;
             }
             renderFileTable(filtered, currentParentPath);
+            updateSelectionUI();
         }
 
         function onFilterChange() {
@@ -766,8 +801,95 @@
             applyFilters();
         }
 
+        // ── Bulk selection: Download / Delete / Hide on checked items ──────
+        let lastRenderedItems = [];
+
+        function toggleSelectMode() {
+            selectMode = !selectMode;
+            selectedPaths.clear();
+            document.getElementById('selectModeBtn').textContent = selectMode ? '✕ Cancel' : '☑ Select';
+            applyFilters();
+        }
+
+        function onRowCheck(event, path) {
+            event.stopPropagation();
+            if (event.target.checked) selectedPaths.add(path);
+            else selectedPaths.delete(path);
+            const tr = event.target.closest('tr');
+            if (tr) tr.classList.toggle('row-selected', event.target.checked);
+            updateSelectionUI();
+        }
+
+        function onSelectAll(event) {
+            event.stopPropagation();
+            if (event.target.checked) lastRenderedItems.forEach(i => selectedPaths.add(i.path));
+            else selectedPaths.clear();
+            applyFilters();
+        }
+
+        function updateSelectionUI() {
+            const n = selectedPaths.size;
+            document.getElementById('bulkBar').style.display = (selectMode && n > 0) ? '' : 'none';
+            document.getElementById('bulkCount').textContent = `${n} selected`;
+            const all = document.getElementById('selectAllCheckbox');
+            if (all) all.checked = lastRenderedItems.length > 0
+                && lastRenderedItems.every(i => selectedPaths.has(i.path));
+        }
+
+        function bulkDownload() {
+            const items = lastRenderedItems.filter(i => selectedPaths.has(i.path));
+            const files = items.filter(i => i.type === 'file');
+            const skipped = items.length - files.length;
+            if (!files.length) {
+                showNotification('No files selected (folders cannot be downloaded)', 'error');
+                return;
+            }
+            // Spaced out so the browser accepts them as one multi-download burst
+            files.forEach((f, idx) => setTimeout(() => downloadFile(f.path, f.name), idx * 300));
+            showNotification(`Downloading ${files.length} file(s)` + (skipped ? ` — skipped ${skipped} folder(s)` : ''), 'success');
+        }
+
+        async function _bulkPost(endpoint, paths) {
+            let ok = 0, fail = 0;
+            for (const p of paths) {
+                try {
+                    const r = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: p })
+                    });
+                    const d = await r.json();
+                    if (d.success) ok++; else fail++;
+                } catch (e) {
+                    fail++;
+                }
+            }
+            return { ok, fail };
+        }
+
+        async function bulkDelete() {
+            const paths = [...selectedPaths];
+            if (!paths.length) return;
+            if (!confirm(`Delete ${paths.length} item(s)? This cannot be undone.`)) return;
+            const { ok, fail } = await _bulkPost('/api/file-manager/delete', paths);
+            showNotification(`Deleted ${ok} item(s)` + (fail ? `, ${fail} failed` : ''), fail ? 'error' : 'success');
+            selectedPaths.clear();
+            loadFiles(currentPath);
+        }
+
+        async function bulkHide() {
+            const paths = [...selectedPaths];
+            if (!paths.length) return;
+            const { ok, fail } = await _bulkPost('/api/file-manager/hide', paths);
+            showNotification(`Hid ${ok} item(s)` + (fail ? `, ${fail} failed` : ''), fail ? 'error' : 'success');
+            selectedPaths.clear();
+            loadFiles(currentPath);
+        }
+
         function renderFileTable(items, parentPath, isRemote = false) {
             const container = document.getElementById('fileTableContainer');
+            lastRenderedItems = isRemote ? [] : items;
+            const showSelect = selectMode && !isRemote;
 
             if (!items || items.length === 0) {
                 container.innerHTML = `
@@ -783,6 +905,7 @@
                 <table class="file-table">
                     <thead>
                         <tr>
+                            ${showSelect ? '<th scope="col" class="select-cell"><input type="checkbox" id="selectAllCheckbox" onclick="onSelectAll(event)"></th>' : ''}
                             <th scope="col">Name</th>
                             <th scope="col">Type</th>
                             <th scope="col">Size</th>
@@ -816,8 +939,14 @@
                     ? `<button class="action-btn action-preview" onclick="previewFile('${item.path.replace(/\\/g, '\\\\')}', '${item.name.replace(/'/g, "\\'")}')">Preview</button>`
                     : '';
 
+                const isChecked = selectedPaths.has(item.path);
+                const selectCell = showSelect
+                    ? `<td class="select-cell"><input type="checkbox" ${isChecked ? 'checked' : ''} onclick="onRowCheck(event, '${item.path.replace(/\\/g, '\\\\')}')"></td>`
+                    : '';
+
                 html += `
-                    <tr>
+                    <tr${isChecked ? ' class="row-selected"' : ''}>
+                        ${selectCell}
                         <td>
                             <span class="file-name" onclick="${clickHandler}">
                                 ${icon}${item.name}
