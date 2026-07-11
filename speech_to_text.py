@@ -7517,6 +7517,20 @@ def browse_files():
         hidden_items = config.get("file_manager", {}).get("hidden_items", [])
         working_dir = APP_DIR
 
+        # Default-clean root view: at the app root only allowlisted items are
+        # shown (backups by default) so end users don't wade through app
+        # internals. "Show hidden items" reveals everything; deeper folders
+        # browse normally; empty list disables the allowlist.
+        root_visible = list(config.get("file_manager", {}).get("root_visible_items", ["_AUTOMATIC_BACKUP"]))
+        _custom_db = (config.get("database", {}).get("path", "") or "").strip()
+        if _custom_db:
+            _db_abs = os.path.abspath(_custom_db if os.path.isabs(_custom_db) else os.path.join(APP_DIR, _custom_db))
+            if _db_abs.startswith(os.path.abspath(APP_DIR) + os.sep):
+                # A custom backup location inside the app dir stays visible
+                root_visible.append(os.path.relpath(_db_abs, APP_DIR).split(os.sep)[0])
+        limit_to_visible = (not show_hidden and root_visible
+                            and os.path.abspath(path) == os.path.abspath(APP_DIR))
+
         # List directory contents
         items = []
         try:
@@ -7529,6 +7543,10 @@ def browse_files():
 
                 # Skip __pycache__ directories unless show_hidden is True
                 if not show_hidden and item_name == "__pycache__":
+                    continue
+
+                # At the app root, show only allowlisted items unless show_hidden
+                if limit_to_visible and item_name not in root_visible:
                     continue
 
                 # Skip items in hidden list unless show_hidden is True
