@@ -34,6 +34,8 @@ The server is mostly a monolith — most changes land in `speech_to_text.py`.
 | `templates/` | Jinja2 pages: index, live-settings, model-manager, server-settings, translation, corrections, file-manager, word-highlighting, url-builder |
 | `static/` | Vendored JS/CSS — no build step, no npm |
 | `tests/` | Pytest suite: download state, path safety, staging, text utils, watchdog update |
+| `packaging/` | Watchdog binary build tooling (build.py, make_icon.py, watchdog.spec) — NOT `build/`, which PyInstaller uses as its workdir |
+| `deploy/` | OS service templates: stt-watchdog.service (systemd), com.stt.watchdog.plist (launchd) |
 
 ## Configuration
 

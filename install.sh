@@ -470,7 +470,7 @@ setup_watchdog_service() {
 
 setup_watchdog_launchd() {
     local PLIST_LABEL="com.stt.watchdog"
-    local PLIST_SRC="$INSTALL_DIR/com.stt.watchdog.plist"
+    local PLIST_SRC="$INSTALL_DIR/deploy/com.stt.watchdog.plist"
     local PLIST_DST="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
     local PYTHON_BIN="$INSTALL_DIR/.venv/bin/python3"
 

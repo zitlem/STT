@@ -162,7 +162,7 @@ Open your browser to:
 ### Linux — systemd
 
 ```bash
-sudo cp stt-watchdog.service /etc/systemd/system/
+sudo cp deploy/stt-watchdog.service /etc/systemd/system/
 ```
 
 Open the file and set `User=` to your username. For a **source install** the `ExecStart`
@@ -180,7 +180,7 @@ sudo journalctl -u stt-watchdog -f
 ### macOS — LaunchAgent
 
 ```bash
-cp com.stt.watchdog.plist ~/Library/LaunchAgents/
+cp deploy/com.stt.watchdog.plist ~/Library/LaunchAgents/
 ```
 
 Edit the file and replace every `INSTALL_DIR` placeholder with the full path to your

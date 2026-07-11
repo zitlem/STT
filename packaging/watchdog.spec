@@ -6,10 +6,10 @@ are bundled: on first run the bootstrapper provisions a local venv (via uv),
 clones the app source, and installs dependencies + ffmpeg on the user machine.
 The STT server then runs as a real script from that venv.
 
-Build:
-    pyinstaller watchdog.spec
+Build (from the repo root):
+    pyinstaller packaging/watchdog.spec
 Or via build.py:
-    python build.py
+    python packaging/build.py
 """
 
 import sys
@@ -19,15 +19,20 @@ block_cipher = None
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS   = sys.platform == "darwin"
 
-_icon_file = "icon.icns" if IS_MACOS else "icon.ico"
+# Anchor all inputs to the repo root (parent of this spec's dir) so the build
+# works regardless of the invoking cwd. Icons are generated into the root by
+# make_icon.py; dist/ and the build workdir land in the invoking cwd as before.
+ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))  # noqa: F821 (SPECPATH is a PyInstaller global)
+
+_icon_file = os.path.join(ROOT, "icon.icns" if IS_MACOS else "icon.ico")
 _icon = _icon_file if os.path.exists(_icon_file) else None
 
 a = Analysis(
-    ["watchdog.py"],
-    pathex=["."],
+    [os.path.join(ROOT, "watchdog.py")],
+    pathex=[ROOT],
     binaries=[],
     datas=[
-        ("VERSION", "."),
+        (os.path.join(ROOT, "VERSION"), "."),
     ] + ([(_icon_file, ".")] if os.path.exists(_icon_file) else []),
     # Bootstrapper needs only stdlib + tkinter (setup GUI) + certifi (TLS).
     # Everything else arrives via `git clone` + `uv pip install` on first run.

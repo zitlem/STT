@@ -73,7 +73,7 @@ python3 watchdog.py --headless
 **Linux (systemd)**
 
 ```bash
-sudo cp stt-watchdog.service /etc/systemd/system/
+sudo cp deploy/stt-watchdog.service /etc/systemd/system/
 # Edit the file to set User= and adjust paths if needed
 sudo systemctl daemon-reload
 sudo systemctl enable --now stt-watchdog
@@ -83,7 +83,7 @@ sudo journalctl -u stt-watchdog -f   # view logs
 **macOS (LaunchAgent)**
 
 ```bash
-cp com.stt.watchdog.plist ~/Library/LaunchAgents/
+cp deploy/com.stt.watchdog.plist ~/Library/LaunchAgents/
 # Edit INSTALL_DIR placeholders to your actual install path
 launchctl load ~/Library/LaunchAgents/com.stt.watchdog.plist
 ```

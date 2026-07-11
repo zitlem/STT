@@ -108,10 +108,10 @@ jobs:
           echo "${TAG#v}" > VERSION
       - name: Generate icon
         shell: bash
-        run: uv run python make_icon.py
+        run: uv run python packaging/make_icon.py
       - name: Build
         shell: bash
-        run: uv run pyinstaller watchdog.spec --noconfirm
+        run: uv run pyinstaller packaging/watchdog.spec --noconfirm
       - name: Package installer
         shell: pwsh
         run: |
@@ -144,9 +144,9 @@ jobs:
           TAG="${{ needs.version.outputs.tag }}"
           echo "${TAG#v}" > VERSION
       - name: Generate icon
-        run: uv run python make_icon.py
+        run: uv run python packaging/make_icon.py
       - name: Build
-        run: uv run pyinstaller watchdog.spec --noconfirm
+        run: uv run pyinstaller packaging/watchdog.spec --noconfirm
       - name: Sign (ad-hoc)
         run: |
           find dist/STT.app -type f \( -name "*.dylib" -o -name "*.so" \) \
@@ -195,9 +195,9 @@ jobs:
           TAG="${{ needs.version.outputs.tag }}"
           echo "${TAG#v}" > VERSION
       - name: Generate icon
-        run: uv run python make_icon.py
+        run: uv run python packaging/make_icon.py
       - name: Build
-        run: uv run pyinstaller watchdog.spec --noconfirm
+        run: uv run pyinstaller packaging/watchdog.spec --noconfirm
       - name: Package installer
         run: |
           VERSION="${{ needs.version.outputs.tag }}"
