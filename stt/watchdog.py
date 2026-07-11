@@ -1789,17 +1789,22 @@ def _block_until_stopped(state):
         pass
 
 
+# Project default DSN (ingest-only key), same as speech_to_text.py. Overridable
+# via crash_reporting.sentry_dsn; disable with crash_reporting.sentry_enabled=false.
+_SENTRY_DEFAULT_DSN = "https://eff01fdec5e9330b80ffd96093038588@o4511050918723584.ingest.us.sentry.io/4511714251702272"
+
+
 def _init_sentry():
-    """Optional Sentry error reporting, sharing the server's configured DSN.
-    Silent no-op when no DSN is set or the SDK is absent (the frozen
-    bootstrapper doesn't bundle it — only venv installs report)."""
+    """Sentry error reporting + logs, on by default. Silent no-op when disabled
+    in config or the SDK is absent (the frozen bootstrapper doesn't bundle it —
+    only venv installs report)."""
     try:
         cr = load_config().get("crash_reporting", {})
     except Exception:
+        cr = {}
+    if not cr.get("sentry_enabled", True):
         return
-    dsn = (cr.get("sentry_dsn", "") or "").strip()
-    if not dsn:
-        return
+    dsn = (cr.get("sentry_dsn", "") or "").strip() or _SENTRY_DEFAULT_DSN
     try:
         import sentry_sdk
         release = None
@@ -1809,8 +1814,10 @@ def _init_sentry():
             pass
         sentry_sdk.init(
             dsn=dsn,
-            send_default_pii=bool(cr.get("sentry_send_pii", False)),
             release=release,
+            send_default_pii=bool(cr.get("sentry_send_pii", True)),
+            # The watchdog logs via the logging module — these become Sentry Logs
+            enable_logs=bool(cr.get("sentry_enable_logs", True)),
         )
         sentry_sdk.set_tag("process", "watchdog")
         print("[SENTRY] Error reporting enabled")

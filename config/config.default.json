@@ -455,12 +455,20 @@
   },
   "crash_reporting": {
     "enabled": true,
-    "_enabled_comment": "Write local crash dumps to logs/crashes/ when the app crashes. Local dumps never leave the machine.",
+    "_enabled_comment": "Write local crash dumps to logs/crashes/ when the app crashes.",
+    "sentry_enabled": true,
+    "_sentry_enabled_comment": "Report errors, logs, traces, and profiles to Sentry (on by default). Set false for fully local crash reporting — nothing leaves the machine.",
     "sentry_dsn": "",
-    "_sentry_dsn_comment": "Optional Sentry DSN. Empty = fully local crash reporting (nothing is sent off the machine). When set, errors from the server, transcription worker, and watchdog are reported to Sentry.",
-    "sentry_traces_sample_rate": 0,
-    "_sentry_traces_sample_rate_comment": "0 = report errors only. Set between 0 and 1 to also sample performance traces.",
-    "sentry_send_pii": false,
-    "_sentry_send_pii_comment": "Include request headers and client IPs in Sentry events. Off by default."
+    "_sentry_dsn_comment": "Custom Sentry DSN. Empty = the project's built-in default.",
+    "sentry_send_pii": true,
+    "_sentry_send_pii_comment": "Include request headers and client IPs in Sentry events.",
+    "sentry_enable_logs": true,
+    "_sentry_enable_logs_comment": "Forward Python logging records to Sentry Logs.",
+    "sentry_traces_sample_rate": 0.1,
+    "_sentry_traces_sample_rate_comment": "Fraction of requests traced for performance (0-1). Keep low: the web UI polls ~2x/second, so 1.0 would produce a huge transaction volume.",
+    "sentry_profile_session_sample_rate": 1.0,
+    "_sentry_profile_session_sample_rate_comment": "Fraction of profile sessions collected (0-1).",
+    "sentry_profile_lifecycle": "trace",
+    "_sentry_profile_lifecycle_comment": "'trace' = profile automatically while a sampled transaction is active; 'manual' = only when started explicitly."
   }
 }

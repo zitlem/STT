@@ -495,14 +495,20 @@ def load_config():
 config = load_config()
 
 
+# Project default DSN (ingest-only key). Overridable via crash_reporting.sentry_dsn;
+# disable everything with crash_reporting.sentry_enabled = false.
+_SENTRY_DEFAULT_DSN = "https://eff01fdec5e9330b80ffd96093038588@o4511050918723584.ingest.us.sentry.io/4511714251702272"
+
+
 def _init_sentry():
-    """Optional Sentry error reporting — active only when a DSN is configured.
-    Runs in the web process and again in the transcription worker (which
-    re-imports this module), so both report. Never blocks boot."""
+    """Sentry error reporting, logs, tracing, and profiling — on by default,
+    disabled via crash_reporting.sentry_enabled = false. Runs in the web
+    process and again in the transcription worker (which re-imports this
+    module), so both report. Never blocks boot."""
     cr = config.get("crash_reporting", {})
-    dsn = (cr.get("sentry_dsn", "") or "").strip()
-    if not dsn:
+    if not cr.get("sentry_enabled", True):
         return
+    dsn = (cr.get("sentry_dsn", "") or "").strip() or _SENTRY_DEFAULT_DSN
     try:
         import sentry_sdk
         from sentry_sdk.integrations.flask import FlaskIntegration
@@ -514,14 +520,22 @@ def _init_sentry():
         sentry_sdk.init(
             dsn=dsn,
             integrations=[FlaskIntegration()],
-            traces_sample_rate=float(cr.get("sentry_traces_sample_rate", 0) or 0),
-            send_default_pii=bool(cr.get("sentry_send_pii", False)),
             release=release,
+            send_default_pii=bool(cr.get("sentry_send_pii", True)),
+            # Forward logging-module records as Sentry Logs (watchdog uses
+            # logging heavily; the server mostly print()s, which is not captured)
+            enable_logs=bool(cr.get("sentry_enable_logs", True)),
+            # NOT 1.0: the web UI polls ~2x/second, so full tracing would be
+            # ~100k+ transactions per viewer per day
+            traces_sample_rate=float(cr.get("sentry_traces_sample_rate", 0.1)),
+            # Continuous profiling while a sampled transaction is active
+            profile_session_sample_rate=float(cr.get("sentry_profile_session_sample_rate", 1.0)),
+            profile_lifecycle=cr.get("sentry_profile_lifecycle", "trace"),
         )
         sentry_sdk.set_tag("process", "server")
-        print("[SENTRY] Error reporting enabled")
+        print("[SENTRY] Error reporting enabled (logs + traces + profiling)")
     except ImportError:
-        print("[SENTRY] sentry_dsn is set but sentry-sdk is not installed — rerun the installer or: uv pip install 'sentry-sdk[flask]'")
+        print("[SENTRY] sentry-sdk is not installed — rerun the installer or: uv pip install 'sentry-sdk[flask]'")
     except Exception as e:
         print(f"[SENTRY] Init failed (continuing without): {e}")
 

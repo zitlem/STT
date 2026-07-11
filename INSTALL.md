@@ -287,20 +287,23 @@ It is gitignored — edit it freely without worrying about committing passwords 
 To start from scratch: delete `config/config.json` and restart the app.
 To update the default template for others: edit `config/config.default.json` and commit it.
 
-### Sentry Error Reporting (optional)
-Crash reporting is fully local by default (dumps in `logs/crashes/`, nothing leaves the machine).
-To also report errors to [Sentry](https://sentry.io): create a project with platform **Flask**,
-then paste its DSN into `config/config.json`:
+### Sentry Error Reporting
+Errors, logs, performance traces, and profiles are reported to the project's
+[Sentry](https://sentry.io) by default (tagged `process: server|worker|watchdog`).
+Local crash dumps in `logs/crashes/` are written regardless.
+
+To **disable all remote reporting**, set in `config/config.json`:
 
 ```json
 "crash_reporting": {
-  "enabled": true,
-  "sentry_dsn": "https://...your DSN...ingest.us.sentry.io/..."
+  "sentry_enabled": false
 }
 ```
 
-Restart the server (and watchdog, if used). Events are tagged `process: server|worker|watchdog`.
-Keep the DSN in `config/config.json` (gitignored) — never commit it to the repository.
+To report to your **own** Sentry project instead, create one with platform **Flask** and put
+its DSN in `crash_reporting.sentry_dsn`. Sampling and PII knobs live in the same section
+(see `config/config.default.json`); keep `sentry_traces_sample_rate` low — the web UI polls
+about twice a second.
 
 Key settings:
 - Network host, port, and IP whitelist
