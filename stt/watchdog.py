@@ -1198,9 +1198,17 @@ class GuiWindow:
         self._reload_config()
 
         tk.Button(root, text="Save Config", command=self._on_save).pack(pady=2)
+        bf = tk.Frame(root)
+        bf.pack(pady=2)
         tk.Button(
-            root, text="Open Web Interface", command=self._on_open_browser
-        ).pack(pady=2)
+            bf, text="Main Page", command=lambda: self._on_open_browser("/")
+        ).pack(side="left", padx=2)
+        tk.Button(
+            bf, text="Settings", command=lambda: self._on_open_browser("/server-settings")
+        ).pack(side="left", padx=2)
+        tk.Button(
+            bf, text="URL Builder", command=lambda: self._on_open_browser("/url-builder")
+        ).pack(side="left", padx=2)
         self._update_btn = tk.Button(
             root, text="Check for Updates", command=self._on_update
         )
@@ -1349,10 +1357,10 @@ class GuiWindow:
             "Configuration saved.\nRestart STT for port changes to take effect.",
         )
 
-    def _on_open_browser(self):
+    def _on_open_browser(self, path="/"):
         cfg = load_config()
         port = cfg.get("web_server", {}).get("port", 8080)
-        webbrowser.open(f"http://127.0.0.1:{port}")
+        webbrowser.open(f"http://127.0.0.1:{port}{path}")
 
     def mainloop(self):
         self.root.mainloop()
