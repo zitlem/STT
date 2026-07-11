@@ -330,6 +330,12 @@
                     <small>Optional prefix. Example: 2025-01-08_143527_Recording.wav</small>
                 </div>
 
+                <div class="checkbox-group">
+                    <input type="checkbox" id="sentry_enabled" name="crash_reporting.sentry_enabled">
+                    <label for="sentry_enabled">Send error reports to the developer (Sentry)</label>
+                </div>
+                <small style="display: block; margin: -6px 0 14px 0; color: var(--text-secondary);">Helps diagnose crashes automatically. No transcription content is sent. Requires server restart.</small>
+
                 <button id="main-save-btn" type="submit" class="btn-save" style="background: var(--accent);">💾 Save Settings</button>
                 <button type="button" onclick="restartServer()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">🔄 Restart Server</button>
                 <button type="button" onclick="resetAllToDefaults()" class="btn-save" style="background: var(--danger); margin-top: 10px; width: 100%;">⚠️ Reset ALL Settings to Default (Nuclear)</button>
@@ -745,6 +751,9 @@
                     const config = data.config;
                     currentConfig = config;  // keep latest config for the reset dialog
 
+                    // Diagnostics: absent key = enabled (matches the server default)
+                    document.getElementById('sentry_enabled').checked = config.crash_reporting?.sentry_enabled !== false;
+
                     // Network settings
                     document.getElementById('host').value = config.web_server?.host || '0.0.0.0';
                     document.getElementById('port').value = config.web_server?.port || 80;
@@ -810,6 +819,10 @@
                 live_translation: {
                     srt_enabled: document.getElementById('translation_srt_enabled').checked,
                     html_enabled: document.getElementById('translation_html_enabled').checked
+                },
+                crash_reporting: {
+                    // /api/config deep-merges, so the DSN/sampling keys are untouched
+                    sentry_enabled: document.getElementById('sentry_enabled').checked
                 },
                 audio_backup: {
                     wav_enabled: document.getElementById('audio_backup_wav_enabled').checked,
