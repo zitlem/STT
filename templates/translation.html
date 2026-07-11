@@ -922,6 +922,24 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    // Surface any still-pending pairing request even if this tab
+                    // wasn't open (or was on a different page) when the live
+                    // socket event fired — the socket emit is fire-and-forget,
+                    // so a page opened afterward would otherwise never learn
+                    // about it until it expires. Server state is the source of
+                    // truth; this poll (every 3s) catches up within one cycle.
+                    const pending = (data.pending_pairs && data.pending_pairs[0]) || null;
+                    if (pending && _currentPairIP !== pending.ip) {
+                        _currentPairIP = pending.ip;
+                        document.getElementById('pair_request_ip').textContent = pending.ip;
+                        document.getElementById('pair_request_code').textContent = pending.code;
+                        document.getElementById('pair_request_banner').style.display = '';
+                    } else if (!pending && _currentPairIP) {
+                        // No longer pending (expired, confirmed, or denied elsewhere)
+                        document.getElementById('pair_request_banner').style.display = 'none';
+                        _currentPairIP = null;
+                    }
+
                     // Update status indicator with loading state
                     const indicator = document.getElementById('status_indicator');
                     const statusDot = document.getElementById('status_dot');
