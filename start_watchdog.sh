@@ -31,7 +31,7 @@ else
     [ ! -f "$PYTHON_BIN" ] && PYTHON_BIN="python3"
     LOG_DIR="$SCRIPT_DIR/logs"
     mkdir -p "$LOG_DIR"
-    nohup "$PYTHON_BIN" "$SCRIPT_DIR/watchdog.py" --headless >> "$LOG_DIR/watchdog.log" 2>&1 &
+    nohup "$PYTHON_BIN" "$SCRIPT_DIR/stt/watchdog.py" --headless >> "$LOG_DIR/watchdog.log" 2>&1 &
     echo "[OK] Watchdog started (PID $!) — Python source mode"
     echo "     Logs: tail -f $LOG_DIR/watchdog.log"
     echo "     STT:  tail -f $LOG_DIR/stt.log"

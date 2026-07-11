@@ -528,7 +528,7 @@ User=root
 WorkingDirectory=$INSTALL_DIR
 Environment="PYTHONUNBUFFERED=1"
 Environment="HOME=$HOME"
-ExecStart=$INSTALL_DIR/.venv/bin/python3 $INSTALL_DIR/watchdog.py --headless
+ExecStart=$INSTALL_DIR/.venv/bin/python3 $INSTALL_DIR/stt/watchdog.py --headless
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -575,8 +575,8 @@ show_final_instructions() {
     echo
     echo "Quick Start:"
     if [ "$OS" = "macos" ]; then
-        echo "  1. Start with watchdog:  sudo python3 watchdog.py --headless"
-        echo "     (or GUI mode:         python3 watchdog.py --gui)"
+        echo "  1. Start with watchdog:  sudo python3 stt/watchdog.py --headless"
+        echo "     (or GUI mode:         python3 stt/watchdog.py --gui)"
         echo "     (sudo needed for port 80; or change port to 8080 in config.json)"
         echo "  2. Grant microphone access if prompted by macOS"
         echo "  3. Open browser: http://localhost:80"
@@ -584,7 +584,7 @@ show_final_instructions() {
         echo "     (run: ffmpeg -f avfoundation -list_devices true -i \"\" to find device index)"
     else
         echo "  1. Start with watchdog:  sudo ./start_watchdog.sh"
-        echo "     (or GUI mode:         python3 watchdog.py --gui)"
+        echo "     (or GUI mode:         python3 stt/watchdog.py --gui)"
         echo "  2. Open browser: http://localhost:80"
     fi
     echo "  - Go to /model-manager to download models"
@@ -621,8 +621,8 @@ show_final_instructions() {
 
     echo "Manual start (with watchdog):"
     echo "  ./start_watchdog.sh          - Headless (server/production)"
-    echo "  python3 watchdog.py --gui    - Desktop GUI (start/stop + settings)"
-    echo "  python3 watchdog.py --check-update  - Check for updates now"
+    echo "  python3 stt/watchdog.py --gui    - Desktop GUI (start/stop + settings)"
+    echo "  python3 stt/watchdog.py --check-update  - Check for updates now"
     echo
 }
 

@@ -129,7 +129,7 @@ Logs go to `~/.stt/logs/watchdog.log` (binary) or `logs/watchdog.log` (source).
 source .venv/bin/activate   # Linux / macOS
 .venv\Scripts\activate      # Windows
 
-python3 watchdog.py --headless
+python3 stt/watchdog.py --headless
 ```
 
 ### Option 2: Direct start — for development / testing
@@ -209,7 +209,7 @@ launchctl unload ~/Library/LaunchAgents/com.stt.watchdog.plist
 2. **Trigger:** At log on (or At startup for system-wide)
 3. **Action:** Start a program
    - Binary install: `C:\path\to\STT-Watchdog.exe`, argument `--headless`
-   - Source install: `pythonw.exe`, argument `"C:\path\to\watchdog.py" --headless`
+   - Source install: `pythonw.exe`, argument `"C:\path\to\stt\watchdog.py" --headless`
 4. **Settings:** Enable *Run whether user is logged on or not* for true headless operation
 
 Alternatively, run `start_watchdog.bat` or `start_watchdog.ps1` from the Startup folder
@@ -263,7 +263,7 @@ sudo reboot
 
 Either:
 1. Run with sudo (not recommended for production)
-2. Change port in `config.json` to 8080 or higher
+2. Change port in `config/config.json` to 8080 or higher
 3. Use port forwarding/reverse proxy
 
 ### ImportError or Missing Modules
@@ -281,11 +281,11 @@ pip install -r requirements.txt --force-reinstall
 ## Configuration
 
 ### Main Config File
-`config.json` is created automatically on first run by copying `config.default.json`.
+`config/config.json` is created automatically on first run by copying `config/config.default.json`.
 It is gitignored — edit it freely without worrying about committing passwords or personal settings.
 
-To start from scratch: delete `config.json` and restart the app.
-To update the default template for others: edit `config.default.json` and commit it.
+To start from scratch: delete `config/config.json` and restart the app.
+To update the default template for others: edit `config/config.default.json` and commit it.
 
 Key settings:
 - Network host, port, and IP whitelist
@@ -346,7 +346,7 @@ rm -rf _AUTOMATIC_BACKUP
 For issues, questions, or feature requests:
 - Check the configuration in `/server-settings`
 - Review logs in the terminal
-- Check the `config.json` file for errors
+- Check the `config/config.json` file for errors
 
 ---
 

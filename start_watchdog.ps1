@@ -19,7 +19,7 @@ if (Test-Path $Binary) {
     $LogDir = Join-Path $ScriptDir "logs"
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
     $proc = Start-Process -FilePath $PythonBin `
-        -ArgumentList "`"$(Join-Path $ScriptDir 'watchdog.py')`" --headless" `
+        -ArgumentList "`"$(Join-Path $ScriptDir 'stt/watchdog.py')`" --headless" `
         -WorkingDirectory $ScriptDir -WindowStyle Minimized -PassThru
     Write-Host "[OK] Watchdog started (PID $($proc.Id)) — Python source mode"
     Write-Host "     Logs: $LogDir\watchdog.log"

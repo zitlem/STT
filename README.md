@@ -65,7 +65,7 @@ start_watchdog.bat
 ### Source install
 
 ```bash
-python3 watchdog.py --headless
+python3 stt/watchdog.py --headless
 ```
 
 ### Persistent service (auto-start on boot)
@@ -91,7 +91,7 @@ launchctl load ~/Library/LaunchAgents/com.stt.watchdog.plist
 **Windows (Task Scheduler)**
 
 Run once at startup via Task Scheduler:
-- Action: `STT-Watchdog.exe --headless` (or `pythonw watchdog.py --headless` for source)
+- Action: `STT-Watchdog.exe --headless` (or `pythonw stt/watchdog.py --headless` for source)
 - Trigger: At log on / At startup
 - Settings: Run whether user is logged on or not
 
@@ -128,7 +128,7 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions, system requ
 
 ## Configuration
 
-Edit `config.json` or use the web interface. Key settings include:
+Edit `config/config.json` or use the web interface. Key settings include:
 
 - Model selection (Whisper variant, backend)
 - Audio device and capture backend (FFmpeg or PyAudio)

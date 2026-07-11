@@ -7,10 +7,16 @@ logs/
 server.log
 /_AUTOMATIC_BACKUP
 .crash_token
+# Live (user-mutated) config files and their tmp/backup/corrupt sidecars live in
+# config/ beside the tracked *.default.json templates; legacy root-level names
+# stay ignored for pre-migration stragglers.
+config/*
+!config/*.default.json
 config.json
 config.json.backup
 config.json.tmp
 config.json.before-restore
+config.json.corrupt.*
 download_progress.json
 *.wav
 *.log

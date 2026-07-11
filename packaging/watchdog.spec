@@ -1,7 +1,7 @@
 """
 PyInstaller spec for the STT thin bootstrapper.
 
-This builds a tiny (~10-20 MB) launcher from watchdog.py only. No ML libraries
+This builds a tiny (~10-20 MB) launcher from stt/watchdog.py only. No ML libraries
 are bundled: on first run the bootstrapper provisions a local venv (via uv),
 clones the app source, and installs dependencies + ffmpeg on the user machine.
 The STT server then runs as a real script from that venv.
@@ -28,7 +28,7 @@ _icon_file = os.path.join(ROOT, "icon.icns" if IS_MACOS else "icon.ico")
 _icon = _icon_file if os.path.exists(_icon_file) else None
 
 a = Analysis(
-    [os.path.join(ROOT, "watchdog.py")],
+    [os.path.join(ROOT, "stt", "watchdog.py")],
     pathex=[ROOT],
     binaries=[],
     datas=[

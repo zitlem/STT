@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import watchdog  # noqa: E402  (imports cleanly: stdlib + optional certifi only)
+import stt.watchdog as watchdog  # noqa: E402  (imports cleanly: stdlib + optional certifi only)
 
 
 class StubPM:

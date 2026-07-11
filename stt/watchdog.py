@@ -63,7 +63,8 @@ if _FROZEN:
     DATA_DIR   = os.path.join(os.path.expanduser("~"), ".stt")
     SOURCE_DIR = os.path.join(DATA_DIR, "app")
 else:
-    DATA_DIR   = os.path.dirname(os.path.abspath(__file__))
+    # This file lives in <repo>/stt/ — the repo root is one level up
+    DATA_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     SOURCE_DIR = DATA_DIR
 APP_DIR = DATA_DIR  # config/logs/crash dumps live in DATA
 os.makedirs(APP_DIR, exist_ok=True)
@@ -72,8 +73,26 @@ GITHUB_REPO = "zitlem/STT"
 GITHUB_REPO_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
 VERSION_FILE = os.path.join(SOURCE_DIR, "VERSION")  # git-managed
-CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+CONFIG_DIR = os.path.join(DATA_DIR, "config")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
+def migrate_config_layout():
+    """One-time layout migration: live config files used to sit in DATA_DIR root.
+    speech_to_text.py performs the same move-if-absent migration; whichever
+    process starts first wins, the other finds nothing left to move. Called
+    from main() (not at import) so merely importing this module has no side
+    effects — tests import it."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    for name in ("config.json", "custom_dictionary.json", "word_highlighting.json",
+                 "whisper_models.json", "faster_whisper_models.json"):
+        old = os.path.join(DATA_DIR, name)
+        new = os.path.join(CONFIG_DIR, name)
+        if os.path.exists(old) and not os.path.exists(new):
+            try:
+                shutil.move(old, new)
+                print(f"[MIGRATE] {name} -> config/{name}")
+            except OSError as e:
+                print(f"[MIGRATE] Could not move {name}: {e}")
 
 # The worker always runs as a real script from the venv (frozen or dev).
 STT_SCRIPT = os.path.join(SOURCE_DIR, "speech_to_text.py")
@@ -88,9 +107,12 @@ BACKOFF = [5, 10, 30, 60]       # seconds between crash restarts; capped at last
 STABLE_RUN_THRESHOLD = 30        # seconds of uptime before resetting crash counter
 UPDATE_HOUR = 1                  # hour (24h) at which daily update check fires
 
-# Files/dirs inside SOURCE never discarded by the zipball-fallback update path
-# (DATA is a separate tree, so config/models/logs are already safe).
-_UPDATE_PRESERVE = frozenset({".venv"})
+# Files/dirs inside SOURCE never discarded by the zipball-fallback update path.
+# "config" holds gitignored live user settings next to tracked *.default.json
+# templates — replacing it with the zipball's copy (defaults only) would drop
+# the user's settings. Zip-updated installs keep stale templates as the price;
+# git-based updates refresh templates while leaving the gitignored files alone.
+_UPDATE_PRESERVE = frozenset({".venv", "config"})
 
 
 # ---------------------------------------------------------------------------
@@ -1760,4 +1782,5 @@ def _block_until_stopped(state):
 
 
 if __name__ == "__main__":
+    migrate_config_layout()
     main()

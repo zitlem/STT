@@ -27,10 +27,9 @@ The server is mostly a monolith — most changes land in `speech_to_text.py`.
 | Path | Role |
 |------|------|
 | `speech_to_text.py` (~15,700 lines) | The entire server: Flask routes, SocketIO events, transcription pipeline, translation, TTS, SQLite storage, settings |
-| `audio_capture.py` | Microphone capture layer |
-| `watchdog.py` | Separate process manager: crash recovery, auto-update, headless mode (`--headless`) |
-| `file_mover.py` | SMB/NAS remote file delivery |
-| `huggingface_manager.py` | Whisper model browsing/downloading from Hugging Face |
+| `stt/audio_capture.py` | Microphone capture layer |
+| `stt/watchdog.py` | Separate process manager: crash recovery, auto-update, headless mode (`--headless`) |
+| `stt/file_mover.py` | SMB/NAS remote file delivery |
 | `templates/` | Jinja2 pages: index, live-settings, model-manager, server-settings, translation, corrections, file-manager, word-highlighting, url-builder |
 | `static/` | Vendored JS/CSS — no build step, no npm |
 | `tests/` | Pytest suite: download state, path safety, staging, text utils, watchdog update |
@@ -39,8 +38,8 @@ The server is mostly a monolith — most changes land in `speech_to_text.py`.
 
 ## Configuration
 
-- `config.default.json` — defaults/schema. **New settings need a default entry here.**
-- `config.json` — the user's live runtime settings; the server writes to it. Don't clobber it with defaults.
+- `config/config.default.json` — defaults/schema. **New settings need a default entry here.**
+- `config/config.json` — the user's live runtime settings (gitignored, as are all non-.default files in `config/`); the server writes to it. Don't clobber it with defaults.
 
 ## Conventions
 

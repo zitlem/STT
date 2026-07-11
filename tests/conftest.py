@@ -3,7 +3,7 @@
 speech_to_text.py loads ML libraries, creates the Flask app, and starts
 background threads at import time, so it cannot be imported in tests.
 Instead, tests extract individual top-level functions/classes from its AST
-and exec them against a stub global namespace. watchdog.py imports cleanly
+and exec them against a stub global namespace. stt/watchdog.py imports cleanly
 and is tested as a normal module.
 """
 

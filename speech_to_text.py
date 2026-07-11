@@ -30,12 +30,36 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 BACKUP_DIR = os.path.join(APP_DIR, "_AUTOMATIC_BACKUP")
 
 
+# Live (user-mutated, gitignored) config files live in APP_DIR/config next to
+# their tracked *.default.json templates. Templates ship with the checkout;
+# live files are seeded from them on first run and never touched by updates.
+CONFIG_DIR = os.path.join(APP_DIR, "config")
+os.makedirs(CONFIG_DIR, exist_ok=True)
+
+# One-time layout migration: live config files used to sit in APP_DIR root.
+# stt/watchdog.py performs the same move-if-absent migration; whichever
+# process starts first wins, the other finds nothing left to move.
+for _mig_name in ("config.json", "custom_dictionary.json", "word_highlighting.json",
+                  "whisper_models.json", "faster_whisper_models.json"):
+    _mig_old = os.path.join(APP_DIR, _mig_name)
+    _mig_new = os.path.join(CONFIG_DIR, _mig_name)
+    if os.path.exists(_mig_old) and not os.path.exists(_mig_new):
+        try:
+            import shutil as _mig_shutil
+            _mig_shutil.move(_mig_old, _mig_new)
+            print(f"[MIGRATE] {_mig_name} -> config/{_mig_name}")
+        except OSError as _mig_err:
+            print(f"[MIGRATE] Could not move {_mig_name}: {_mig_err}")
+
+
 def _seed_from_bundle(filename):
-    """Copy a bundled default file into APP_DIR on first run if missing (compiled builds)."""
+    """Return the live path of a config file (CONFIG_DIR/<filename>), seeding it
+    from the bundled template (config/<stem>.default.json) on first run."""
     import shutil
-    dst = os.path.join(APP_DIR, filename)
-    src = os.path.join(BUNDLE_DIR, filename)
-    if not os.path.exists(dst) and os.path.exists(src) and src != dst:
+    stem, ext = os.path.splitext(filename)
+    dst = os.path.join(CONFIG_DIR, filename)
+    src = os.path.join(BUNDLE_DIR, "config", f"{stem}.default{ext}")
+    if not os.path.exists(dst) and os.path.exists(src):
         try:
             shutil.copy2(src, dst)
         except Exception as e:
@@ -138,7 +162,7 @@ from queue import Queue, Empty, Full
 from time import sleep
 import time
 from sys import platform
-from file_mover import execute_file_move_now, execute_file_move
+from stt.file_mover import execute_file_move_now, execute_file_move
 
 # Tracks the most recent file mover run so the UI can show live activity/status.
 # Updated by both the automatic (transcription-stop) path and the manual trigger.
@@ -295,8 +319,8 @@ FILE_TRANSCRIPTION_PARAMS = {
 # The canonical default/template config lives in config.default.json (bundled at
 # BUNDLE_DIR when compiled). It is used only to seed a fresh config.json on first
 # run, or to recover from a missing/corrupted config.json — see load_config().
-CONFIG_FILE = os.path.join(APP_DIR, "config.json")
-CONFIG_TEMPLATE_FILE = os.path.join(BUNDLE_DIR, "config.default.json")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+CONFIG_TEMPLATE_FILE = os.path.join(BUNDLE_DIR, "config", "config.default.json")
 
 # Serializes all writers to config.json so concurrent endpoint saves cannot
 # interleave and corrupt the file.
@@ -715,7 +739,7 @@ def _apply_glossary(text, source_lang, target_lang):
 
         dict_file = dict_config.get("file", "custom_dictionary.json")
         if not os.path.isabs(dict_file):
-            dict_file = os.path.join(APP_DIR, dict_file)
+            dict_file = os.path.join(CONFIG_DIR, dict_file)
 
         if not os.path.exists(dict_file):
             return text
@@ -3496,7 +3520,7 @@ def convert_db_to_html(db_path):
         # Load word highlighting configuration
         highlight_config = None
         highlight_config_path = os.path.join(
-            APP_DIR, "word_highlighting.json"
+            CONFIG_DIR, "word_highlighting.json"
         )
         if os.path.exists(highlight_config_path):
             try:
@@ -4444,7 +4468,7 @@ def update_config():
                 # stale stable-name so it doesn't keep resolving to a real device.
                 config.setdefault("audio", {})["default_microphone_name"] = ""
             elif new_mic:
-                from audio_capture import list_audio_devices
+                from stt.audio_capture import list_audio_devices
                 markers = config.get("audio", {}).get("deprioritize_device_markers", [])
                 devices = list_audio_devices(deprioritize_markers=markers)
                 matched = next((d for d in devices if d.get("name") == new_mic), None)
@@ -7938,7 +7962,7 @@ def test_file_mover_connection():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     try:
-        from file_mover import test_destination_accessible
+        from stt.file_mover import test_destination_accessible
 
         data = request.get_json()
         dest_path = data.get("destination_path", "")
@@ -8001,7 +8025,7 @@ def browse_remote_destination():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     try:
-        from file_mover import test_destination_accessible
+        from stt.file_mover import test_destination_accessible
 
         data = request.get_json()
         dest_path = data.get("destination_path", "").strip()
@@ -8029,7 +8053,7 @@ def browse_remote_destination():
 
         # On Linux, we need to use the mount point
         if platform == "linux":
-            from file_mover import is_smb_path
+            from stt.file_mover import is_smb_path
 
             if is_smb_path(dest_path):
                 # Extract server and share to build mount point path
@@ -8588,7 +8612,7 @@ def load_custom_dictionary():
 
     dict_file = config.get("custom_dictionary", {}).get("file", "custom_dictionary.json")
     if not os.path.isabs(dict_file):
-        dict_file = os.path.join(APP_DIR, dict_file)
+        dict_file = os.path.join(CONFIG_DIR, dict_file)
 
     try:
         if os.path.exists(dict_file):
@@ -8622,7 +8646,7 @@ def save_custom_dictionary(data):
 
     dict_file = config.get("custom_dictionary", {}).get("file", "custom_dictionary.json")
     if not os.path.isabs(dict_file):
-        dict_file = os.path.join(APP_DIR, dict_file)
+        dict_file = os.path.join(CONFIG_DIR, dict_file)
 
     try:
         import json as _json
@@ -8744,7 +8768,7 @@ def get_audio_devices():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     try:
-        from audio_capture import list_audio_devices
+        from stt.audio_capture import list_audio_devices
 
         # Get backend from config
         audio_config = config.get("audio", {})
@@ -13775,7 +13799,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                     # Initialize ffmpeg audio backend with multi-level fallback
                     source = None
-                    from audio_capture import create_compatible_audio_source
+                    from stt.audio_capture import create_compatible_audio_source
 
                     # A configured file path wins: when default_microphone points at an
                     # existing file (a "Test Audio File" selection), drive the pipeline from
@@ -13792,7 +13816,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         saved_mic_name = audio_config.get("default_microphone_name", "")
                         if saved_mic_name:
                             try:
-                                from audio_capture import list_audio_devices, FFmpegAudioCapture
+                                from stt.audio_capture import list_audio_devices, FFmpegAudioCapture
                                 markers = audio_config.get("deprioritize_device_markers", [])
                                 current_devices = list_audio_devices(deprioritize_markers=markers)
                                 matched = FFmpegAudioCapture.resolve_device_by_name(saved_mic_name, current_devices)

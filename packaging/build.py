@@ -1,7 +1,7 @@
 """
 Local build script — wraps the PyInstaller spec for convenience.
 
-Builds the thin STT bootstrapper (watchdog.py only, ~10-20 MB). It provisions a
+Builds the thin STT bootstrapper (stt/watchdog.py only, ~10-20 MB). It provisions a
 local venv + downloads dependencies + models on first run; nothing heavy is
 bundled here.
 
