@@ -226,6 +226,28 @@
             color: var(--text-primary);
         }
 
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar label {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .filter-bar select {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
         .notification {
             position: fixed;
             top: 20px;
@@ -406,6 +428,15 @@
                 <label for="showHiddenCheckbox">Show hidden items</label>
             </div>
 
+            <!-- Type / Day filters — options are detected from the current folder -->
+            <div class="filter-bar">
+                <label for="typeFilter">Type:</label>
+                <select id="typeFilter" onchange="onFilterChange()"></select>
+                <label for="dayFilter">Day:</label>
+                <select id="dayFilter" onchange="onFilterChange()"></select>
+                <button class="btn btn-secondary" id="clearFiltersBtn" onclick="clearFilters()" style="display: none;">✕ Clear</button>
+            </div>
+
             <!-- File Mover Configuration -->
             <div style="background: var(--bg-card); border: 1px solid var(--accent); padding: 12px 15px; margin-top: 10px; border-radius: var(--radius-sm);">
                 <details id="fileMoverDetails">
@@ -558,6 +589,10 @@
         let showHidden = false;
         let renameTargetPath = '';
         let hiddenExtensions = [];
+        let currentItems = [];       // Last local listing, pre-filter
+        let currentParentPath = null;
+        let filterType = '';         // '' = all; '.ts', '.wav', ... or 'noext'
+        let filterDay = '';          // '' = all; 'YYYY-MM-DD'
         // Load files and disk space on page load
         window.addEventListener('DOMContentLoaded', () => {
             loadFiles();
@@ -582,7 +617,9 @@
                     }
 
                     renderBreadcrumb(currentPath);
-                    renderFileTable(data.items, data.parent_path);
+                    currentItems = data.items;
+                    currentParentPath = data.parent_path;
+                    applyFilters();
                 } else {
                     showNotification(data.error || 'Failed to load files', 'error');
                 }
@@ -650,6 +687,82 @@
                 part.onclick = () => loadFiles(partPath);
                 breadcrumb.appendChild(part);
             }
+        }
+
+        // ── Type / Day filters (local browse only) ─────────────────────────
+        function fileDay(item) {
+            // Backup filenames lead with the recording day (2026-07-10_181603.ts);
+            // fall back to the modification date for everything else
+            const m = item.name.match(/^(\d{4}-\d{2}-\d{2})/);
+            return m ? m[1] : (item.modified || '').slice(0, 10);
+        }
+
+        function fileTypeKey(item) {
+            return item.extension ? item.extension.toLowerCase() : 'noext';
+        }
+
+        function rebuildFilterOptions() {
+            const files = currentItems.filter(i => i.type === 'file');
+            const typeCounts = {};
+            const dayCounts = {};
+            files.forEach(i => {
+                const t = fileTypeKey(i);
+                typeCounts[t] = (typeCounts[t] || 0) + 1;
+                const d = fileDay(i);
+                if (d) dayCounts[d] = (dayCounts[d] || 0) + 1;
+            });
+            // Keep the selection while descending folders that still offer it
+            if (filterType && !(filterType in typeCounts)) filterType = '';
+            if (filterDay && !(filterDay in dayCounts)) filterDay = '';
+
+            const typeLabel = t => t === 'noext' ? '(no ext)' : t;
+            const typeSel = document.getElementById('typeFilter');
+            typeSel.innerHTML = `<option value="">All (${files.length} file${files.length === 1 ? '' : 's'})</option>` +
+                Object.keys(typeCounts).sort()
+                    .map(t => `<option value="${t}">${typeLabel(t)} (${typeCounts[t]})</option>`).join('');
+            typeSel.value = filterType;
+
+            const daySel = document.getElementById('dayFilter');
+            daySel.innerHTML = '<option value="">All days</option>' +
+                Object.keys(dayCounts).sort().reverse()
+                    .map(d => `<option value="${d}">${d} (${dayCounts[d]})</option>`).join('');
+            daySel.value = filterDay;
+
+            document.getElementById('clearFiltersBtn').style.display =
+                (filterType || filterDay) ? '' : 'none';
+        }
+
+        function applyFilters() {
+            rebuildFilterOptions();
+            const filtered = currentItems.filter(i => {
+                if (i.type === 'directory') return true; // folders stay for navigation
+                if (filterType && fileTypeKey(i) !== filterType) return false;
+                if (filterDay && fileDay(i) !== filterDay) return false;
+                return true;
+            });
+            if (filtered.length === 0 && currentItems.length > 0 && (filterType || filterDay)) {
+                document.getElementById('fileTableContainer').innerHTML = `
+                    <div class="empty-state">
+                        <div style="font-size: 4em; margin-bottom: 20px;">🔍</div>
+                        <h3>No files match the current filters</h3>
+                        <button class="btn btn-secondary" onclick="clearFilters()">Clear filters</button>
+                    </div>
+                `;
+                return;
+            }
+            renderFileTable(filtered, currentParentPath);
+        }
+
+        function onFilterChange() {
+            filterType = document.getElementById('typeFilter').value;
+            filterDay = document.getElementById('dayFilter').value;
+            applyFilters();
+        }
+
+        function clearFilters() {
+            filterType = '';
+            filterDay = '';
+            applyFilters();
         }
 
         function renderFileTable(items, parentPath, isRemote = false) {
