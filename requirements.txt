@@ -47,6 +47,8 @@ piper-tts>=1.2.0
 pytz>=2023.3
 silero-vad>=4.0.0
 smbprotocol>=1.10.0
+# Optional error reporting — only active when crash_reporting.sentry_dsn is set
+sentry-sdk[flask]>=2.0,<3
 
 # Optional: For better performance
 # ffmpeg-python>=0.2.0  # Requires ffmpeg installed on system

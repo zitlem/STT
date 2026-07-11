@@ -1789,6 +1789,38 @@ def _block_until_stopped(state):
         pass
 
 
+def _init_sentry():
+    """Optional Sentry error reporting, sharing the server's configured DSN.
+    Silent no-op when no DSN is set or the SDK is absent (the frozen
+    bootstrapper doesn't bundle it — only venv installs report)."""
+    try:
+        cr = load_config().get("crash_reporting", {})
+    except Exception:
+        return
+    dsn = (cr.get("sentry_dsn", "") or "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        release = None
+        try:
+            release = "stt@" + read_version()
+        except Exception:
+            pass
+        sentry_sdk.init(
+            dsn=dsn,
+            send_default_pii=bool(cr.get("sentry_send_pii", False)),
+            release=release,
+        )
+        sentry_sdk.set_tag("process", "watchdog")
+        print("[SENTRY] Error reporting enabled")
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[SENTRY] Init failed (continuing without): {e}")
+
+
 if __name__ == "__main__":
     migrate_config_layout()
+    _init_sentry()
     main()

@@ -494,6 +494,40 @@ def load_config():
 # Load configuration
 config = load_config()
 
+
+def _init_sentry():
+    """Optional Sentry error reporting — active only when a DSN is configured.
+    Runs in the web process and again in the transcription worker (which
+    re-imports this module), so both report. Never blocks boot."""
+    cr = config.get("crash_reporting", {})
+    dsn = (cr.get("sentry_dsn", "") or "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+        try:
+            with open(os.path.join(BUNDLE_DIR, "VERSION")) as _vf:
+                release = "stt@" + _vf.read().strip()
+        except OSError:
+            release = None
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[FlaskIntegration()],
+            traces_sample_rate=float(cr.get("sentry_traces_sample_rate", 0) or 0),
+            send_default_pii=bool(cr.get("sentry_send_pii", False)),
+            release=release,
+        )
+        sentry_sdk.set_tag("process", "server")
+        print("[SENTRY] Error reporting enabled")
+    except ImportError:
+        print("[SENTRY] sentry_dsn is set but sentry-sdk is not installed — rerun the installer or: uv pip install 'sentry-sdk[flask]'")
+    except Exception as e:
+        print(f"[SENTRY] Init failed (continuing without): {e}")
+
+
+_init_sentry()
+
 # Create empty word highlighting file if it doesn't exist
 if not os.path.exists(WORD_HIGHLIGHTING_FILE):
     print(f"[INIT] Creating empty {WORD_HIGHLIGHTING_FILE}")
@@ -13517,6 +13551,11 @@ def install_crash_diagnostics(role="main"):
 def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
     """Main transcription process with start/stop support"""
     install_crash_diagnostics("worker")
+    try:
+        import sentry_sdk
+        sentry_sdk.set_tag("process", "worker")  # init ran at module import if a DSN is configured
+    except ImportError:
+        pass
     # On macOS/Windows (spawn), shared state objects are passed as arguments because the spawned
     # child re-imports this module and cannot recreate them. Assign to module globals so
     # all existing code in this function works unchanged. On Linux (fork), the globals are

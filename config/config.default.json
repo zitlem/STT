@@ -455,6 +455,12 @@
   },
   "crash_reporting": {
     "enabled": true,
-    "_enabled_comment": "Write local crash dumps to logs/crashes/ when the app crashes. Nothing is ever sent off the machine."
+    "_enabled_comment": "Write local crash dumps to logs/crashes/ when the app crashes. Local dumps never leave the machine.",
+    "sentry_dsn": "",
+    "_sentry_dsn_comment": "Optional Sentry DSN. Empty = fully local crash reporting (nothing is sent off the machine). When set, errors from the server, transcription worker, and watchdog are reported to Sentry.",
+    "sentry_traces_sample_rate": 0,
+    "_sentry_traces_sample_rate_comment": "0 = report errors only. Set between 0 and 1 to also sample performance traces.",
+    "sentry_send_pii": false,
+    "_sentry_send_pii_comment": "Include request headers and client IPs in Sentry events. Off by default."
   }
 }
