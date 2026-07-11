@@ -422,19 +422,17 @@
                 </div>
             </div>
 
-            <!-- Show Hidden Files Toggle -->
-            <div class="checkbox-container">
-                <input type="checkbox" id="showHiddenCheckbox" onchange="toggleHiddenFiles()">
-                <label for="showHiddenCheckbox">Show hidden items</label>
-            </div>
-
-            <!-- Type / Day filters — options are detected from the current folder -->
+            <!-- Type / Day filters (detected from the current folder) + hidden-items toggle -->
             <div class="filter-bar">
                 <label for="typeFilter">Type:</label>
                 <select id="typeFilter" onchange="onFilterChange()"></select>
                 <label for="dayFilter">Day:</label>
                 <select id="dayFilter" onchange="onFilterChange()"></select>
                 <button class="btn btn-secondary" id="clearFiltersBtn" onclick="clearFilters()" style="display: none;">✕ Clear</button>
+                <div class="checkbox-container" style="margin-left: auto; margin-bottom: 0;">
+                    <input type="checkbox" id="showHiddenCheckbox" onchange="toggleHiddenFiles()">
+                    <label for="showHiddenCheckbox">Show hidden items</label>
+                </div>
             </div>
 
             <!-- File Mover Configuration -->
