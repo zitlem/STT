@@ -1283,15 +1283,30 @@
          tableBody.append(row);
        }
 
+       // Escape HTML special characters. Transcript/translation/correction text
+       // is arbitrary content (spoken word, machine translation, or a manually
+       // typed correction) and is rendered via innerHTML below — without this,
+       // a correction like "<img src=x onerror=...>" would execute as live HTML
+       // on every screen displaying this page.
+       function escapeHtml(str) {
+         return String(str)
+           .replace(/&/g, '&amp;')
+           .replace(/</g, '&lt;')
+           .replace(/>/g, '&gt;')
+           .replace(/"/g, '&quot;')
+           .replace(/'/g, '&#39;');
+       }
+
        // Function to apply word highlighting to text
        function applyWordHighlighting(text) {
          const config = window.wordHighlightingConfig || { enabled: false, words: [], disabled_colors: [] };
+         const escapedText = escapeHtml(text);
 
          if (!config.enabled || config.words.length === 0) {
-           return text;
+           return escapedText;
          }
 
-         let highlightedText = text;
+         let highlightedText = escapedText;
          const disabledColors = config.disabled_colors || [];
 
          config.words.forEach(function (wordConfig) {
@@ -1352,6 +1367,17 @@
 
        function dripFeedWords(newFullHTML, prevFullHTML, element, isTranslation) {
          const dripSpeed = window.displayConfig?.dripSpeed || 140;
+
+         // Baseline off what's ACTUALLY on screen right now, not prevFullHTML
+         // (the previous call's target). If a prior drip was interrupted
+         // mid-reveal by this update arriving early, prevFullHTML may be
+         // further along than what the viewer currently sees — using it as
+         // the baseline would snap the unrevealed remainder in instantly
+         // before dripping the new portion. The tracked _*RevealedHTML is
+         // updated on every tick, so it always reflects the true current state
+         // (and equals prevFullHTML whenever the previous drip did finish).
+         const actualPrevHTML = (isTranslation ? _transDripRevealedHTML : _dripRevealedHTML) || prevFullHTML;
+
          if (!dripSpeed || dripSpeed <= 0) {
            element.innerHTML = newFullHTML;
            if (isTranslation) { _transDripRevealedHTML = newFullHTML; }
@@ -1361,7 +1387,7 @@
 
          // Extract plain text to find new words
          const tempDiv = document.createElement('div');
-         tempDiv.innerHTML = prevFullHTML;
+         tempDiv.innerHTML = actualPrevHTML;
          const oldText = tempDiv.textContent || '';
          tempDiv.innerHTML = newFullHTML;
          const newText = tempDiv.textContent || '';
@@ -1394,7 +1420,7 @@
          }
 
          // Show base (already revealed text) immediately
-         element.innerHTML = prevFullHTML;
+         element.innerHTML = actualPrevHTML;
 
          let wordIndex = 0;
          const timer = setInterval(() => {
