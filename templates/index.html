@@ -558,6 +558,8 @@
           if (typeof forceHighlightRerender === 'function') forceHighlightRerender();
           _transcriptionStructureBuilt = false; _lastFinalizedHTML = ''; lastSegmentCount = -1;
           _translationStructureBuilt = false; _lastTranslationFinalizedHTML = ''; lastTranslatedSegmentCount = -1;
+          resetDripState(false);
+          resetDripState(true);
         });
 
       });
@@ -1365,6 +1367,22 @@
        let _transDripTimer = null;
        let _transDripRevealedHTML = '';
 
+       // Invalidate a stream's drip-feed baseline: cancels any in-flight reveal
+       // and clears the "actually displayed" tracker. Must be called anywhere
+       // finalized/segment state is invalidated (reconnect, corrections, a new
+       // session) — otherwise a stale baseline survives into the next reveal
+       // and dripFeedWords glues old text in front of unrelated new content
+       // until that reveal finishes.
+       function resetDripState(isTranslation) {
+         if (isTranslation) {
+           if (_transDripTimer) { clearInterval(_transDripTimer); _transDripTimer = null; }
+           _transDripRevealedHTML = '';
+         } else {
+           if (_dripTimer) { clearInterval(_dripTimer); _dripTimer = null; }
+           _dripRevealedHTML = '';
+         }
+       }
+
        function dripFeedWords(newFullHTML, prevFullHTML, element, isTranslation) {
          const dripSpeed = window.displayConfig?.dripSpeed || 140;
 
@@ -1477,6 +1495,7 @@
            _transcriptionStructureBuilt = false;
            _finalizedTextEl = null;
            _inProgressTextEl = null;
+           resetDripState(false);
            tableBody.empty();
            // Reflect live running state in the empty-state wording (socket-driven,
            // works regardless of showMenu/iframe mode)
@@ -1665,6 +1684,7 @@
            _translationStructureBuilt = false;
            _translationFinalizedEl = null;
            _translationInProgressEl = null;
+           resetDripState(true);
 
            // Clear translation display if in translate-only mode
            if (mode === 'translate') {
@@ -1916,6 +1936,14 @@
           lastEndTime = 0;
           lastSegmentCount = 0;
           lastInProgressText = '';
+          // Also clear the rendered-state cache: a new session restarts ids at
+          // 1, so stale finalized text (and its drip baseline) could otherwise
+          // survive and get glued in front of the new session's content
+          _lastFinalizedHTML = '';
+          _transcriptionStructureBuilt = false;
+          _finalizedTextEl = null;
+          _inProgressTextEl = null;
+          resetDripState(false);
           // Also clear translation state: segments merge by id, and a new
           // session restarts ids at 1 — stale rows would collide with new ones
           allTranslatedSegments = [];
@@ -1926,6 +1954,7 @@
           _translationStructureBuilt = false;
           _translationFinalizedEl = null;
           _translationInProgressEl = null;
+          resetDripState(true);
           // Re-join audio streaming rooms after reconnect (e.g. server restart)
           if (window.displayConfig.audioStream) {
             socket.emit('join_audio_stream');
