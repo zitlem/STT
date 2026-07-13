@@ -338,7 +338,7 @@ except Exception as e:
     if platform.system() == "Darwin":
         print("2. macOS: Grant microphone access in System Settings > Privacy & Security > Microphone")
         print("3. List devices: ffmpeg -f avfoundation -list_devices true -i \"\"")
-        print("4. Try device ':0' or ':1' in config.json default_microphone")
+        print("4. Try device ':0' or ':1' in config/config.json default_microphone")
     else:
         print("2. Check if user is in 'audio' group (log out and back in if added)")
         print("3. Try: arecord -l  (to list recording devices)")
@@ -577,10 +577,10 @@ show_final_instructions() {
     if [ "$OS" = "macos" ]; then
         echo "  1. Start with watchdog:  sudo python3 stt/watchdog.py --headless"
         echo "     (or GUI mode:         python3 stt/watchdog.py --gui)"
-        echo "     (sudo needed for port 80; or change port to 8080 in config.json)"
+        echo "     (sudo needed for port 80; or change port to 8080 in config/config.json)"
         echo "  2. Grant microphone access if prompted by macOS"
         echo "  3. Open browser: http://localhost:80"
-        echo "  4. Set microphone in config.json: default_microphone: ':0'"
+        echo "  4. Set microphone in config/config.json: default_microphone: ':0'"
         echo "     (run: ffmpeg -f avfoundation -list_devices true -i \"\" to find device index)"
     else
         echo "  1. Start with watchdog:  sudo ./start_watchdog.sh"
@@ -591,7 +591,7 @@ show_final_instructions() {
     echo "  - Go to /live-settings to configure audio"
     echo
     echo "Configuration:"
-    echo "  - Main config: $INSTALL_DIR/config.json"
+    echo "  - Main config: $INSTALL_DIR/config/config.json"
     echo
     echo "Useful commands:"
     echo

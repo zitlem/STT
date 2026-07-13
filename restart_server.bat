@@ -64,11 +64,16 @@ if exist ".venv\Scripts\python.exe" (
 echo [RESTART] Starting server...
 start "" "!PYTHON_BIN!" speech_to_text.py
 
+REM ─── Read port from config.json ─────────────────────────────────────
+set "PORT="
+for /f "delims=" %%p in ('"!PYTHON_BIN!" -c "import json;print(json.load(open('config/config.json')).get('web_server',{}).get('port',8080))" 2^>nul') do set "PORT=%%p"
+if not defined PORT set "PORT=8080"
+
 REM ─── Verify started ───────────────────────────────────────────────
 timeout /t 3 /nobreak >nul
 tasklist /FI "IMAGENAME eq python.exe" /FO CSV 2>nul | findstr /I "python" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo [RESTART] Server started successfully.
+    echo [RESTART] Server started successfully on port !PORT!.
 ) else (
     echo [RESTART] WARNING: Server may not have started. Check for errors.
 )

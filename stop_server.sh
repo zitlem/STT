@@ -22,7 +22,7 @@ echo "Stopping server..."
 # Read port from config.json
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
 PYTHON_BIN=$([ -f "$VENV_PYTHON" ] && echo "$VENV_PYTHON" || echo "python3")
-PORT=$("$PYTHON_BIN" -c "import json; print(json.load(open('config.json')).get('web_server',{}).get('port',80))" 2>/dev/null || echo 80)
+PORT=$("$PYTHON_BIN" -c "import json; print(json.load(open('config/config.json')).get('web_server',{}).get('port',8080))" 2>/dev/null || echo 8080)
 
 # ─── Stop managed services ──────────────────────────────────────────
 if [ "$OS" = "Linux" ]; then

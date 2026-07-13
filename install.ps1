@@ -330,7 +330,7 @@ function Show-FinalInstructions {
     Write-Host "  4. Go to /live-settings to configure audio"
     Write-Host ""
     Write-Host "Configuration:"
-    Write-Host "  - Main config: $INSTALL_DIR\config.json"
+    Write-Host "  - Main config: $INSTALL_DIR\config\config.json"
     Write-Host ""
     Write-Host "Manual start (from this directory):"
     Write-Host "  .venv\Scripts\python.exe speech_to_text.py"

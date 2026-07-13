@@ -22,5 +22,10 @@ if exist ".venv\Scripts\python.exe" (
 echo Starting Speech-to-Text server...
 start "" "%PYTHON_BIN%" speech_to_text.py
 echo [OK] Server starting...
-echo Open your browser to http://localhost (or configured port)
+
+set "PORT="
+for /f "delims=" %%p in ('"%PYTHON_BIN%" -c "import json;print(json.load(open('config/config.json')).get('web_server',{}).get('port',8080))" 2^>nul') do set "PORT=%%p"
+if not defined PORT set "PORT=8080"
+
+echo Open your browser to http://localhost:%PORT%
 timeout /t 3 >nul
