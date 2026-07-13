@@ -1,7 +1,10 @@
 {
   "glossary": {
-    "auto_to_en": {
+    "ru_to_en": {
       "Allah": "Lord"
+    },
+    "en_to_ru": {
+      "Аллах": "Господь"
     }
   }
 }
