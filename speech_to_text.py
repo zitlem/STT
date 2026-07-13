@@ -558,6 +558,7 @@ _translation_clients_lock = threading.Lock()
 _trusted_translation_clients = set(
     config.get("live_translation", {}).get("trusted_clients", [])
 )
+_session_glossary_override = None  # {"glossary": {...}} pushed by a paired Machine A for this session; None = use custom_dictionary.json
 
 
 def _is_trusted_translation_client(ip):
@@ -785,16 +786,19 @@ def _apply_glossary(text, source_lang, target_lang):
         if not dict_config.get("nllb_glossary_enabled", False):
             return text
 
-        dict_file = dict_config.get("file", "custom_dictionary.json")
-        if not os.path.isabs(dict_file):
-            dict_file = os.path.join(CONFIG_DIR, dict_file)
+        if _session_glossary_override is not None:
+            dictionary = _session_glossary_override
+        else:
+            dict_file = dict_config.get("file", "custom_dictionary.json")
+            if not os.path.isabs(dict_file):
+                dict_file = os.path.join(CONFIG_DIR, dict_file)
 
-        if not os.path.exists(dict_file):
-            return text
+            if not os.path.exists(dict_file):
+                return text
 
-        import json as _json
-        with open(dict_file, "r", encoding="utf-8") as f:
-            dictionary = _json.load(f)
+            import json as _json
+            with open(dict_file, "r", encoding="utf-8") as f:
+                dictionary = _json.load(f)
 
         glossary_key = f"{source_lang}_to_{target_lang}"
         glossary = dictionary.get("glossary", {}).get(glossary_key, {})
@@ -5983,6 +5987,19 @@ def translate_preload():
     return jsonify({"success": True, "message": "Loading translation model"})
 
 
+@app.route("/api/translate/sync-dictionary", methods=["POST"])
+def translate_sync_dictionary():
+    """Remote dictionary sync — called by a paired Machine A to push its
+    glossary for this session only. Held in memory; never written to this
+    machine's own custom_dictionary.json, and cleared when the pairing ends."""
+    if not _is_trusted_translation_client(request.remote_addr):
+        return jsonify({"error": "Not paired"}), 403
+    global _session_glossary_override
+    data = request.get_json() or {}
+    _session_glossary_override = {"glossary": data.get("dictionary", {}).get("glossary", {})}
+    return jsonify({"success": True})
+
+
 @app.route("/api/translate/pair/request", methods=["POST"])
 def translation_pair_request():
     """Machine A calls this to initiate pairing. Machine B shows the code."""
@@ -6047,6 +6064,9 @@ def translation_unpair():
     if ip in trusted:
         trusted.remove(ip)
     save_config(config)
+    if not _trusted_translation_clients:
+        global _session_glossary_override
+        _session_glossary_override = None
     socketio.emit("translation_pair_denied", {"ip": ip})
     return jsonify({"success": True})
 
@@ -6118,9 +6138,12 @@ def translation_unpair_me():
         trusted.remove(client_ip)
     save_config(config)
     # Unload model if no other clients remain
-    if not _trusted_translation_clients and is_live_translation_model_loaded():
-        import threading
-        threading.Thread(target=unload_live_translation_model, daemon=True).start()
+    if not _trusted_translation_clients:
+        global _session_glossary_override
+        _session_glossary_override = None
+        if is_live_translation_model_loaded():
+            import threading
+            threading.Thread(target=unload_live_translation_model, daemon=True).start()
     socketio.emit("translation_pair_denied", {"ip": client_ip})
     return jsonify({"success": True, "message": f"Unpaired {client_ip}"})
 
@@ -6639,6 +6662,31 @@ def proxy_translate_preload():
     import requests as _req
     try:
         r = _req.post(endpoint + "/api/translate/preload", timeout=10)
+        try:
+            data = r.json()
+        except ValueError:
+            data = {"success": False, "error": "Invalid JSON from remote"}
+        return jsonify(data), r.status_code
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 502
+
+
+@app.route("/api/remote-translation/sync-dictionary", methods=["POST"])
+def proxy_sync_dictionary():
+    """Proxy: push this machine's custom dictionary to the paired Machine B
+    for the current session (avoids CORS)."""
+    if not check_ip_whitelist():
+        return jsonify({"success": False, "error": "Access Denied"}), 403
+    try:
+        endpoint = _get_remote_endpoint()
+    except _RemoteEndpointError as e:
+        return jsonify({"success": False, "error": str(e)}), 502
+    if not endpoint:
+        return jsonify({"success": False, "error": "No remote endpoint configured"}), 400
+    import requests as _req
+    try:
+        r = _req.post(endpoint + "/api/translate/sync-dictionary",
+                      json={"dictionary": load_custom_dictionary()}, timeout=10)
         try:
             data = r.json()
         except ValueError:
@@ -8272,8 +8320,11 @@ def start_transcription():
                     import requests as _req
                     r = _req.post(ep + "/api/translate/preload", timeout=10)
                     print(f"[START] Remote translation preload: {r.json()}")
+                    r2 = _req.post(ep + "/api/translate/sync-dictionary",
+                                   json={"dictionary": load_custom_dictionary()}, timeout=10)
+                    print(f"[START] Remote dictionary sync: {r2.json()}")
                 except Exception as e:
-                    print(f"[START] Remote translation preload failed: {e}")
+                    print(f"[START] Remote translation preload/sync failed: {e}")
             import threading
             threading.Thread(target=_notify_remote_preload, daemon=True).start()
         elif trans_cfg.get("enabled") and trans_cfg.get("translation_method", "nllb") not in (

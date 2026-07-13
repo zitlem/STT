@@ -1187,6 +1187,7 @@
                 if (data.paired) {
                     if (!statusEl.innerHTML.includes('Paired')) {
                         statusEl.innerHTML = '<span style="color: var(--success);">Paired ✓</span> ' +
+                            '<button onclick="syncDictionaryToRemote()" style="margin-left:6px; padding:2px 8px; font-size:0.75em; background:#20395a; border:1px solid #4070a0; border-radius:4px; color:#eee; cursor:pointer;">Sync Dictionary</button>' +
                             '<button onclick="unpairFromMachineB()" style="margin-left:6px; padding:2px 8px; font-size:0.75em; background:#5a2020; border:1px solid #a04040; border-radius:4px; color:#eee; cursor:pointer;">Unpair</button>';
                     }
                     document.getElementById('pair_code_entry').style.display = 'none';
@@ -1200,6 +1201,20 @@
                     return false;
                 }
             } catch (_) { return false; }
+        }
+
+        async function syncDictionaryToRemote() {
+            try {
+                const resp = await fetch('/api/remote-translation/sync-dictionary', {method: 'POST'});
+                const data = await resp.json();
+                if (data.success) {
+                    showAlert('Dictionary synced to Machine B (this session only)', 'success');
+                } else {
+                    showAlert('Sync failed: ' + (data.error || data.message), 'error');
+                }
+            } catch (e) {
+                showAlert('Error: ' + e.message, 'error');
+            }
         }
 
         async function unpairFromMachineB() {
