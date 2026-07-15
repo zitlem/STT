@@ -1895,41 +1895,14 @@
           setInterval(checkDiskSpace, 30000);
         }
 
-        socket.on('connect', function() {
-          // console.log('WebSocket connected');
-          updateServerStatus(true);
-          if (window.displayConfig.showMenu) {
-            checkTranscriptionStatus();
-            checkDiskSpace();
-          }
-          if (window.displayConfig.showAll) {
-            socket.emit('request_all_entries');
-            socket.emit('request_all_translation_entries');
-          }
-          // Join audio streaming rooms if enabled via URL params
-          if (window.displayConfig.audioStream) {
-            socket.emit('join_audio_stream');
-          }
-          if (window.displayConfig.ttsAudio) {
-            socket.emit('join_tts_audio');
-          }
-        });
-
-        socket.on('disconnect', function() {
-          // console.log('WebSocket disconnected');
-          updateServerStatus(false);
-        });
-
-        socket.on('reconnecting', function(attemptNumber) {
-          // console.log('Reconnecting attempt:', attemptNumber);
-        });
-
-        socket.on('reconnect', function() {
-          // console.log('Reconnected - reloading transcription history');
-          updateServerStatus(true);
-          if (window.displayConfig.showMenu) {
-            checkTranscriptionStatus();
-          }
+        // Clear segment/translation state and the drip-feed baselines, then
+        // re-join audio rooms. Socket.IO only emits 'reconnect' for its own
+        // automatic backoff reconnection — a manual socket.connect() (used by
+        // the visibilitychange handler and the heartbeat watchdog below to
+        // recover from a silently-dead connection) fires only 'connect'. This
+        // is called from both handlers so a manual reconnect can't leave
+        // stale state around to get glued onto the next update.
+        function resetSessionState() {
           // Clear segment state to reload fresh data on reconnect
           allSegments = [];
           lastIncompleteSegment = null;
@@ -1969,6 +1942,45 @@
           if (window.displayConfig.ttsAudio) {
             socket.emit('join_tts_audio');
           }
+        }
+
+        socket.on('connect', function() {
+          // console.log('WebSocket connected');
+          updateServerStatus(true);
+          if (window.displayConfig.showMenu) {
+            checkTranscriptionStatus();
+            checkDiskSpace();
+          }
+          if (window.displayConfig.showAll) {
+            socket.emit('request_all_entries');
+            socket.emit('request_all_translation_entries');
+          }
+          // Join audio streaming rooms if enabled via URL params
+          if (window.displayConfig.audioStream) {
+            socket.emit('join_audio_stream');
+          }
+          if (window.displayConfig.ttsAudio) {
+            socket.emit('join_tts_audio');
+          }
+          resetSessionState();
+        });
+
+        socket.on('disconnect', function() {
+          // console.log('WebSocket disconnected');
+          updateServerStatus(false);
+        });
+
+        socket.on('reconnecting', function(attemptNumber) {
+          // console.log('Reconnecting attempt:', attemptNumber);
+        });
+
+        socket.on('reconnect', function() {
+          // console.log('Reconnected - reloading transcription history');
+          updateServerStatus(true);
+          if (window.displayConfig.showMenu) {
+            checkTranscriptionStatus();
+          }
+          resetSessionState();
         });
 
         socket.on('error', function(error) {
