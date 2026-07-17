@@ -470,5 +470,11 @@
     "_sentry_profile_session_sample_rate_comment": "Fraction of profile sessions collected (0-1).",
     "sentry_profile_lifecycle": "trace",
     "_sentry_profile_lifecycle_comment": "'trace' = profile automatically while a sampled transaction is active; 'manual' = only when started explicitly."
+  },
+  "analytics": {
+    "endpoint": "https://stt.churchpresenter.org/api/ping",
+    "_endpoint_comment": "Live-map ping URL, hit when a transcription starts. Change only if self-hosting the collector; leave empty to disable.",
+    "install_id": "",
+    "_install_id_comment": "Anonymous per-install UUID, generated automatically on first ping. Used only to dedupe the map so one machine doesn't spam it. No IP is stored; location is derived server-side and fuzzed."
   }
 }

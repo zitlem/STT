@@ -362,6 +362,18 @@ def save_config(config_to_save):
         return False
 
 
+def _get_install_id():
+    """Stable anonymous UUID for the live-map ping; generated once and persisted."""
+    analytics = config.get("analytics", {})
+    iid = (analytics.get("install_id") or "").strip()
+    if not iid:
+        iid = str(uuid.uuid4())
+        analytics["install_id"] = iid
+        config["analytics"] = analytics
+        save_config(config)
+    return iid
+
+
 # Word highlighting uses a separate config file
 WORD_HIGHLIGHTING_FILE = _seed_from_bundle("word_highlighting.json")
 
@@ -8304,6 +8316,30 @@ def start_transcription():
             "Initializing audio interface and loading model..."
         )
         transcription_state["error"] = None  # Clear any previous errors
+
+        # Anonymous live-map ping so ChurchPresenter can see where STT is used.
+        # Location is derived (and fuzzed) server-side from the connection; we send
+        # only version + os + a stable per-install id used to dedupe the map.
+        install_id = _get_install_id()
+
+        def _notify_livemap():
+            try:
+                ep = (config.get("analytics", {}).get("endpoint") or "").strip()
+                if not ep:
+                    return
+                try:
+                    with open(os.path.join(BUNDLE_DIR, "VERSION")) as _vf:
+                        version = _vf.read().strip()
+                except OSError:
+                    version = "unknown"
+                os_name = {"darwin": "macos", "win32": "windows", "linux": "linux"}.get(sys.platform, "linux")
+                import requests as _req
+                _req.get(f"{ep}?os={os_name}&version={version}",
+                         headers={"X-Install-Id": install_id}, timeout=10)
+            except Exception as e:
+                print(f"[START] Live-map ping failed: {e}")
+        import threading
+        threading.Thread(target=_notify_livemap, daemon=True).start()
 
         # Warm up the translation model so the first translated segment doesn't
         # pay the load cost. Remote setups preload on Machine B; otherwise, for a
