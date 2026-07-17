@@ -211,7 +211,9 @@
 
                 <div class="info-box">
                     🕐 <strong>Current Date & Time (Server):</strong><br>
-                    <span id="current_datetime" style="font-size: 0.95em; color: var(--text-primary);" aria-live="polite" aria-atomic="true">Loading...</span>
+                    <span id="current_datetime" style="font-size: 0.95em; color: var(--text-primary);" aria-live="polite" aria-atomic="true">Loading...</span><br>
+                    ⏱️ <strong>Uptime:</strong> <span id="server_uptime" style="font-size: 0.95em; color: var(--text-primary);" aria-live="polite" aria-atomic="true">Loading...</span><br>
+                    🏷️ <strong>Version:</strong> <span id="server_version" style="font-size: 0.95em; color: var(--text-primary);">Loading...</span>
                     <div id="timezone_warning" style="display: none; margin-top: 8px; padding: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-sm); color: var(--warning);" aria-live="polite">
                         ⚠️ <strong>Timezone Mismatch:</strong> Your browser time differs from server time by <span id="time_diff"></span>. File paths will use server time.
                     </div>
@@ -686,6 +688,16 @@
                     // Display server time
                     document.getElementById('current_datetime').textContent = data.formatted;
 
+                    // Display server-process uptime (ticks each second via this 1 Hz poll)
+                    if (typeof data.uptime_seconds === 'number') {
+                        document.getElementById('server_uptime').textContent = formatUptime(data.uptime_seconds);
+                    }
+
+                    // Display running version (static for this process)
+                    if (data.version) {
+                        document.getElementById('server_version').textContent = data.version;
+                    }
+
                     // Check for timezone/date mismatch using explicit server values
                     const browserDate = new Date();
 
@@ -738,8 +750,22 @@
                     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
                 };
                 document.getElementById('current_datetime').textContent = now.toLocaleString('en-US', options) + ' (browser time)';
+                document.getElementById('server_uptime').textContent = '—';
                 window.serverTime = now;
+                // leave version as-is (last known); it's static per process
             }
+        }
+
+        function formatUptime(total) {
+            const s = Math.max(0, Math.floor(total));
+            const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+                  m = Math.floor((s % 3600) / 60), sec = s % 60;
+            const p = [];
+            if (d) p.push(d + 'd');
+            if (d || h) p.push(h + 'h');
+            if (d || h || m) p.push(m + 'm');
+            p.push(sec + 's');
+            return p.join(' ');
         }
 
         async function loadSettings() {

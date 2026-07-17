@@ -4099,6 +4099,18 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True  # Auto-reload templates when they ch
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching for static files
 socketio = SocketIO(app, async_mode="threading", static_url_path="/static", static_folder=os.path.join(BUNDLE_DIR, "static"), ping_timeout=120, ping_interval=25)
 
+# When this (web) process started — used for the Server Settings uptime display.
+# Resets on restart/redeploy/crash-recovery, reflecting the live server-process lifetime.
+SERVER_START_TIME = time.time()
+
+# Running version (read once at startup; a self-update restarts the process, so a
+# fresh run picks up the new VERSION). Same source as the Sentry release tag.
+try:
+    with open(os.path.join(BUNDLE_DIR, "VERSION")) as _vf:
+        SERVER_VERSION = _vf.read().strip()
+except OSError:
+    SERVER_VERSION = "unknown"
+
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
 
@@ -5566,7 +5578,9 @@ def get_server_time():
         "month": now.month,
         "day": now.day,
         "hour": now.hour,
-        "minute": now.minute
+        "minute": now.minute,
+        "uptime_seconds": round(time.time() - SERVER_START_TIME),
+        "version": SERVER_VERSION
     })
 
 
