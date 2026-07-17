@@ -1,7 +1,7 @@
 Package: stt-watchdog
 Version: VERSION_PLACEHOLDER
 Architecture: amd64
-Maintainer: zitlem <churchpresenterteam@gmail.com>
+Maintainer: ChurchPresenter <churchpresenterteam@gmail.com>
 Description: Speech-to-Text server with watchdog
  STT Watchdog manages the STT speech recognition server with
  automatic crash recovery, auto-updates, and an optional GUI.
