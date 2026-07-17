@@ -453,14 +453,31 @@ def _restore_config_from_template(reason=""):
     return True
 
 
+def _merge_missing_keys(dst, src):
+    """Recursively add keys present in src but absent in dst. Returns True if dst changed.
+
+    Existing values are never overwritten — a key the user has set (even to a
+    different type than the template) is left exactly as-is; only genuinely
+    missing keys are filled in."""
+    changed = False
+    for key, value in src.items():
+        if key not in dst:
+            dst[key] = json.loads(json.dumps(value))  # deep copy via round-trip
+            changed = True
+        elif isinstance(dst[key], dict) and isinstance(value, dict):
+            if _merge_missing_keys(dst[key], value):
+                changed = True
+    return changed
+
+
 def load_config():
     """Load configuration from config.json.
 
     config.default.json (bundled, read from BUNDLE_DIR) is the canonical template.
     It seeds a fresh config.json on first run and is used to recover from a
-    missing or corrupted config.json. No deep-merge is performed on normal loads —
-    whatever seeds config.json is the complete config; missing keys are patched
-    per-access via config.get(key, fallback)."""
+    missing or corrupted config.json. On every load, settings present in the
+    template but missing from config.json (added in later releases) are patched
+    in and written back; user-set values are never overwritten."""
     # First run: no config.json yet -> seed from the bundled template.
     if not os.path.exists(CONFIG_FILE):
         if _restore_config_from_template("create config.json"):
@@ -543,6 +560,19 @@ def load_config():
             print("[MIGRATION] Config file updated and saved")
         except Exception as e:
             print(f"[MIGRATION] Warning: Could not save migrated config: {e}")
+
+    # Patch in settings added since this config.json was created (e.g. a new
+    # auto_update block), so older installs pick up new defaults without manual
+    # edits. Only missing keys are added; user-set values are never overwritten.
+    try:
+        with open(CONFIG_TEMPLATE_FILE, "r", encoding="utf-8") as f:
+            template = json.load(f)
+        if _merge_missing_keys(config, template):
+            with _config_file_lock:
+                _atomic_write_json(CONFIG_FILE, config)
+            print("[CONFIG] Added new default settings missing from config.json")
+    except Exception as e:
+        print(f"[CONFIG] Warning: could not patch missing defaults: {e}")
 
     return config
 
