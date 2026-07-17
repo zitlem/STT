@@ -233,7 +233,9 @@ Alternatively, run `start_watchdog.bat` or `start_watchdog.ps1` from the Startup
 - The NLLB translation model adds several GB of RAM and disk. Offloading translation to a remote machine (Live Translation → Remote) keeps the local requirements at the transcription-only tier.
 
 ### Acceleration (optional, recommended)
-- **NVIDIA:** GPU with 4GB+ VRAM (RTX 2060 or better), CUDA 12.8 compatible drivers (NVIDIA driver R570+), Python 3.10 - 3.13
+- **NVIDIA minimum:** GPU with 4GB+ VRAM (RTX 2060 / RTX 3050) — enough for transcription with small/medium models
+- **NVIDIA recommended:** GPU with 8GB+ VRAM (RTX 3060 12GB, RTX 4060 or better) — large models and transcription + translation on GPU
+- **CUDA:** 12.8 compatible drivers (NVIDIA driver R570+), Python 3.10 - 3.13
 - **Apple Silicon:** M1 or later — MPS acceleration is detected and used automatically
 
 > Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
