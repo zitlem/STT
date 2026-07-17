@@ -8355,9 +8355,18 @@ def start_transcription():
                 except OSError:
                     version = "unknown"
                 os_name = {"darwin": "macos", "win32": "windows", "linux": "linux"}.get(sys.platform, "linux")
-                url = f"{ep}?os={os_name}&version={version}"
+                _lt = config.get("live_translation", {})
+                _remote = _lt.get("remote", {})
+                offloaded = bool(_remote.get("enabled") and _remote.get("endpoint"))
+                # Languages in use at transcription start ('auto' when auto-detected).
+                transcribe_lang = (config.get("audio", {}).get("language") or "auto").strip() or "auto"
+                translate_lang = ((_lt.get("target_language") or "").strip() or "unknown") if _lt.get("enabled") else "none"
+                url = (f"{ep}?os={os_name}&version={version}"
+                       f"&transcribe_lang={transcribe_lang}&translate_lang={translate_lang}")
                 if SERVER_COMMIT:
                     url += f"&commit={SERVER_COMMIT}"
+                if offloaded:
+                    url += "&offloaded=1"
                 import requests as _req
                 _req.get(url, headers={"X-Install-Id": install_id}, timeout=10)
             except Exception as e:
