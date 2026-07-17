@@ -7611,24 +7611,43 @@ def perform_server_restart():
 
     # Use systemctl restart if running as a systemd service
     # This is atomic - systemd handles stop+start without race conditions
+    under_systemd = False
     for service_name in ["stt-watchdog", "stt-server", "stt"]:
-        result = subprocess.run(
-            ["systemctl", "is-active", "--quiet", service_name],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            print(f"[RESTART] Restarting via systemctl ({service_name})...")
-            subprocess.Popen(
-                ["systemctl", "restart", service_name],
-                start_new_session=True,
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-active", "--quiet", service_name],
+                capture_output=True,
             )
-            return
+        except OSError:
+            break  # no systemctl on this system (e.g. macOS)
+        if result.returncode == 0:
+            under_systemd = True
+            print(f"[RESTART] Restarting via systemctl ({service_name})...")
+            # Run synchronously so a failure (e.g. "Interactive authentication
+            # required" when the unit runs as an unprivileged user) is detected
+            # and we can fall back. On success systemd SIGTERMs this process
+            # while we wait, so a zero exit is never actually observed here.
+            for cmd in (["systemctl", "restart", service_name],
+                        ["sudo", "-n", "systemctl", "restart", service_name]):
+                try:
+                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+                except Exception as e:
+                    print(f"[RESTART] {' '.join(cmd[:2])} error: {e}")
+                    continue
+                if r.returncode == 0:
+                    sleep(30)  # systemd is stopping us; don't race it with a fallback
+                    return
+                print(f"[RESTART] {' '.join(cmd[:2])} failed: {(r.stderr or r.stdout).strip()}")
+            print("[RESTART] systemctl needs privileges this unit doesn't have; using in-place restart")
+            break
 
-    # Fallback: not running under systemd, use restart_server.sh or execv
+    # Not under systemd: prefer restart_server.sh, which fully replaces the
+    # process tree. Under systemd we must NOT use it — it would spawn a server
+    # systemd doesn't manage — so an in-place execv keeps the unit's PID lineage.
     script_dir = APP_DIR
     restart_script = os.path.join(script_dir, "restart_server.sh")
 
-    if os.path.exists(restart_script):
+    if not under_systemd and os.path.exists(restart_script):
         print("[RESTART] Calling restart_server.sh...")
         subprocess.Popen(
             ["bash", restart_script],
@@ -7638,10 +7657,25 @@ def perform_server_restart():
         sleep(2)
         os._exit(0)
     else:
-        print("[RESTART] Falling back to execv...")
+        print("[RESTART] Restarting in place via execv...")
         # Children hold the bound server socket across an execv; reap them
         # first or the re-exec'd server can't rebind its port.
         _terminate_child_processes()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        # werkzeug marks its listen socket inheritable (run_simple calls
+        # set_inheritable(True) for reloader fd-passing even with the reloader
+        # off), so it would survive the execv and the fresh process could never
+        # rebind. Close every fd above stderr; nothing may outlive the exec.
+        os.environ.pop("WERKZEUG_SERVER_FD", None)
+        try:
+            import resource
+            maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+            if maxfd == resource.RLIM_INFINITY or maxfd > (1 << 20):
+                maxfd = 1 << 20
+        except Exception:
+            maxfd = 65536
+        os.closerange(3, maxfd)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
