@@ -55,6 +55,18 @@ def git_commit(repo_dir):
         return ""
 
 
+def git_describe(repo_dir):
+    """`git describe --tags --always` of repo_dir (e.g. '26.1.2-9-gc588d29'),
+    or '' if unavailable (frozen build / no git)."""
+    try:
+        if not shutil.which("git") or not os.path.isdir(os.path.join(repo_dir, ".git")):
+            return ""
+        r = _git(repo_dir, "describe", "--tags", "--always")
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
 def _requirements_hash(repo_dir):
     """sha256 of requirements.txt, or '' if it doesn't exist / can't be read."""
     req = os.path.join(repo_dir, "requirements.txt")

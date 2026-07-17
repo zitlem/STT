@@ -4196,6 +4196,15 @@ try:
 except Exception:
     SERVER_COMMIT = ""
 
+# Human version of the running checkout, e.g. '26.1.2-9-gc588d29' (tag + commits
+# since + commit). The VERSION file only changes on releases, so on a git deploy
+# it understates what's actually running; empty for frozen builds.
+try:
+    from stt.self_update import git_describe as _git_describe
+    SERVER_DESCRIBE = _git_describe(BUNDLE_DIR)
+except Exception:
+    SERVER_DESCRIBE = ""
+
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
 
@@ -5698,7 +5707,8 @@ def get_server_time():
         "minute": now.minute,
         "uptime_seconds": round(time.time() - SERVER_START_TIME),
         "version": SERVER_VERSION,
-        "commit": SERVER_COMMIT
+        "commit": SERVER_COMMIT,
+        "describe": SERVER_DESCRIBE
     })
 
 

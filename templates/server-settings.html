@@ -693,10 +693,13 @@
                         document.getElementById('server_uptime').textContent = formatUptime(data.uptime_seconds);
                     }
 
-                    // Display running version (static for this process)
+                    // Display running version (static for this process).
+                    // Prefer git describe (tag + commits since + commit) — the
+                    // VERSION file only changes on releases; fall back to it
+                    // for frozen builds with no .git.
                     if (data.version) {
                         document.getElementById('server_version').textContent =
-                            data.commit ? `${data.version} (${data.commit})` : data.version;
+                            data.describe || (data.commit ? `${data.version} (${data.commit})` : data.version);
                     }
 
                     // Check for timezone/date mismatch using explicit server values
