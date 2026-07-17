@@ -4111,6 +4111,14 @@ try:
 except OSError:
     SERVER_VERSION = "unknown"
 
+# Exact git commit of this checkout (empty for frozen/installer builds with no .git).
+# Recorded in the live-map ping alongside SERVER_VERSION; recomputed on self-update re-exec.
+try:
+    from stt.self_update import git_commit as _git_commit
+    SERVER_COMMIT = _git_commit(BUNDLE_DIR)
+except Exception:
+    SERVER_COMMIT = ""
+
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
 
@@ -8347,9 +8355,11 @@ def start_transcription():
                 except OSError:
                     version = "unknown"
                 os_name = {"darwin": "macos", "win32": "windows", "linux": "linux"}.get(sys.platform, "linux")
+                url = f"{ep}?os={os_name}&version={version}"
+                if SERVER_COMMIT:
+                    url += f"&commit={SERVER_COMMIT}"
                 import requests as _req
-                _req.get(f"{ep}?os={os_name}&version={version}",
-                         headers={"X-Install-Id": install_id}, timeout=10)
+                _req.get(url, headers={"X-Install-Id": install_id}, timeout=10)
             except Exception as e:
                 print(f"[START] Live-map ping failed: {e}")
         import threading

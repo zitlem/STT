@@ -6,6 +6,7 @@ guarantees under test are the developer-safety ones: a dirty tree or unpushed
 local commits must never be touched.
 """
 
+import re
 import shutil
 import subprocess
 import sys
@@ -128,3 +129,18 @@ def test_not_a_git_checkout(tmp_path):
 
     assert updated is False
     assert reason == "not-a-git-checkout"
+
+
+def test_git_commit_returns_short_sha(repos):
+    _, _, clone = repos
+    sha = self_update.git_commit(str(clone))
+    assert sha  # non-empty
+    assert re.fullmatch(r"[0-9a-f]{7,40}", sha)
+    # matches git's own short SHA for HEAD
+    assert _head(str(clone)).startswith(sha)
+
+
+def test_git_commit_empty_for_non_git_dir(tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert self_update.git_commit(str(plain)) == ""

@@ -43,6 +43,17 @@ def _git(repo_dir, *args, timeout=_GIT_TIMEOUT):
     )
 
 
+def git_commit(repo_dir):
+    """Short git commit SHA of repo_dir, or '' if unavailable (frozen build / no git)."""
+    try:
+        if not shutil.which("git") or not os.path.isdir(os.path.join(repo_dir, ".git")):
+            return ""
+        r = _git(repo_dir, "rev-parse", "--short", "HEAD")
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
 def _requirements_touched(repo_dir, before, after):
     """True if the pulled range changed a requirements file or install script."""
     diff = _git(repo_dir, "diff", "--name-only", f"{before}..{after}")
