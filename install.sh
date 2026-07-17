@@ -411,6 +411,26 @@ PLISTEOF
     print_status "  tail -f $INSTALL_DIR/server.log  - View logs"
 }
 
+# Allow the installing user (and an unprivileged service user) to restart the
+# STT units without a password. The in-app auto-updater tries plain systemctl,
+# then `sudo -n systemctl restart`; without this rule a unit running as a
+# regular user can only fall back to an in-place execv restart.
+install_restart_sudoers() {
+    local SYSTEMCTL_BIN SUDOERS_FILE
+    SYSTEMCTL_BIN=$(command -v systemctl) || return 0
+    SUDOERS_FILE="/etc/sudoers.d/stt-restart"
+    printf '%s ALL=(root) NOPASSWD: %s restart stt-server, %s restart stt-watchdog\n' \
+        "$USER" "$SYSTEMCTL_BIN" "$SYSTEMCTL_BIN" | sudo tee "$SUDOERS_FILE" > /dev/null
+    sudo chmod 440 "$SUDOERS_FILE"
+    if sudo visudo -cf "$SUDOERS_FILE" > /dev/null 2>&1; then
+        print_success "Sudoers rule installed: $USER may restart STT services without a password"
+    else
+        sudo rm -f "$SUDOERS_FILE"
+        print_error "Sudoers rule failed validation and was removed (auto-update will use in-place restart instead)"
+    fi
+}
+
+
 setup_systemd_service_linux() {
     print_status "Would you like to set up a systemd service for auto-start?"
     read -p "Setup systemd service? (y/N): " -n 1 -r
@@ -449,6 +469,7 @@ SYSEOF
     # Reload systemd and enable service
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE_NAME"
+    install_restart_sudoers
 
     print_success "Systemd service created and enabled"
     print_status "Service commands:"
@@ -541,6 +562,7 @@ SYSEOF
 
     sudo systemctl daemon-reload
     sudo systemctl enable "$WATCHDOG_SERVICE"
+    install_restart_sudoers
 
     # Offer to disable the old bare server service to avoid conflict
     if systemctl list-unit-files "stt-server.service" &>/dev/null; then
