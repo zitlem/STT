@@ -149,15 +149,15 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions, system requ
 
 ### Transcription + Translation (minimum)
 - **CPU:** 8 cores | **RAM:** 16 GB | **Storage:** 25 GB
-- The NLLB translation model adds several GB of RAM and disk; offloading translation to a remote machine keeps the local requirements at the transcription-only tier.
+- The NLLB translation model adds several GB of RAM and disk.
 
 ### Acceleration (optional, recommended)
 - **NVIDIA minimum:** 4GB+ VRAM (RTX 2060 / RTX 3050) — enough for transcription with small/medium models
-- **NVIDIA recommended:** 8GB+ VRAM (RTX 3060 12GB, RTX 4060 or better) — large models and transcription + translation on GPU
+- **NVIDIA recommended:** 10GB+ VRAM (RTX 3060 12GB, RTX 4070 or better) — large models and transcription + translation on GPU
 - **CUDA:** 12.8 compatible drivers (R570+)
 - **Apple Silicon:** M1 or later (MPS acceleration, detected automatically)
 
-> The minimum tiers run CPU-only, which is significantly slower than GPU — larger models add noticeable transcription latency. Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
+> The minimum tiers run CPU-only, which is significantly slower than GPU — larger models add noticeable transcription latency. Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed. Offloading translation to a remote machine keeps the local requirements at the transcription-only tier.
 
 ## Configuration
 
