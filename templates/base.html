@@ -766,10 +766,30 @@
             </nav>
         </div>
 
+        <div id="sysreq_warning" role="alert" aria-live="polite" style="display: none; margin-bottom: 15px; padding: 10px 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-sm); color: var(--warning);"></div>
+
         <div class="content" id="main-content">
             {% block content %}{% endblock %}
         </div>
     </div>
+
+    <script>
+        // Reveal the header banner when the machine is below the documented
+        // minimum requirements (see README "System Requirements").
+        (function () {
+            fetch('/api/system/requirements')
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d && d.warnings && d.warnings.length) {
+                        var el = document.getElementById('sysreq_warning');
+                        el.textContent = '⚠️ This PC doesn\'t meet the minimum system requirements: '
+                            + d.warnings.join('; ') + '. Transcription may be slow or unstable.';
+                        el.style.display = 'block';
+                    }
+                })
+                .catch(function () {});
+        })();
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>

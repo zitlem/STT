@@ -4226,6 +4226,82 @@ def _compute_display_version():
 
 SERVER_DISPLAY_VERSION = _compute_display_version()
 
+
+# --- System requirements (informational warning shown in the web UI header) ---
+# Documented minimums (README.md "System Requirements", CPU-only tier). GPU is
+# only recommended, so its absence never warns.
+_MIN_CPU_CORES = 4
+_MIN_RAM_BYTES = int(7.5 * 1024**3)  # an installed "8 GB" reports slightly less
+_MIN_FREE_DISK_BYTES = 10 * 1024**3
+
+
+def _get_total_ram_bytes():
+    """Total physical RAM in bytes, stdlib only; 0 when unknown (no false warning)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class _MemStatus(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_uint32),
+                    ("dwMemoryLoad", ctypes.c_uint32),
+                    ("ullTotalPhys", ctypes.c_uint64),
+                    ("ullAvailPhys", ctypes.c_uint64),
+                    ("ullTotalPageFile", ctypes.c_uint64),
+                    ("ullAvailPageFile", ctypes.c_uint64),
+                    ("ullTotalVirtual", ctypes.c_uint64),
+                    ("ullAvailVirtual", ctypes.c_uint64),
+                    ("ullAvailExtendedVirtual", ctypes.c_uint64),
+                ]
+
+            status = _MemStatus()
+            status.dwLength = ctypes.sizeof(_MemStatus)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullTotalPhys)
+            return 0
+        if sys.platform == "darwin":
+            import subprocess
+            r = subprocess.run(["sysctl", "-n", "hw.memsize"],
+                               capture_output=True, text=True, timeout=5)
+            return int(r.stdout.strip()) if r.returncode == 0 else 0
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except Exception:
+        return 0
+
+
+def _check_system_requirements():
+    """Human-readable warnings when below the documented minimums; [] when OK.
+
+    Each probe fails open (unknown -> no warning) and must never block startup.
+    """
+    found = []
+    try:
+        cores = os.cpu_count() or 0
+        if 0 < cores < _MIN_CPU_CORES:
+            found.append(f"{cores} CPU cores (minimum {_MIN_CPU_CORES})")
+    except Exception:
+        pass
+    try:
+        ram = _get_total_ram_bytes()
+        if 0 < ram < _MIN_RAM_BYTES:
+            found.append(f"{ram / 1024**3:.1f} GB RAM (minimum 8 GB)")
+    except Exception:
+        pass
+    try:
+        import shutil
+        free = shutil.disk_usage(APP_DIR).free
+        if free < _MIN_FREE_DISK_BYTES:
+            found.append(f"{free / 1024**3:.1f} GB free disk (minimum 10 GB)")
+    except Exception:
+        pass
+    return found
+
+
+SYSTEM_REQUIREMENTS_WARNINGS = _check_system_requirements()
+if SYSTEM_REQUIREMENTS_WARNINGS:
+    print("[SYSREQ] Below minimum system requirements: "
+          + "; ".join(SYSTEM_REQUIREMENTS_WARNINGS))
+
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
 
@@ -5709,6 +5785,15 @@ def save_timezone_settings():
             "message": "Timezone settings saved successfully. Restart application to apply.",
         }
     )
+
+
+@app.route("/api/system/requirements", methods=["GET"])
+def get_system_requirements():
+    """Whether this machine meets the documented minimums (drives the header banner)."""
+    return jsonify({
+        "meets_requirements": not SYSTEM_REQUIREMENTS_WARNINGS,
+        "warnings": SYSTEM_REQUIREMENTS_WARNINGS,
+    })
 
 
 @app.route("/api/server/time", methods=["GET"])
