@@ -151,9 +151,12 @@ def restart_via_execv():
     """Replace the current process image with a fresh interpreter run.
 
     Python does not hot-reload source, so after a successful update the process
-    must re-exec to pick up new code. Mirrors the primitive already used by the
-    ``/api/restart`` route in speech_to_text.py. Any multiprocessing children
-    must be terminated by the caller first — ``execv`` would orphan them.
+    must re-exec to pick up new code. Any multiprocessing children must be
+    terminated by the caller first — ``execv`` would orphan them, and a child
+    forked after the web server bound its port keeps that socket alive across
+    the exec, so the re-exec'd server dies with EADDRINUSE. Only safe before
+    the web server and workers exist (the startup update path); once they're
+    running, use ``perform_server_restart()`` in speech_to_text.py instead.
     """
     log.info("[self-update] restarting to load updated code")
     os.execv(sys.executable, [sys.executable] + sys.argv)

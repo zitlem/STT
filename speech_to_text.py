@@ -7523,6 +7523,97 @@ def restart_transcription():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+def _terminate_child_processes():
+    """Best-effort teardown of every multiprocessing child before an execv.
+
+    Children forked after the web server bound its socket inherit the bound
+    fd; any that survive an in-place execv keep the port held and the fresh
+    process dies with EADDRINUSE.
+    """
+    try:
+        mp_manager.shutdown()
+    except Exception:
+        pass
+    for child in multiprocessing.active_children():
+        try:
+            child.terminate()
+            child.join(timeout=3)
+            if child.is_alive():
+                child.kill()
+                child.join(timeout=1)
+        except Exception as e:
+            print(f"[RESTART] Error terminating child PID={child.pid}: {e}")
+
+
+def perform_server_restart():
+    """Restart the whole server process.
+
+    Prefers supervisor-managed restarts: under systemd, `systemctl restart`
+    is atomic and the unit's stop script cleans up straggler processes that
+    may still hold the bound server socket. Falls back to the restart
+    scripts, then to an in-place execv as a last resort.
+    """
+    import subprocess
+
+    if sys.platform.startswith('win'):
+        # Windows: use restart_server.bat to cleanly stop and restart
+        script_dir = APP_DIR
+        restart_bat = os.path.join(script_dir, "restart_server.bat")
+        if os.path.exists(restart_bat):
+            print("[RESTART] Calling restart_server.bat...")
+            subprocess.Popen(
+                ["cmd.exe", "/c", restart_bat],
+                cwd=script_dir,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        else:
+            # Fallback: spawn new process directly
+            print("[RESTART] restart_server.bat not found, spawning directly...")
+            subprocess.Popen(
+                [sys.executable] + sys.argv,
+                cwd=script_dir,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        sleep(1)
+        os._exit(0)
+        return
+
+    # Use systemctl restart if running as a systemd service
+    # This is atomic - systemd handles stop+start without race conditions
+    for service_name in ["stt-watchdog", "stt-server", "stt"]:
+        result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", service_name],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            print(f"[RESTART] Restarting via systemctl ({service_name})...")
+            subprocess.Popen(
+                ["systemctl", "restart", service_name],
+                start_new_session=True,
+            )
+            return
+
+    # Fallback: not running under systemd, use restart_server.sh or execv
+    script_dir = APP_DIR
+    restart_script = os.path.join(script_dir, "restart_server.sh")
+
+    if os.path.exists(restart_script):
+        print("[RESTART] Calling restart_server.sh...")
+        subprocess.Popen(
+            ["bash", restart_script],
+            cwd=script_dir,
+            start_new_session=True,
+        )
+        sleep(2)
+        os._exit(0)
+    else:
+        print("[RESTART] Falling back to execv...")
+        # Children hold the bound server socket across an execv; reap them
+        # first or the re-exec'd server can't rebind its port.
+        _terminate_child_processes()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 @app.route("/api/server/restart", methods=["POST"])
 def restart_server():
     """API endpoint to restart the entire server (full application restart).
@@ -7537,9 +7628,6 @@ def restart_server():
         return jsonify({"success": False, "error": "Access Denied"}), 403
 
     try:
-        import sys
-        import subprocess
-
         # Return success response before restarting
         response = jsonify(
             {
@@ -7552,66 +7640,7 @@ def restart_server():
         def do_restart():
             sleep(1)  # Wait for response to be sent
             print("[RESTART] Server restart requested via API")
-
-            if sys.platform.startswith('win'):
-                # Windows: use restart_server.bat to cleanly stop and restart
-                script_dir = APP_DIR
-                restart_bat = os.path.join(script_dir, "restart_server.bat")
-                if os.path.exists(restart_bat):
-                    print("[RESTART] Calling restart_server.bat...")
-                    subprocess.Popen(
-                        ["cmd.exe", "/c", restart_bat],
-                        cwd=script_dir,
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-                    )
-                else:
-                    # Fallback: spawn new process directly
-                    print("[RESTART] restart_server.bat not found, spawning directly...")
-                    python = sys.executable
-                    subprocess.Popen(
-                        [python] + sys.argv,
-                        cwd=script_dir,
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-                    )
-                sleep(1)
-                os._exit(0)
-                return
-
-            # Use systemctl restart if running as a systemd service
-            # This is atomic - systemd handles stop+start without race conditions
-            for service_name in ["stt-watchdog", "stt-server", "stt"]:
-                result = subprocess.run(
-                    ["systemctl", "is-active", "--quiet", service_name],
-                    capture_output=True,
-                )
-                if result.returncode == 0:
-                    print(f"[RESTART] Restarting via systemctl ({service_name})...")
-                    subprocess.Popen(
-                        ["systemctl", "restart", service_name],
-                        start_new_session=True,
-                    )
-                    return
-
-            # Fallback: not running under systemd, use restart_server.sh or execv
-            script_dir = APP_DIR
-            restart_script = os.path.join(script_dir, "restart_server.sh")
-
-            if os.path.exists(restart_script):
-                print("[RESTART] Calling restart_server.sh...")
-                subprocess.Popen(
-                    ["bash", restart_script],
-                    cwd=script_dir,
-                    start_new_session=True,
-                )
-                sleep(2)
-                os._exit(0)
-            else:
-                print("[RESTART] Falling back to execv...")
-                python = sys.executable
-                os.execv(python, [python] + sys.argv)
-
-        # Start restart in background thread
-        import threading
+            perform_server_restart()
 
         restart_thread = threading.Thread(target=do_restart, daemon=True)
         restart_thread.start()
@@ -16280,8 +16309,26 @@ def thread2_function():
         socketio.start_background_task(emit_audio_stream)
         socketio.start_background_task(emit_tts_audio)
 
-        # Use socketio.run() instead of app.run() for proper Socket.IO support
-        socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+        # Use socketio.run() instead of app.run() for proper Socket.IO support.
+        # Retry transient bind failures: a just-restarted process can race a
+        # dying predecessor (or a child that inherited the bound socket) still
+        # holding the port. Werkzeug turns EADDRINUSE into SystemExit, which
+        # would otherwise kill only this thread and leave a zombie server that
+        # systemd considers alive but that serves no web UI.
+        attempts = 5
+        for attempt in range(1, attempts + 1):
+            try:
+                socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+                return  # clean server shutdown
+            except (SystemExit, OSError) as e:
+                if attempt == attempts:
+                    print(f"[FATAL] Web server could not start after {attempts} attempts: {e!r}")
+                    print("[FATAL] Exiting so the supervisor can restart the process...")
+                    sys.stdout.flush()  # os._exit skips stdio flushing
+                    sys.stderr.flush()
+                    os._exit(1)
+                print(f"[WEB] Server failed to start ({e!r}); retrying in 3s ({attempt}/{attempts})...")
+                sleep(3)
     except KeyboardInterrupt:
         print("Thread 2 received KeyboardInterrupt")
         os._exit(0)
@@ -16334,19 +16381,15 @@ def _self_update_enabled():
 
 
 def _restart_for_update():
-    """Terminate the transcription worker (if any) then re-exec to load new code."""
-    try:
-        p = globals().get("thread1")
-        if p is not None and p.is_alive():
-            p.terminate()
-            p.join(timeout=3)
-            if p.is_alive():
-                p.kill()
-                p.join(timeout=1)
-    except Exception as e:
-        print(f"[AUTO-UPDATE] Error terminating worker before restart: {e}")
-    from stt.self_update import restart_via_execv
-    restart_via_execv()
+    """Restart the server process to load the pulled update.
+
+    Delegates to perform_server_restart(): under systemd that's an atomic
+    `systemctl restart` whose stop script reaps every child; the execv
+    fallback tears down multiprocessing children first, since any child
+    forked after the web server bound its port keeps that socket alive
+    across an in-place execv and the re-exec'd server dies with EADDRINUSE.
+    """
+    perform_server_restart()
 
 
 def _run_startup_self_update():
