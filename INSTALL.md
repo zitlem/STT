@@ -238,7 +238,7 @@ Alternatively, run `start_watchdog.bat` or `start_watchdog.ps1` from the Startup
 - **CUDA:** 12.8 compatible drivers (NVIDIA driver R570+), Python 3.10 - 3.13
 - **Apple Silicon:** M1 or later — MPS acceleration is detected and used automatically
 
-> Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
+> The minimum tiers run CPU-only, which is significantly slower than GPU — larger models add noticeable transcription latency. Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
 
 ---
 

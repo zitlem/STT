@@ -157,7 +157,7 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions, system requ
 - **CUDA:** 12.8 compatible drivers (R570+)
 - **Apple Silicon:** M1 or later (MPS acceleration, detected automatically)
 
-> Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
+> The minimum tiers run CPU-only, which is significantly slower than GPU — larger models add noticeable transcription latency. Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
 
 ## Configuration
 
