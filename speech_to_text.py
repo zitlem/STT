@@ -4205,6 +4205,27 @@ try:
 except Exception:
     SERVER_DESCRIBE = ""
 
+
+def _compute_display_version():
+    """Single monotonic version string for scripts and the UI.
+
+    Folds git describe's commits-since-tag count into the patch number:
+    '26.1.2-17-g398f75e' -> '26.1.19-g398f75e'. The number only ever moves
+    forward (a later 26.1.3 tag shows 26.1.3, then 26.1.4-g... one commit on),
+    and the -g<hash> suffix distinguishes it from any real future tag.
+    """
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-(\d+)-(g[0-9a-f]+)", SERVER_DESCRIBE)
+    if m:
+        return f"{m.group(1)}.{m.group(2)}.{int(m.group(3)) + int(m.group(4))}-{m.group(5)}"
+    if SERVER_DESCRIBE:
+        return SERVER_DESCRIBE  # exact tag, non-semver tag, or bare hash
+    if SERVER_COMMIT:
+        return f"{SERVER_VERSION}-{SERVER_COMMIT}"  # frozen build with known commit
+    return SERVER_VERSION
+
+
+SERVER_DISPLAY_VERSION = _compute_display_version()
+
 app_logger = logging.getLogger(__name__)  # Use your module name here
 socket_io_logger = logging.getLogger("socketio")
 
@@ -5708,7 +5729,8 @@ def get_server_time():
         "uptime_seconds": round(time.time() - SERVER_START_TIME),
         "version": SERVER_VERSION,
         "commit": SERVER_COMMIT,
-        "describe": SERVER_DESCRIBE
+        "describe": SERVER_DESCRIBE,
+        "display_version": SERVER_DISPLAY_VERSION
     })
 
 

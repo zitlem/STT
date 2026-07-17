@@ -699,7 +699,7 @@
                     // for frozen builds with no .git.
                     if (data.version) {
                         document.getElementById('server_version').textContent =
-                            data.describe || (data.commit ? `${data.version} (${data.commit})` : data.version);
+                            data.display_version || data.describe || (data.commit ? `${data.version} (${data.commit})` : data.version);
                     }
 
                     // Check for timezone/date mismatch using explicit server values
