@@ -4,21 +4,46 @@ Real-time speech transcription platform with a modern web interface, powered by 
 
 ## Features
 
-- **Real-time transcription** - Live microphone capture with sub-second latency via WebSocket
+### Transcription
+- **Real-time transcription** - Live microphone capture with sub-second latency via WebSocket (FFmpeg or PyAudio backends)
 - **File transcription** - Upload and transcribe audio/video files in batch
+- **Selectable engines** - Faster-Whisper (CTranslate2), OpenAI Whisper, and HuggingFace models (distil-whisper, wav2vec2)
+- **Voice Activity Detection** - Silero VAD filters silence and noise before transcription
+- **Speech/music/quiet detection** - PANNs-based three-way classification; detected music can be transcribed but auto-hidden, restorable from corrections
+- **Microphone calibration** - Guided wizard measures ambient noise and suggests threshold settings
+- **Accuracy tuning** - Loudness normalization, sentence-completion buffering, context prompting, and per-mode Whisper decoding parameters
+- **Hallucination filter** - Removes Whisper phantom phrases ("thanks for watching", etc.)
+- **Device auto-recovery** - Re-finds the microphone by card name after reboots or device-index changes
+
+### Translation & speech
 - **Translation** - Real-time translation to 200+ languages using Facebook NLLB-200
-- **Text-to-Speech** - Edge-TTS (cloud) and Piper-TTS (local) with auto voice switching per language
-- **Music/speech detection** - PANNs-based classification that runs off-thread and is hot-reloadable
-- **Display profiles** - Named, recallable output layouts served at `/profile/<name>`
-- **Corrections workflow** - Edit transcriptions with a review queue and approval system
+- **Remote translation offload** - Pair with another STT machine and offload translation to it, with reachability checks and configurable fallback
+- **Custom dictionary & glossary** - Domain-specific term corrections, forced NLLB translations, synced to the paired remote machine
+- **Text-to-Speech** - Edge-TTS (cloud) and Piper-TTS (local) with auto voice switching per language and speed control
+
+### Display & output
+- **Display profiles** - Named, recallable output layouts built in `/url-builder` and served at `/profile/<name>`
+- **Layout modes** - Translated-only, side-by-side, or stacked, with drip-feed word-by-word reveal
+- **Browser audio streaming** - Remote viewers can listen to the live room microphone and TTS audio in their browser
+
+### Review & content control
+- **Corrections workflow** - Review queue with confidence scores, low-confidence word flagging, and alternative translations
+- **Staged output delay** - Hold segments for N seconds to approve or discard before they go live
 - **Word highlighting** - Mark and emphasize specific words or phrases in transcriptions
-- **Custom glossary** - Domain-specific term mapping for improved accuracy
-- **Database storage** - SQLite per-session with SRT subtitle and HTML export
+- **Profanity filter** - Masks configured words with `****` in output
+
+### Storage & files
+- **Database storage** - SQLite per-session with SRT subtitle and HTML export, plus optional partial-snapshot recording
 - **Audio backup** - WAV and MPEG-TS formats with power-fail-safe continuous backup
+- **File manager** - Web-based browser for backups: rename, download, hide, bulk operations, type/day filters
 - **Remote file delivery** - Automatic backup to SMB/NAS shares
-- **Model manager** - Browse, search, and download Whisper models from Hugging Face
+
+### Operations
+- **Model manager** - Browse, search, and download Whisper, NLLB, VAD, and PANNs models from Hugging Face, or upload local models
 - **Security** - IP whitelist (CIDR), password authentication, session timeouts
-- **GPU acceleration** - CUDA support with automatic detection
+- **Hardware acceleration** - NVIDIA CUDA and Apple Silicon (MPS) with automatic detection
+- **Crash recovery & auto-update** - Watchdog process manager restarts STT on crashes; idle-gated updates with stable/beta channels
+- **Server tools** - Uptime/version display, disk-space monitor, timezone settings, runtime language switching
 
 ## Quick Start
 
@@ -27,10 +52,10 @@ Real-time speech transcription platform with a modern web interface, powered by 
 ./install.sh
 
 # Start the server
-python3 speech_to_text.py
+./start_server.sh        # Linux / macOS (start_server.bat on Windows)
 ```
 
-Open http://localhost:80 in your browser.
+Open http://localhost:8080 in your browser (port is configurable in `config/config.json`).
 
 ## First Time Setup
 
@@ -104,6 +129,7 @@ Run once at startup via Task Scheduler:
 | `/translation` | Translation settings, language pairs, TTS voice selection |
 | `/corrections` | Review and edit transcription segments |
 | `/word-highlighting` | Manage highlighted phrases |
+| `/url-builder` | Build and save display profiles (fonts, colors, layout URL parameters) |
 | `/live-settings` | Audio device, language, VAD settings |
 | `/server-settings` | Network, database, backup configuration |
 | `/model-manager` | Download and manage AI models |
@@ -137,6 +163,10 @@ Edit `config/config.json` or use the web interface. Key settings include:
 - Audio backup paths and formats
 - Translation model and glossary
 - Network host, port, and security
+
+## Privacy & Telemetry
+
+- **Error reporting (Sentry)** - Crash reports, logs, and performance traces are sent to Sentry to help improve STT. Disable via the toggle on `/server-settings` or set `sentry_enabled: false` in `config/config.json` — crash dumps are then kept locally only.
 
 ## Tech Stack
 
