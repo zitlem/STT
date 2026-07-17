@@ -695,7 +695,8 @@
 
                     // Display running version (static for this process)
                     if (data.version) {
-                        document.getElementById('server_version').textContent = data.version;
+                        document.getElementById('server_version').textContent =
+                            data.commit ? `${data.version} (${data.commit})` : data.version;
                     }
 
                     // Check for timezone/date mismatch using explicit server values

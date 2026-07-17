@@ -5667,7 +5667,8 @@ def get_server_time():
         "hour": now.hour,
         "minute": now.minute,
         "uptime_seconds": round(time.time() - SERVER_START_TIME),
-        "version": SERVER_VERSION
+        "version": SERVER_VERSION,
+        "commit": SERVER_COMMIT
     })
 
 
