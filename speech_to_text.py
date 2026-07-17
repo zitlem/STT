@@ -8595,11 +8595,10 @@ def start_transcription():
                 ep = (config.get("analytics", {}).get("endpoint") or "").strip()
                 if not ep:
                     return
-                try:
-                    with open(os.path.join(BUNDLE_DIR, "VERSION")) as _vf:
-                        version = _vf.read().strip()
-                except OSError:
-                    version = "unknown"
+                # Same folded string the settings page shows (tag with commits-
+                # since-tag added to the patch, plus -g<hash> when untagged).
+                # A self-update re-execs the process, so this is always current.
+                version = SERVER_DISPLAY_VERSION or "unknown"
                 os_name = {"darwin": "macos", "win32": "windows", "linux": "linux"}.get(sys.platform, "linux")
                 _lt = config.get("live_translation", {})
                 _remote = _lt.get("remote", {})

@@ -226,6 +226,31 @@ def read_version():
     return "0.0.0"
 
 
+def read_display_version():
+    """Human version string for UI display, matching the server's format.
+
+    Folds git describe's commits-since-tag count into the patch number
+    ('26.1.2-17-g398f75e' -> '26.1.19-g398f75e'); an exact tag shows as-is.
+    Falls back to read_version() when the checkout has no git metadata.
+    Display only — update comparisons must keep using read_version().
+    """
+    if shutil.which("git") and os.path.isdir(os.path.join(SOURCE_DIR, ".git")):
+        try:
+            r = subprocess.run(
+                ["git", "-C", SOURCE_DIR, "describe", "--tags", "--always"],
+                capture_output=True, text=True, timeout=10,
+            )
+            desc = r.stdout.strip().lstrip("v") if r.returncode == 0 else ""
+            if desc:
+                m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-(\d+)-(g[0-9a-f]+)", desc)
+                if m:
+                    return f"{m.group(1)}.{m.group(2)}.{int(m.group(3)) + int(m.group(4))}-{m.group(5)}"
+                return desc
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return read_version()
+
+
 def write_version(version):
     tmp = VERSION_FILE + ".tmp"
     with open(tmp, "w") as f:
@@ -1148,7 +1173,7 @@ class GuiWindow:
     def _build_ui(self):
         tk = self._tk
         root = self.root
-        root.title(f"STT v{read_version()}")
+        root.title(f"STT v{read_display_version()}")
         root.resizable(False, False)
         root.geometry("330x390")
 
