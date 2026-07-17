@@ -52,6 +52,50 @@ for _mig_name in ("config.json", "custom_dictionary.json", "word_highlighting.js
             print(f"[MIGRATE] Could not move {_mig_name}: {_mig_err}")
 
 
+def safe_model_path(base_dir, name):
+    """Resolve a user-supplied model name against base_dir and return the
+    absolute path only if it stays strictly inside base_dir. Returns None for
+    traversal payloads ('..', '../x', absolute paths, backslash variants).
+
+    Used by every route that rmtree's a model directory built from request
+    input — see cancel_download / remove_* handlers.
+    """
+    if not name or not isinstance(name, str):
+        return None
+    # Normalize slash variants so a Windows-style '..\\' can't slip past.
+    candidate = name.replace("\\", "/")
+    base = os.path.normpath(base_dir)
+    model_path = os.path.normpath(os.path.join(base, candidate))
+    if model_path == base:
+        return None
+    try:
+        if os.path.commonpath([model_path, base]) != base:
+            return None
+    except ValueError:
+        # Different drives (Windows) or mixed absolute/relative — reject.
+        return None
+    return model_path
+
+
+def safe_managed_path(path, base_dir=None):
+    """Resolve a file-manager path and return its realpath only if it stays
+    inside base_dir (defaults to APP_DIR). Resolves symlinks so a symlink
+    inside the tree can't escape it. Returns None on any escape.
+    """
+    base = os.path.realpath(base_dir if base_dir is not None else APP_DIR)
+    if not path:
+        return base
+    target = os.path.realpath(path if os.path.isabs(path) else os.path.join(base, path))
+    if target == base:
+        return target
+    try:
+        if os.path.commonpath([target, base]) != base:
+            return None
+    except ValueError:
+        return None
+    return target
+
+
 def _seed_from_bundle(filename):
     """Return the live path of a config file (CONFIG_DIR/<filename>), seeding it
     from the bundled template (config/<stem>.default.json) on first run."""
@@ -564,7 +608,10 @@ calibration_mode = False
 calibration_data = None
 
 # Remote translation state
-_pending_pair_requests = {}    # {ip: {"code": str, "expires": float}}
+_pending_pair_requests = {}    # {ip: {"code": str, "expires": float, "attempts": int}}
+_pending_pair_lock = threading.Lock()
+PAIR_MAX_PENDING = 20          # cap unauthenticated pending requests
+PAIR_MAX_ATTEMPTS = 5          # wrong-code guesses before the pending code is voided
 _translation_clients = {}      # {ip: last_seen_timestamp}
 _translation_clients_lock = threading.Lock()
 _trusted_translation_clients = set(
@@ -4154,6 +4201,14 @@ log.addFilter(_SuppressBenignWSGINoise())
 auth_sessions = {}
 auth_sessions_lock = threading.Lock()
 
+# Per-IP login throttle: after LOGIN_MAX_FAILURES wrong passwords, that IP is
+# locked out for LOGIN_LOCKOUT_SECONDS. Bounds online brute-forcing of the
+# configured password. Format: {ip: {"failures": int, "locked_until": datetime}}
+_login_attempts = {}
+_login_attempts_lock = threading.Lock()
+LOGIN_MAX_FAILURES = 5
+LOGIN_LOCKOUT_SECONDS = 30
+
 def generate_session_token():
     """Generate a secure random session token"""
     import secrets
@@ -4305,6 +4360,17 @@ def password_login():
         if not password_auth_config.get("enabled", False):
             return jsonify({"success": False, "error": "Password authentication is disabled"}), 403
 
+        # Reject early if this IP is currently locked out
+        client_ip = request.remote_addr
+        with _login_attempts_lock:
+            entry = _login_attempts.get(client_ip)
+            if entry and entry.get("locked_until") and entry["locked_until"] > datetime.now():
+                retry_after = int((entry["locked_until"] - datetime.now()).total_seconds()) + 1
+                return jsonify({
+                    "success": False,
+                    "error": "Too many failed attempts. Try again later.",
+                }), 429, {"Retry-After": str(retry_after)}
+
         # Get password from request
         data = request.get_json()
         provided_password = data.get("password", "")
@@ -4319,10 +4385,20 @@ def password_login():
         if not configured_password:
             return jsonify({"success": False, "error": "No password configured on server"}), 500
 
-        # Verify password
-        if provided_password != configured_password:
-            print(f"[AUTH] Failed login attempt from {request.remote_addr}")
+        # Verify password (constant-time to avoid leaking length/prefix via timing)
+        if not secrets.compare_digest(str(provided_password), str(configured_password)):
+            print(f"[AUTH] Failed login attempt from {client_ip}")
+            with _login_attempts_lock:
+                rec = _login_attempts.setdefault(client_ip, {"failures": 0, "locked_until": None})
+                rec["failures"] += 1
+                if rec["failures"] >= LOGIN_MAX_FAILURES:
+                    rec["locked_until"] = datetime.now() + timedelta(seconds=LOGIN_LOCKOUT_SECONDS)
+                    rec["failures"] = 0
             return jsonify({"success": False, "error": "Invalid password"}), 401
+
+        # Password correct — clear any failure record for this IP
+        with _login_attempts_lock:
+            _login_attempts.pop(client_ip, None)
 
         # Password correct - create session
         session_token = generate_session_token()
@@ -4528,6 +4604,14 @@ def update_config():
                     base[key] = value
             return base
 
+        # Snapshot restart-relevant values BEFORE merging — deep_merge mutates
+        # `config` in place, so reading them afterwards (or re-loading the file
+        # once it's written) would always match the new values and the
+        # "restart required" prompt would never fire. These settings are not
+        # hot-reloadable (model/VAD are bound at worker init).
+        _prev_whisper_model = config.get("whisper", {}).get("model")
+        _prev_vad_enabled = config.get("vad", {}).get("enabled")
+
         # Merge new config into existing config (preserves backend and other fields)
         config = deep_merge(config, new_config)
 
@@ -4571,21 +4655,16 @@ def update_config():
         except (OSError, ValueError):
             pass  # Queue might be full or process not ready
 
-        # Determine which settings need restart
+        # Determine which settings need restart (compare pre-merge snapshot
+        # against the now-merged config)
         needs_restart = False
         restart_reason = []
 
-        # Check for settings that require full restart
-        old_config = load_config()
-        if old_config.get("whisper", {}).get("model") != config.get("whisper", {}).get(
-            "model"
-        ):
+        if _prev_whisper_model != config.get("whisper", {}).get("model"):
             needs_restart = True
             restart_reason.append("Whisper model changed")
 
-        if old_config.get("vad", {}).get("enabled") != config.get("vad", {}).get(
-            "enabled"
-        ):
+        if _prev_vad_enabled != config.get("vad", {}).get("enabled"):
             needs_restart = True
             restart_reason.append("VAD enabled/disabled")
 
@@ -6039,7 +6118,15 @@ def translation_pair_request():
     """Machine A calls this to initiate pairing. Machine B shows the code."""
     client_ip = request.remote_addr
     code = str(random.randint(100000, 999999))
-    _pending_pair_requests[client_ip] = {"code": code, "expires": time.time() + 300}
+    now = time.time()
+    with _pending_pair_lock:
+        # Drop expired entries, then bound total pending requests so an
+        # unauthenticated caller can't grow the dict without limit.
+        for ip in [ip for ip, v in _pending_pair_requests.items() if v["expires"] < now]:
+            del _pending_pair_requests[ip]
+        if client_ip not in _pending_pair_requests and len(_pending_pair_requests) >= PAIR_MAX_PENDING:
+            return jsonify({"error": "Too many pending pair requests, try again later"}), 429
+        _pending_pair_requests[client_ip] = {"code": code, "expires": now + 300, "attempts": 0}
     socketio.emit("translation_pair_request", {"ip": client_ip, "code": code})
     return jsonify({"status": "pending", "message": "Check the Translations tab on Machine B for the 6-digit code"})
 
@@ -6050,11 +6137,21 @@ def translation_pair_confirm():
     client_ip = request.remote_addr
     data = request.get_json() or {}
     code = str(data.get("code", "")).strip()
-    pending = _pending_pair_requests.get(client_ip)
-    if not pending or time.time() > pending["expires"] or pending["code"] != code:
-        return jsonify({"error": "Invalid or expired code"}), 400
+    with _pending_pair_lock:
+        pending = _pending_pair_requests.get(client_ip)
+        if not pending or time.time() > pending["expires"]:
+            _pending_pair_requests.pop(client_ip, None)
+            return jsonify({"error": "Invalid or expired code"}), 400
+        # Constant-time compare; void the pending code after too many misses so
+        # the 10^6 space can't be brute-forced inside the 300 s window.
+        if not secrets.compare_digest(pending["code"], code):
+            pending["attempts"] += 1
+            if pending["attempts"] >= PAIR_MAX_ATTEMPTS:
+                del _pending_pair_requests[client_ip]
+                return jsonify({"error": "Too many incorrect codes, pairing cancelled"}), 429
+            return jsonify({"error": "Invalid or expired code"}), 400
+        del _pending_pair_requests[client_ip]
     _add_trusted_client(client_ip)
-    del _pending_pair_requests[client_ip]
     socketio.emit("translation_pair_confirmed", {"ip": client_ip})
     return jsonify({"status": "paired"})
 
@@ -6326,14 +6423,15 @@ _tts_download_status = {"status": "idle", "model": "", "error": ""}
 
 
 def _get_piper_model_dir(model_id):
-    """Get the directory for a piper model"""
-    return os.path.join(_tts_cache_dir, "piper", model_id)
+    """Get the directory for a piper model, or None if model_id would escape the
+    piper cache dir (model_id is request input on the download/remove routes)."""
+    return safe_model_path(os.path.join(_tts_cache_dir, "piper"), model_id)
 
 
 def _is_piper_model_downloaded(model_id):
     """Check if a piper model is downloaded"""
     model_dir = _get_piper_model_dir(model_id)
-    if os.path.isdir(model_dir):
+    if model_dir and os.path.isdir(model_dir):
         return any(f.endswith(".onnx") for f in os.listdir(model_dir))
     return False
 
@@ -6363,6 +6461,11 @@ def download_tts_model():
     model_name = data.get("model_name", "").strip()
     if not model_name:
         return jsonify({"success": False, "error": "model_name required"}), 400
+
+    # Reject any name that would resolve outside the piper cache dir before it
+    # reaches os.makedirs / download.
+    if _get_piper_model_dir(model_name) is None:
+        return jsonify({"success": False, "error": "Invalid model name"}), 400
 
     # Parse model ID: e.g., "en_US-lessac-medium" -> lang "en_US", name "lessac", quality "medium"
     parts = model_name.split("-")
@@ -6452,6 +6555,8 @@ def remove_tts_model():
 
     try:
         model_dir = _get_piper_model_dir(model_name)
+        if model_dir is None:
+            return jsonify({"success": False, "error": "Invalid model name"}), 400
         if os.path.isdir(model_dir):
             import shutil
             shutil.rmtree(model_dir, ignore_errors=True)
@@ -7630,8 +7735,11 @@ def browse_files():
         path = request.args.get("path", APP_DIR)
         show_hidden = request.args.get("show_hidden", "false").lower() == "true"
 
-        # Normalize and validate path
-        path = os.path.abspath(path)
+        # Confine browsing to APP_DIR (resolves symlinks so links inside the
+        # tree can't be used to escape it).
+        path = safe_managed_path(path)
+        if path is None:
+            return jsonify({"success": False, "error": "Access denied"}), 403
 
         # Security check: ensure path is not trying to escape
         if not os.path.exists(path):
@@ -7640,8 +7748,9 @@ def browse_files():
         if not os.path.isdir(path):
             return jsonify({"success": False, "error": "Path is not a directory"}), 400
 
-        # Get parent directory
-        parent_dir = os.path.dirname(path) if path != os.path.dirname(path) else None
+        # Get parent directory — never above the confinement root
+        app_root = os.path.realpath(APP_DIR)
+        parent_dir = os.path.dirname(path) if path != app_root else None
 
         # Get hidden items from config
         hidden_items = config.get("file_manager", {}).get("hidden_items", [])
@@ -7767,13 +7876,15 @@ def delete_file():
         if not path:
             return jsonify({"success": False, "error": "Path is required"}), 400
 
-        # Normalize path
-        path = os.path.abspath(path)
+        # Confine to APP_DIR (resolves symlinks)
+        path = safe_managed_path(path)
+        if path is None:
+            return jsonify({"success": False, "error": "Access denied"}), 403
 
         # Security check: prevent deletion of critical files
-        if path == APP_DIR or path in [
-            os.path.abspath("speech_to_text.py"),
-            CONFIG_FILE,
+        if path == os.path.realpath(APP_DIR) or path in [
+            os.path.realpath(os.path.join(APP_DIR, "speech_to_text.py")),
+            os.path.realpath(CONFIG_FILE),
         ]:
             return jsonify(
                 {
@@ -7812,15 +7923,20 @@ def rename_file():
                 {"success": False, "error": "Old path and new name are required"}
             ), 400
 
-        # Normalize old path
-        old_path = os.path.abspath(old_path)
+        # Confine source to APP_DIR
+        old_path = safe_managed_path(old_path)
+        if old_path is None:
+            return jsonify({"success": False, "error": "Access denied"}), 403
 
         if not os.path.exists(old_path):
             return jsonify({"success": False, "error": "Path does not exist"}), 404
 
-        # Create new path
+        # Create new path — reject a new_name that contains path separators or
+        # otherwise resolves outside the source's directory.
         parent_dir = os.path.dirname(old_path)
-        new_path = os.path.join(parent_dir, new_name)
+        new_path = safe_managed_path(os.path.join(parent_dir, new_name), base_dir=parent_dir)
+        if new_path is None or os.path.dirname(new_path) != parent_dir:
+            return jsonify({"success": False, "error": "Invalid new name"}), 400
 
         if os.path.exists(new_path):
             return jsonify(
@@ -7856,8 +7972,10 @@ def create_folder():
                 {"success": False, "error": "Parent path and folder name are required"}
             ), 400
 
-        # Normalize parent path
-        parent_path = os.path.abspath(parent_path)
+        # Confine parent to APP_DIR
+        parent_path = safe_managed_path(parent_path)
+        if parent_path is None:
+            return jsonify({"success": False, "error": "Access denied"}), 403
 
         if not os.path.exists(parent_path):
             return jsonify(
@@ -7869,8 +7987,10 @@ def create_folder():
                 {"success": False, "error": "Parent path is not a directory"}
             ), 400
 
-        # Create new folder path
-        new_folder_path = os.path.join(parent_path, folder_name)
+        # Create new folder path — folder_name must stay directly under parent
+        new_folder_path = safe_managed_path(os.path.join(parent_path, folder_name), base_dir=parent_path)
+        if new_folder_path is None or os.path.dirname(new_folder_path) != parent_path:
+            return jsonify({"success": False, "error": "Invalid folder name"}), 400
 
         if os.path.exists(new_folder_path):
             return jsonify(
@@ -8014,11 +8134,11 @@ def download_file():
         if not path:
             return jsonify({"success": False, "error": "Path is required"}), 400
 
-        # Security: Ensure the path is within the working directory
-        abs_path = os.path.abspath(path)
-        working_dir = APP_DIR
-
-        if not abs_path.startswith(working_dir):
+        # Security: confine to APP_DIR. safe_managed_path uses commonpath +
+        # realpath, so a sibling dir sharing the prefix (e.g. STT_secrets) and
+        # symlink escapes are both rejected — unlike a bare startswith check.
+        abs_path = safe_managed_path(path)
+        if abs_path is None:
             return jsonify({"success": False, "error": "Access denied"}), 403
 
         # Check if file exists
@@ -8430,24 +8550,29 @@ def stop_transcription():
 
     global transcription_state, transcription_process
     try:
-        if not transcription_state["running"] and transcription_state["status"] != "starting":
-            return jsonify(
-                {"success": False, "error": "Transcription is not running"}
-            ), 400
+        # Serialize the guard + state transition with start_transcription so two
+        # concurrent stops (or a stop racing a start) can't both pass the check.
+        # The first stop flips status to "stopping", which makes any second stop
+        # fail the guard below.
+        with _transcription_start_lock:
+            if not transcription_state["running"] and transcription_state["status"] != "starting":
+                return jsonify(
+                    {"success": False, "error": "Transcription is not running"}
+                ), 400
 
-        # Send stop command through queue
-        control_queue.put({"command": "stop"})
+            # Send stop command through queue
+            control_queue.put({"command": "stop"})
 
-        # Update state
-        transcription_state["running"] = False
-        transcription_state["status"] = "stopping"
-        transcription_state["message"] = (
-            "Stopping transcription, unloading model, closing connections..."
-        )
-        transcription_state["loaded_model"] = ""  # Clear loaded model name
-        transcription_state["live_text"] = ""  # Clear in-progress text
-        transcription_state["live_start"] = 0
-        transcription_state["live_end"] = 0
+            # Update state
+            transcription_state["running"] = False
+            transcription_state["status"] = "stopping"
+            transcription_state["message"] = (
+                "Stopping transcription, unloading model, closing connections..."
+            )
+            transcription_state["loaded_model"] = ""  # Clear loaded model name
+            transcription_state["live_text"] = ""  # Clear in-progress text
+            transcription_state["live_start"] = 0
+            transcription_state["live_end"] = 0
 
         # Clear database cache immediately so clients get empty data
         with _cache_lock:
@@ -8656,7 +8781,11 @@ def correct_transcription():
         return jsonify({"success": False, "error": "No active database"}), 400
 
     try:
-        with sqlite3.connect(current_db_name) as conn:
+        # 30s timeout + busy_timeout so a correction submitted during a heavy
+        # transcription write burst waits for the worker's lock instead of
+        # failing fast with "database is locked" (default timeout is 5s).
+        with sqlite3.connect(current_db_name, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout=30000")
             cursor = conn.cursor()
             # Store original text before correction (only on first correction)
             cursor.execute(
@@ -8763,7 +8892,8 @@ def mark_reviewed():
         return jsonify({"success": False, "error": "No active database"}), 400
 
     try:
-        with sqlite3.connect(current_db_name) as conn:
+        with sqlite3.connect(current_db_name, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout=30000")
             cursor = conn.cursor()
             placeholders = ",".join("?" for _ in segment_ids)
             cursor.execute(
@@ -9719,7 +9849,7 @@ def download_model():
                     sha256_hash = hashlib.sha256()
 
                     download_cancelled = False
-                    with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
+                    with urllib.request.urlopen(url, timeout=120) as source, open(download_target, "wb") as output:
                         total_size = int(source.info().get("Content-Length", 0))
                         with tqdm(total=total_size, ncols=80, unit="iB", unit_scale=True, unit_divisor=1024) as pbar:
                             while True:
@@ -9906,16 +10036,13 @@ def cancel_download():
             return jsonify({"success": True, "message": f"Dismissed {model_id}"})
 
         # Clean up partial download directories/files so model shows as not downloaded
-        models_dir = MODELS_DIR
-
         # model_id already includes prefix (e.g., "whisper-small.en" or "faster-whisper-base.en")
         # For HuggingFace models like "facebook/nllb-200-distilled-600M", slashes become double dashes
         dir_name = model_id.replace("/", "--")
-        model_path = os.path.normpath(os.path.join(models_dir, dir_name))
         # Containment check: model_id is user input and must resolve to a
         # subdirectory strictly inside MODELS_DIR (rmtree happens below)
-        if (model_path == models_dir
-                or os.path.commonpath([model_path, models_dir]) != models_dir):
+        model_path = safe_model_path(MODELS_DIR, dir_name)
+        if model_path is None:
             return jsonify({"success": False, "error": "Invalid model id"}), 400
         if os.path.exists(model_path):
             try:
@@ -10854,8 +10981,9 @@ def remove_whisper_model():
                             print(f"[ERROR] Failed to remove {filename}: {e}")
 
         # Check new ./models/whisper-* directory
-        models_dir = MODELS_DIR
-        whisper_model_dir = os.path.join(models_dir, f"whisper-{model_name}")
+        whisper_model_dir = safe_model_path(MODELS_DIR, f"whisper-{model_name}")
+        if whisper_model_dir is None:
+            return jsonify({"success": False, "error": "Invalid model name"}), 400
 
         if os.path.exists(whisper_model_dir):
             try:
@@ -11031,8 +11159,9 @@ def remove_faster_whisper_model():
         if not model_name:
             return jsonify({"success": False, "error": "model_name required"}), 400
 
-        models_dir = MODELS_DIR
-        model_path = os.path.join(models_dir, f"faster-whisper-{model_name}")
+        model_path = safe_model_path(MODELS_DIR, f"faster-whisper-{model_name}")
+        if model_path is None:
+            return jsonify({"success": False, "error": "Invalid model name"}), 400
 
         if not os.path.exists(model_path):
             return jsonify({
@@ -11193,10 +11322,11 @@ def remove_model():
 
         elif model_type == "huggingface":
             # Remove HuggingFace model directory
-            models_dir = MODELS_DIR
             # Convert model ID (org/name) to directory name (org--name)
             model_dir_name = model_name.replace("/", "--")
-            model_path = os.path.join(models_dir, model_dir_name)
+            model_path = safe_model_path(MODELS_DIR, model_dir_name)
+            if model_path is None:
+                return jsonify({"success": False, "error": "Invalid model name"}), 400
 
             if os.path.exists(model_path):
                 import shutil
@@ -11212,8 +11342,9 @@ def remove_model():
 
         elif model_type == "local":
             # Remove local model directory
-            models_dir = MODELS_DIR
-            model_path = os.path.join(models_dir, model_name)
+            model_path = safe_model_path(MODELS_DIR, model_name)
+            if model_path is None:
+                return jsonify({"success": False, "error": "Invalid model name"}), 400
 
             if os.path.exists(model_path):
                 import shutil
@@ -11874,9 +12005,10 @@ def remove_translation_model():
         if not model_id:
             return jsonify({"success": False, "error": "model_id is required"})
 
-        models_dir = MODELS_DIR
         model_dir_name = model_id.replace("/", "--")
-        model_path = os.path.join(models_dir, model_dir_name)
+        model_path = safe_model_path(MODELS_DIR, model_dir_name)
+        if model_path is None:
+            return jsonify({"success": False, "error": "Invalid model id"}), 400
 
         if os.path.exists(model_path):
             shutil.rmtree(model_path)
@@ -11957,6 +12089,20 @@ def upload_local_model():
     except Exception as e:
         print(f"[ERROR] Error uploading local model: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _socket_auth_ok():
+    """Auth gate for mutating Socket.IO handlers. HTTP routes call
+    check_ip_whitelist() inline; handlers historically skipped it, so an
+    unauthenticated client could rewrite/delete transcription rows or persist
+    config changes over the socket. Returns True when the client is allowed.
+    request context (cookies/headers/remote_addr) is available in handlers
+    under async_mode='threading'."""
+    try:
+        return check_ip_whitelist()
+    except Exception:
+        # Fail closed: if the gate can't be evaluated, deny the mutation.
+        return False
 
 
 @socketio.on("connect")
@@ -12069,6 +12215,9 @@ def handle_request_all_translation_entries():
 @socketio.on("submit_correction")
 def handle_submit_correction(data):
     """Handle correction submitted via Socket.IO"""
+    if not _socket_auth_ok():
+        emit("correction_error", {"error": "Access denied"})
+        return
     if not data:
         return
 
@@ -12136,6 +12285,8 @@ def handle_submit_correction(data):
 @socketio.on("mark_reviewed")
 def handle_mark_reviewed(data):
     """Mark segments as reviewed via Socket.IO"""
+    if not _socket_auth_ok():
+        return
     if not data:
         return
 
@@ -12167,6 +12318,9 @@ def handle_mark_reviewed(data):
 @socketio.on("submit_translation_correction")
 def handle_translation_correction(data):
     """Handle correction of translated text — updates TranslationCache only"""
+    if not _socket_auth_ok():
+        emit("correction_error", {"error": "Access denied"})
+        return
     if not data:
         return
 
@@ -12208,6 +12362,8 @@ def handle_translation_correction(data):
 @socketio.on("select_translation_alternative")
 def handle_select_translation_alternative(data):
     """Handle selection of a translation alternative"""
+    if not _socket_auth_ok():
+        return
     if not data:
         return
 
@@ -12308,6 +12464,8 @@ def _open_db_writer():
 @socketio.on("toggle_delay")
 def handle_toggle_delay(data):
     """Toggle the output delay on/off"""
+    if not _socket_auth_ok():
+        return
     if not data:
         return
     enabled = data.get("enabled", False)
@@ -12322,6 +12480,8 @@ def handle_toggle_delay(data):
 @socketio.on("set_delay_seconds")
 def handle_set_delay_seconds(data):
     """Update the output delay duration"""
+    if not _socket_auth_ok():
+        return
     if not data:
         return
     seconds = max(2, min(30, int(data.get("delay_seconds", 7))))
@@ -12357,6 +12517,8 @@ def _backdate_staged_rows(seg_id=None):
 @socketio.on("approve_staged")
 def handle_approve_staged(data):
     """Approve one or all staged segments for immediate publishing"""
+    if not _socket_auth_ok():
+        return
     if not data:
         return
     if data.get("all", False):
@@ -12370,6 +12532,8 @@ def handle_approve_staged(data):
 @socketio.on("discard_staged")
 def handle_discard_staged(data):
     """Discard a staged segment (delete the row before it publishes)"""
+    if not _socket_auth_ok():
+        return
     if not data:
         return
     staging_id = data.get("staging_id")
@@ -12399,6 +12563,8 @@ def handle_set_segment_denied(data):
     corrections page so they can be restored. Broadcasts the new state to every
     connected client so open displays update live without a reload.
     """
+    if not _socket_auth_ok():
+        return
     if not data:
         return
 
@@ -13774,19 +13940,28 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                 if hasattr(source, "stop") and callable(source.stop):
                                     source.stop()
                                     print("[STOP] OK: Audio source stopped")
-                                # Fallback: kill any lingering ffmpeg processes for this device
-                                if hasattr(source, "device_name") and source.device_name:
-                                    import subprocess as sp
-                                    try:
-                                        if platform.startswith('win'):
-                                            sp.run(["taskkill", "/F", "/IM", "ffmpeg.exe"],
+                                # Fallback: kill only THIS source's lingering ffmpeg.
+                                # Scope the kill to our own process — never a
+                                # system-wide "taskkill /IM ffmpeg.exe", which
+                                # would also kill unrelated ffmpeg jobs (e.g. a
+                                # concurrent file transcription).
+                                import subprocess as sp
+                                our_proc = getattr(source, "process", None)
+                                our_pid = getattr(our_proc, "pid", None) if our_proc else None
+                                try:
+                                    if platform.startswith('win'):
+                                        if our_pid:
+                                            sp.run(["taskkill", "/F", "/T", "/PID", str(our_pid)],
                                                    capture_output=True, timeout=2)
+                                            print(f"[STOP] OK: Killed ffmpeg PID {our_pid}")
                                         else:
-                                            sp.run(["pkill", "-9", "-f", f"ffmpeg.*{re.escape(source.device_name)}"],
-                                                   capture_output=True, timeout=2)
+                                            print("[STOP] No ffmpeg PID tracked; skipping kill to avoid taking down unrelated ffmpeg")
+                                    elif getattr(source, "device_name", None):
+                                        sp.run(["pkill", "-9", "-f", f"ffmpeg.*{re.escape(source.device_name)}"],
+                                               capture_output=True, timeout=2)
                                         print(f"[STOP] OK: Sent kill for ffmpeg using {source.device_name}")
-                                    except Exception as pkill_err:
-                                        print(f"[STOP] kill fallback failed: {pkill_err}")
+                                except Exception as pkill_err:
+                                    print(f"[STOP] kill fallback failed: {pkill_err}")
                             except Exception as e:
                                 print(f"[STOP] WARNING: Error stopping audio source: {e}")
 
@@ -14114,6 +14289,10 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             transcription_state["status"] = "error"
                             transcription_state["error"] = error_msg
                             transcription_state["message"] = "Audio initialization failed"
+                        # Clear the worker-local run flag too, so the outer loop
+                        # parks in its idle branch instead of re-entering main()
+                        # in a hot loop (audio_model is still None here).
+                        is_running = False
                         return
 
 
@@ -14198,6 +14377,10 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                         except (RuntimeError, AttributeError):
                             pass
 
+                        # Park the worker: without this the outer loop sees
+                        # is_running=True + audio_model=None and re-enters main()
+                        # immediately, spinning on the failing model load.
+                        is_running = False
                         return
 
                     # Check if stop was requested during model loading
@@ -14302,6 +14485,9 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             ModelFactory.cleanup_models()
                         except Exception:
                             pass
+                        # Park the worker (audio_model is None → outer loop would
+                        # otherwise re-enter main() in a hot loop).
+                        is_running = False
                         return
 
                     # Initialize full session audio file (if .wav backup is enabled)
@@ -16195,6 +16381,13 @@ def _self_update_loop():
                 continue  # idle-gate: never restart mid-transcription
             updated, reason = git_self_update(BUNDLE_DIR)
             if updated:
+                # git_self_update does a network pull that can take many
+                # seconds; re-check the idle-gate afterwards so a session that
+                # started during the pull isn't force-restarted mid-service.
+                # The pulled code stays on disk and applies on the next idle tick.
+                if transcription_state.get("running"):
+                    print("[AUTO-UPDATE] Update pulled but a session started during the pull; deferring restart")
+                    continue
                 print("[AUTO-UPDATE] Update pulled; restarting to apply...")
                 _restart_for_update()
         except Exception as e:

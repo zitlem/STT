@@ -448,7 +448,10 @@ class FFmpegAudioCapture:
                 print(f"[AUDIO BACKUP] Found {len(ts_files)} existing backup files in {self.backup_dir}")
 
         self.running = True
-        self.thread = threading.Thread(target=self._capture_loop, args=(callback if callback else lambda x: None,))
+        # daemon so a reader that fails to join within stop()'s timeout (e.g.
+        # ffmpeg not closing the pipe cleanly) doesn't linger across start/stop
+        # cycles holding process/pipe references.
+        self.thread = threading.Thread(target=self._capture_loop, args=(callback if callback else lambda x: None,), daemon=True)
         self.thread.start()
 
         print("[DEBUG-TS-START] Capture thread started", flush=True)
