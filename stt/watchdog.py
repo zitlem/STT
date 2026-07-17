@@ -1216,10 +1216,15 @@ class GuiWindow:
 
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
+        _footer = tk.Frame(root)
+        _footer.pack(fill="x", padx=12)
         self._check_lbl = tk.Label(
-            root, text="Last check: —", fg="gray", font=("", 8)
+            _footer, text="Last check: —", fg="gray", font=("", 8)
         )
-        self._check_lbl.pack()
+        self._check_lbl.pack(side="left")
+        tk.Label(
+            _footer, text=f"v{read_version()}", fg="gray", font=("", 8)
+        ).pack(side="right")
         self._result_lbl = tk.Label(root, text="", fg="gray", font=("", 8))
         self._result_lbl.pack()
 
