@@ -144,3 +144,64 @@ def test_git_commit_empty_for_non_git_dir(tmp_path):
     plain = tmp_path / "plain"
     plain.mkdir()
     assert self_update.git_commit(str(plain)) == ""
+
+
+# --- _sync_deps_if_needed: hash-marker dependency healing -------------------
+
+
+@pytest.fixture
+def synced_calls(monkeypatch):
+    """Stub out the real uv install; record invocations."""
+    calls = []
+    monkeypatch.setattr(self_update, "_sync_deps", lambda repo: calls.append(repo) or True)
+    return calls
+
+
+def test_no_requirements_no_sync(tmp_path, synced_calls):
+    self_update._sync_deps_if_needed(str(tmp_path))
+    assert synced_calls == []
+
+
+def test_missing_marker_triggers_sync_and_writes_marker(tmp_path, synced_calls):
+    (tmp_path / "requirements.txt").write_text("flask\n")
+    (tmp_path / ".venv").mkdir()
+
+    self_update._sync_deps_if_needed(str(tmp_path))
+
+    assert len(synced_calls) == 1
+    marker = tmp_path / ".venv" / ".requirements-synced"
+    assert marker.read_text().strip() == self_update._requirements_hash(str(tmp_path))
+
+
+def test_matching_marker_skips_sync(tmp_path, synced_calls):
+    (tmp_path / "requirements.txt").write_text("flask\n")
+    (tmp_path / ".venv").mkdir()
+    self_update._sync_deps_if_needed(str(tmp_path))  # writes marker
+
+    self_update._sync_deps_if_needed(str(tmp_path))
+
+    assert len(synced_calls) == 1  # no second sync
+
+
+def test_changed_requirements_resyncs(tmp_path, synced_calls):
+    (tmp_path / "requirements.txt").write_text("flask\n")
+    (tmp_path / ".venv").mkdir()
+    self_update._sync_deps_if_needed(str(tmp_path))
+
+    (tmp_path / "requirements.txt").write_text("flask\nsentry-sdk\n")
+    self_update._sync_deps_if_needed(str(tmp_path))
+
+    assert len(synced_calls) == 2
+
+
+def test_failed_sync_leaves_no_marker_so_it_retries(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(self_update, "_sync_deps", lambda repo: calls.append(repo) and False)
+    (tmp_path / "requirements.txt").write_text("flask\n")
+    (tmp_path / ".venv").mkdir()
+
+    self_update._sync_deps_if_needed(str(tmp_path))
+    self_update._sync_deps_if_needed(str(tmp_path))
+
+    assert len(calls) == 2  # retried because no marker was written
+    assert not (tmp_path / ".venv" / ".requirements-synced").exists()

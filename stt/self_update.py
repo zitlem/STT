@@ -16,6 +16,7 @@ In both cases it simply skips — nothing is discarded, and the developer can st
 commit and push normally.
 """
 
+import hashlib
 import logging
 import os
 import shutil
@@ -54,27 +55,31 @@ def git_commit(repo_dir):
         return ""
 
 
-def _requirements_touched(repo_dir, before, after):
-    """True if the pulled range changed a requirements file or install script."""
-    diff = _git(repo_dir, "diff", "--name-only", f"{before}..{after}")
-    if diff.returncode != 0:
-        return False
-    for line in diff.stdout.splitlines():
-        name = line.strip()
-        if name.startswith("requirements") or name in ("install.sh", "pyproject.toml"):
-            return True
-    return False
+def _requirements_hash(repo_dir):
+    """sha256 of requirements.txt, or '' if it doesn't exist / can't be read."""
+    req = os.path.join(repo_dir, "requirements.txt")
+    try:
+        with open(req, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _sync_marker_path(repo_dir):
+    # Lives inside the gitignored .venv so it never dirties the worktree
+    # (a dirty tree blocks future updates) and dies with the venv it describes.
+    return os.path.join(repo_dir, ".venv", ".requirements-synced")
 
 
 def _sync_deps(repo_dir):
-    """Best-effort dependency sync after a pull that changed requirements.
+    """Best-effort dependency sync; returns True on success.
 
     The venv is uv-managed and has no pip (see AGENTS.md), so use ``uv pip``.
     Failures are logged and swallowed — a dep mismatch should not wedge startup.
     """
     req = os.path.join(repo_dir, "requirements.txt")
     if not os.path.isfile(req):
-        return
+        return False
     try:
         r = subprocess.run(
             ["uv", "pip", "install", "-r", req],
@@ -86,10 +91,39 @@ def _sync_deps(repo_dir):
         )
         if r.returncode != 0:
             log.warning("[self-update] dependency sync failed: %s", (r.stderr or r.stdout).strip())
-        else:
-            log.info("[self-update] dependencies synced after update")
+            return False
+        log.info("[self-update] dependencies synced with requirements.txt")
+        return True
     except Exception as e:  # noqa: BLE001 - never let dep sync crash the caller
         log.warning("[self-update] dependency sync error: %s", e)
+        return False
+
+
+def _sync_deps_if_needed(repo_dir):
+    """Sync the venv whenever requirements.txt differs from the last synced state.
+
+    Compares against a hash marker instead of the pulled diff, so a box that
+    missed a sync (crash, uv failure, venv rebuilt, requirements added before
+    this feature existed) heals on the next update check rather than waiting
+    for another commit that happens to touch the requirements files. Newly
+    installed packages take effect on the next restart.
+    """
+    current = _requirements_hash(repo_dir)
+    if not current:
+        return  # no requirements.txt (e.g. tests, stripped deploys)
+    marker = _sync_marker_path(repo_dir)
+    try:
+        with open(marker, encoding="utf-8") as f:
+            if f.read().strip() == current:
+                return
+    except OSError:
+        pass  # no marker yet -> treat as out of sync
+    if _sync_deps(repo_dir) and os.path.isdir(os.path.dirname(marker)):
+        try:
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write(current + "\n")
+        except OSError as e:
+            log.warning("[self-update] could not write sync marker: %s", e)
 
 
 def git_self_update(repo_dir):
@@ -129,8 +163,7 @@ def git_self_update(repo_dir):
         after_sha = after.stdout.strip()
 
         if after_sha != before_sha:
-            if _requirements_touched(repo_dir, before_sha, after_sha):
-                _sync_deps(repo_dir)
+            _sync_deps_if_needed(repo_dir)
             log.info("[self-update] fast-forwarded %s -> %s", before_sha[:9], after_sha[:9])
             return True, "fast-forwarded"
 
@@ -138,6 +171,9 @@ def git_self_update(repo_dir):
         # (diverged/ahead). Distinguish the two by the pull's exit status.
         if pull.returncode != 0:
             return False, "not-fast-forwardable"
+        # Heal dependency drift even with nothing to pull, so a box that
+        # missed a sync doesn't stay broken until the next requirements commit.
+        _sync_deps_if_needed(repo_dir)
         return False, "up-to-date"
     except subprocess.TimeoutExpired:
         log.warning("[self-update] git command timed out")
