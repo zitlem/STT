@@ -69,7 +69,7 @@ else:
 APP_DIR = DATA_DIR  # config/logs/crash dumps live in DATA
 os.makedirs(APP_DIR, exist_ok=True)
 
-GITHUB_REPO = "zitlem/STT"
+GITHUB_REPO = "churchpresenter/STT"
 GITHUB_REPO_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_REPO}"
 VERSION_FILE = os.path.join(SOURCE_DIR, "VERSION")  # git-managed
@@ -1019,7 +1019,7 @@ class AutoUpdater:
                         raise ValueError(f"Unsafe path in update zip: {member.filename}")
                 zf.extractall(extract_dir)
 
-            # GitHub source zips contain one top-level dir, e.g. "zitlem-STT-<sha>/"
+            # GitHub source zips contain one top-level dir, e.g. "churchpresenter-STT-<sha>/"
             dirs = [e for e in os.listdir(extract_dir)
                     if os.path.isdir(os.path.join(extract_dir, e))]
             src_root = os.path.join(extract_dir, dirs[0]) if dirs else extract_dir

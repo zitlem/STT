@@ -2,7 +2,7 @@
 AppName=STT
 AppVersion={#AppVersion}
 AppPublisher=zitlem
-AppPublisherURL=https://github.com/zitlem/STT
+AppPublisherURL=https://github.com/churchpresenter/STT
 DefaultDirName={autopf}\STT
 DefaultGroupName=STT
 OutputDir=..\..\Output
