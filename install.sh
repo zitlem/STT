@@ -455,7 +455,11 @@ WorkingDirectory=$INSTALL_DIR
 Environment="PYTHONUNBUFFERED=1"
 Environment="HOME=$HOME"
 ExecStart=$INSTALL_DIR/.venv/bin/python3 $INSTALL_DIR/speech_to_text.py
-ExecStop=/bin/bash -c 'pkill -TERM -f "speech_to_text\\.py" 2>/dev/null; sleep 2; pkill -9 -f "speech_to_text\\.py" 2>/dev/null; pkill -9 -f "ffmpeg.*alsa.*pipe:1" 2>/dev/null'
+# No ExecStop needed: systemd SIGTERMs the whole cgroup (server, worker,
+# ffmpeg) on stop — the server exits cleanly on SIGTERM — and SIGKILLs any
+# straggler after TimeoutStopSec. The old pkill chain killed its own control
+# process (logged as 'code=killed, status=9/KILL' on every stop).
+TimeoutStopSec=15
 Restart=always
 RestartSec=5
 StandardOutput=journal
