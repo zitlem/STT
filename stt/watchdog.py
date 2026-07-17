@@ -688,6 +688,7 @@ class ProcessManager:
             # provisioned ffmpeg (DATA_DIR/bin) so audio_capture's bare 'ffmpeg' resolves.
             env = dict(os.environ)
             env["STT_DATA_DIR"] = DATA_DIR
+            env["STT_MANAGED"] = "1"  # tells the server it's watchdog-managed (skip its own git self-update)
             env["PYTHONUNBUFFERED"] = "1"
             _ffbin = os.path.join(DATA_DIR, "bin")
             if os.path.isdir(_ffbin):
@@ -830,6 +831,23 @@ class AutoUpdater:
         self.state = state
         self.pm = pm
         self._pending_update = None  # (remote_version, assets) when update detected but not yet applied
+
+    def _transcription_active(self):
+        """True if a transcription is currently running on the local server.
+
+        Used to defer updates until idle. Fails open: if the server is
+        unreachable (down means nothing is transcribing) we return False so
+        updates are never blocked forever."""
+        try:
+            cfg = load_config()
+            port = cfg.get("web_server", {}).get("port", 8080)
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/transcription/status", timeout=2
+            ) as r:
+                data = json.loads(r.read())
+            return bool(data.get("state", {}).get("running", False))
+        except Exception:
+            return False
 
     # -- GitHub API ----------------------------------------------------------
 
@@ -1085,8 +1103,11 @@ class AutoUpdater:
         while not self.state.get("stop_requested"):
             self.check_for_update()
             if datetime.datetime.now().hour == UPDATE_HOUR and self._pending_update:
-                logging.info("[AU] 1am auto-apply triggered")
-                self.apply_pending_update()
+                if self._transcription_active():
+                    logging.info("[AU] Update pending but transcription active — deferring")
+                else:
+                    logging.info("[AU] 1am auto-apply triggered")
+                    self.apply_pending_update()
             # Sleep one hour in 60s increments so stop_requested is checked promptly
             for _ in range(60):
                 if self.state.get("stop_requested"):
@@ -1335,7 +1356,13 @@ class GuiWindow:
     def _on_update(self):
         self._update_btn.config(state="disabled", text="Checking…")
         def _run():
-            self.updater.check_and_update()
+            # Always refresh availability, but only apply when idle so a manual
+            # click never kills an in-progress transcription.
+            self.updater.check_for_update()
+            if self._transcription_running:
+                self.state.set(last_update_result="Transcription running — stop it to update")
+            else:
+                self.updater.apply_pending_update()
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_save(self):

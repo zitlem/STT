@@ -16101,6 +16101,73 @@ def signal_handler(signum, frame):
     os._exit(0)
 
 
+def _is_watchdog_managed():
+    """True when launched under the watchdog, which owns its own updater.
+
+    The watchdog sets STT_MANAGED=1 (and STT_DATA_DIR); either signals managed
+    mode, so a direct-run git-pull doesn't double up with the watchdog's updates.
+    """
+    return bool(os.environ.get("STT_MANAGED") or os.environ.get("STT_DATA_DIR"))
+
+
+def _self_update_enabled():
+    return bool(config.get("auto_update", {}).get("enabled", True))
+
+
+def _restart_for_update():
+    """Terminate the transcription worker (if any) then re-exec to load new code."""
+    try:
+        p = globals().get("thread1")
+        if p is not None and p.is_alive():
+            p.terminate()
+            p.join(timeout=3)
+            if p.is_alive():
+                p.kill()
+                p.join(timeout=1)
+    except Exception as e:
+        print(f"[AUTO-UPDATE] Error terminating worker before restart: {e}")
+    from stt.self_update import restart_via_execv
+    restart_via_execv()
+
+
+def _run_startup_self_update():
+    """One-shot git self-update before any worker/threads start (direct runs only)."""
+    if _is_watchdog_managed() or not _self_update_enabled():
+        return
+    try:
+        from stt.self_update import git_self_update, restart_via_execv
+        updated, reason = git_self_update(BUNDLE_DIR)
+        if updated:
+            print("[AUTO-UPDATE] Update pulled at startup; restarting...")
+            restart_via_execv()  # no worker yet -> clean re-exec
+        else:
+            print(f"[AUTO-UPDATE] Startup update check: {reason}")
+    except Exception as e:
+        print(f"[AUTO-UPDATE] Startup self-update error: {e}")
+
+
+def _self_update_loop():
+    """Periodic git self-update; only applies while transcription is idle."""
+    import time
+    from stt.self_update import git_self_update
+    try:
+        interval = float(config.get("auto_update", {}).get("check_interval_hours", 1))
+    except (TypeError, ValueError):
+        interval = 1.0
+    interval = max(0.05, interval)  # floor to avoid a hot loop on misconfig
+    while True:
+        time.sleep(interval * 3600)
+        try:
+            if transcription_state.get("running"):
+                continue  # idle-gate: never restart mid-transcription
+            updated, reason = git_self_update(BUNDLE_DIR)
+            if updated:
+                print("[AUTO-UPDATE] Update pulled; restarting to apply...")
+                _restart_for_update()
+        except Exception as e:
+            print(f"[AUTO-UPDATE] Periodic self-update error: {e}")
+
+
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     install_crash_diagnostics("main")
@@ -16114,6 +16181,11 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     if sys.platform != "win32":
         signal.signal(signal.SIGTERM, signal_handler)
+
+    # Direct-run auto-update: fast-forward the checkout before anything spins up.
+    # No-op (and no restart) under the watchdog, when disabled, or when there's
+    # nothing to pull / the tree isn't safely fast-forwardable.
+    _run_startup_self_update()
 
     transcription_process = multiprocessing.Process(
         target=thread1_function,
@@ -16131,6 +16203,12 @@ if __name__ == "__main__":
     # Store references in module for restart endpoint and signal handler
     globals()["thread1"] = transcription_process
     globals()["thread2"] = thread2
+
+    # Periodic direct-run auto-update (idle-gated). Started here in the main
+    # process only, so the multiprocessing worker (which re-imports this module)
+    # never spawns a duplicate updater.
+    if not _is_watchdog_managed() and _self_update_enabled():
+        threading.Thread(target=_self_update_loop, daemon=True, name="SelfUpdate").start()
 
     # Use a loop with timeout instead of blocking join
     # This makes the main process responsive to signals

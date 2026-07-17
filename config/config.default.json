@@ -476,5 +476,11 @@
     "_endpoint_comment": "Live-map ping URL, hit when a transcription starts. Change only if self-hosting the collector; leave empty to disable.",
     "install_id": "",
     "_install_id_comment": "Anonymous per-install UUID, generated automatically on first ping. Used only to dedupe the map so one machine doesn't spam it. No IP is stored; location is derived server-side and fuzzed."
+  },
+  "auto_update": {
+    "enabled": true,
+    "_enabled_comment": "When running the server directly (not under the watchdog), fast-forward the git checkout to its upstream branch and restart. Non-destructive: skipped if the working tree is dirty or the branch has unpushed/diverged commits, so developer work is never discarded. Ignored under the watchdog, which has its own updater.",
+    "check_interval_hours": 1,
+    "_check_interval_hours_comment": "How often the running server re-checks for updates. It also checks once at startup. Updates only apply while transcription is not running."
   }
 }
