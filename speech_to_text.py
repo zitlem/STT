@@ -4228,11 +4228,10 @@ SERVER_DISPLAY_VERSION = _compute_display_version()
 
 
 # --- System requirements (informational warning shown in the web UI header) ---
-# Documented minimums (README.md "System Requirements", CPU-only tier). GPU is
-# only recommended, so its absence never warns.
-_MIN_CPU_CORES = 4
-_MIN_RAM_BYTES = int(7.5 * 1024**3)  # an installed "8 GB" reports slightly less
-_MIN_FREE_DISK_BYTES = 10 * 1024**3
+# Documented minimums (README.md "System Requirements"). Two tiers: local
+# translation (NLLB) needs several GB more than transcription alone; offloaded
+# remote translation counts as transcription-only. GPU is recommended-only and
+# never warns.
 
 
 def _get_total_ram_bytes():
@@ -4272,26 +4271,40 @@ def _get_total_ram_bytes():
 def _check_system_requirements():
     """Human-readable warnings when below the documented minimums; [] when OK.
 
-    Each probe fails open (unknown -> no warning) and must never block startup.
+    Picks the tier from the startup config: local live translation applies the
+    higher transcription+translation minimums. Each probe fails open (unknown
+    -> no warning) and must never block startup.
     """
+    try:
+        _lt = config.get("live_translation", {})
+        _remote = _lt.get("remote", {})
+        local_translation = bool(_lt.get("enabled")) and not (_remote.get("enabled") and _remote.get("endpoint"))
+    except Exception:
+        local_translation = False
+    if local_translation:
+        min_cores, min_ram_gb, min_disk_gb, tier = 8, 16, 25, "transcription + translation"
+    else:
+        min_cores, min_ram_gb, min_disk_gb, tier = 6, 12, 15, "transcription"
+    ram_threshold = int((min_ram_gb - 0.5) * 1024**3)  # installed RAM reports slightly less
+
     found = []
     try:
         cores = os.cpu_count() or 0
-        if 0 < cores < _MIN_CPU_CORES:
-            found.append(f"{cores} CPU cores (minimum {_MIN_CPU_CORES})")
+        if 0 < cores < min_cores:
+            found.append(f"{cores} CPU cores (minimum {min_cores} for {tier})")
     except Exception:
         pass
     try:
         ram = _get_total_ram_bytes()
-        if 0 < ram < _MIN_RAM_BYTES:
-            found.append(f"{ram / 1024**3:.1f} GB RAM (minimum 8 GB)")
+        if 0 < ram < ram_threshold:
+            found.append(f"{ram / 1024**3:.1f} GB RAM (minimum {min_ram_gb} GB for {tier})")
     except Exception:
         pass
     try:
         import shutil
         free = shutil.disk_usage(APP_DIR).free
-        if free < _MIN_FREE_DISK_BYTES:
-            found.append(f"{free / 1024**3:.1f} GB free disk (minimum 10 GB)")
+        if free < min_disk_gb * 1024**3:
+            found.append(f"{free / 1024**3:.1f} GB free disk (minimum {min_disk_gb} GB for {tier})")
     except Exception:
         pass
     return found

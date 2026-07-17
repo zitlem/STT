@@ -219,21 +219,24 @@ Alternatively, run `start_watchdog.bat` or `start_watchdog.ps1` from the Startup
 
 ## System Requirements
 
-### Minimum (CPU Only)
-- **OS:** Debian 12, Ubuntu 22.04+, or similar Linux
-- **CPU:** 4 cores
-- **RAM:** 8 GB
-- **Storage:** 10 GB free space
+### Transcription only (minimum)
+- **OS:** Debian 12, Ubuntu 22.04+, or similar Linux; Windows 10+; macOS 12+ (Intel & Apple Silicon)
+- **CPU:** 6 cores
+- **RAM:** 12 GB
+- **Storage:** 15 GB free space
 - **Python:** 3.9 - 3.13
 
-### Recommended (with GPU)
-- **OS:** Debian 12, Ubuntu 22.04+
+### Transcription + Translation (minimum)
 - **CPU:** 8 cores
 - **RAM:** 16 GB
-- **GPU:** NVIDIA GPU with 4GB+ VRAM (RTX 2060 or better)
-- **CUDA:** 12.8 compatible drivers (NVIDIA driver R570+)
-- **Storage:** 20 GB free space
-- **Python:** 3.10 - 3.13
+- **Storage:** 25 GB free space
+- The NLLB translation model adds several GB of RAM and disk. Offloading translation to a remote machine (Live Translation → Remote) keeps the local requirements at the transcription-only tier.
+
+### Acceleration (optional, recommended)
+- **NVIDIA:** GPU with 4GB+ VRAM (RTX 2060 or better), CUDA 12.8 compatible drivers (NVIDIA driver R570+), Python 3.10 - 3.13
+- **Apple Silicon:** M1 or later — MPS acceleration is detected and used automatically
+
+> Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
 
 ---
 

@@ -142,15 +142,20 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions, system requ
 
 ## System Requirements
 
-### Minimum (CPU Only)
-- **CPU:** 4 cores | **RAM:** 8 GB | **Storage:** 10 GB
+### Transcription only (minimum)
+- **CPU:** 6 cores | **RAM:** 12 GB | **Storage:** 15 GB
 - **Python:** 3.9 - 3.13
-- **OS:** Linux, Windows, or macOS
+- **OS:** Linux, Windows, or macOS (Intel & Apple Silicon)
 
-### Recommended (with GPU)
-- **CPU:** 8 cores | **RAM:** 16 GB | **Storage:** 20 GB
-- **GPU:** NVIDIA with 4GB+ VRAM (RTX 2060 or better)
-- **CUDA:** 12.8 compatible drivers (NVIDIA driver R570+)
+### Transcription + Translation (minimum)
+- **CPU:** 8 cores | **RAM:** 16 GB | **Storage:** 25 GB
+- The NLLB translation model adds several GB of RAM and disk; offloading translation to a remote machine keeps the local requirements at the transcription-only tier.
+
+### Acceleration (optional, recommended)
+- **NVIDIA:** 4GB+ VRAM (RTX 2060 or better), CUDA 12.8 compatible drivers (R570+)
+- **Apple Silicon:** M1 or later (MPS acceleration, detected automatically)
+
+> Lower-spec hardware may still work depending on configuration (e.g. smaller Whisper models, reduced settings), at the cost of accuracy and/or speed.
 
 ## Configuration
 
