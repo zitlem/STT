@@ -1468,7 +1468,23 @@
        let _inProgressTextEl = null;
        let _lastFinalizedHTML = '';
 
+       // A server restart (or a new Start) mints a new session id. If the
+       // socket transport recovered without a clean reconnect,
+       // resetSessionState() never ran and stale segments would collide with
+       // the new session's ids (segments merge by numeric id) — the
+       // repeated-text display bug. Reset whenever the server's session
+       // identity changes, not only on the socket lifecycle.
+       let _lastKnownSessionId = null;
+       function checkSessionChanged(sessionId) {
+         if (sessionId === undefined || sessionId === null) return;
+         if (_lastKnownSessionId !== null && sessionId !== _lastKnownSessionId) {
+           resetSessionState();
+         }
+         _lastKnownSessionId = sessionId;
+       }
+
        function updateTranscriptionDisplay(data) {
+         checkSessionChanged(data.session_id);
          const tableBody = $("#transcription-table-body");
          const table = document.getElementById('transcription-table');
          const emptyState = document.getElementById('empty-state');
@@ -1645,6 +1661,7 @@
        let _lastTranslationFinalizedHTML = '';
 
        function updateTranslationDisplay(data) {
+         checkSessionChanged(data.session_id);
          const mode = window.displayConfig?.translationMode || 'transcribe';
          const layout = window.displayConfig?.translationLayout || 'stacked';
 

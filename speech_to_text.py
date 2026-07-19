@@ -12428,9 +12428,21 @@ def handle_request_all_translation_entries():
         cached = cache.get(seg_id, original_text, target_lang)
         if cached:
             translated_text = cached
+        elif len(entry) > 7 and entry[7]:
+            # Cache cold (e.g. server restart): serve the persisted translation
+            # and seed the cache, same as the emit loop's db_seed branch.
+            translated_text = entry[7]
+            db_lang = entry[8] if len(entry) > 8 and entry[8] else target_lang
+            cache.set(seg_id, original_text, translated_text, db_lang)
         else:
-            translated_text = translate_live_text(original_text, source_lang, target_lang)
-            cache.set(seg_id, original_text, translated_text, target_lang)
+            # No cached or persisted translation — never translate live here.
+            # This handler runs synchronously on every client connect and has
+            # no warmup gate: an unready model echoes the source text, which
+            # would get cached and later mutate into the real translation (the
+            # post-restart repeating-display bug). The emit loop picks up the
+            # miss within a few cycles with its warmup gate, per-cycle budget,
+            # and DB write-back.
+            continue
 
         if is_whisper_hallucination(translated_text):
             continue
