@@ -614,12 +614,21 @@ def _init_sentry():
             # NOT 1.0: the web UI polls ~2x/second, so full tracing would be
             # ~100k+ transactions per viewer per day
             traces_sample_rate=float(cr.get("sentry_traces_sample_rate", 0.1)),
-            # Continuous profiling while a sampled transaction is active
-            profile_session_sample_rate=float(cr.get("sentry_profile_session_sample_rate", 1.0)),
+            # Continuous profiling is OFF unless explicitly opted in: the SDK's
+            # profiler thread (continuous_profiler._sample_stack/extract_stack)
+            # repeatedly segfaulted the server while sampling other threads'
+            # stacks — every faulthandler dump named it as the crashing thread.
+            # Gated behind a new key (not the old sample-rate) so installs with
+            # the old 1.0 default materialized in config.json are healed too.
+            profile_session_sample_rate=(
+                float(cr.get("sentry_profile_session_sample_rate", 1.0))
+                if cr.get("sentry_profiling_enabled", False) else 0.0
+            ),
             profile_lifecycle=cr.get("sentry_profile_lifecycle", "trace"),
         )
         sentry_sdk.set_tag("process", "server")
-        print("[SENTRY] Error reporting enabled (logs + traces + profiling)")
+        _prof = "profiling" if cr.get("sentry_profiling_enabled", False) else "no profiling"
+        print(f"[SENTRY] Error reporting enabled (logs + traces + {_prof})")
     except ImportError:
         print("[SENTRY] sentry-sdk is not installed — rerun the installer or: uv pip install 'sentry-sdk[flask]'")
     except Exception as e:

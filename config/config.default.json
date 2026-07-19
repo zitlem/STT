@@ -468,8 +468,10 @@
     "_sentry_enable_logs_comment": "Forward Python logging records to Sentry Logs.",
     "sentry_traces_sample_rate": 0.1,
     "_sentry_traces_sample_rate_comment": "Fraction of requests traced for performance (0-1). Keep low: the web UI polls ~2x/second, so 1.0 would produce a huge transaction volume.",
+    "sentry_profiling_enabled": false,
+    "_sentry_profiling_enabled_comment": "Continuous profiling (off by default): the Sentry SDK profiler thread has caused server segfaults while sampling thread stacks. Enable at your own risk.",
     "sentry_profile_session_sample_rate": 1.0,
-    "_sentry_profile_session_sample_rate_comment": "Fraction of profile sessions collected (0-1).",
+    "_sentry_profile_session_sample_rate_comment": "Fraction of profile sessions collected (0-1). Only applies when sentry_profiling_enabled is true.",
     "sentry_profile_lifecycle": "trace",
     "_sentry_profile_lifecycle_comment": "'trace' = profile automatically while a sampled transaction is active; 'manual' = only when started explicitly."
   },
