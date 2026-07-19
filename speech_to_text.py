@@ -8984,10 +8984,11 @@ def start_transcription():
                 ep = (config.get("analytics", {}).get("endpoint") or "").strip()
                 if not ep:
                     return
-                # Same folded string the settings page shows (tag with commits-
-                # since-tag added to the patch, plus -g<hash> when untagged).
+                # Numeric part of the display version only (e.g. '26.1.22' from
+                # '26.1.22-gc588d29') — the map server rejects anything beyond
+                # dotted numerics, and the commit hash is sent separately below.
                 # A self-update re-execs the process, so this is always current.
-                version = SERVER_DISPLAY_VERSION or "unknown"
+                version = (SERVER_DISPLAY_VERSION or "").split("-", 1)[0] or SERVER_VERSION or "unknown"
                 os_name = {"darwin": "macos", "win32": "windows", "linux": "linux"}.get(sys.platform, "linux")
                 _lt = config.get("live_translation", {})
                 _remote = _lt.get("remote", {})
