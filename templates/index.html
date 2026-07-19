@@ -1410,13 +1410,26 @@
          tempDiv.innerHTML = newFullHTML;
          const newText = tempDiv.textContent || '';
 
-         // Find the new portion
+         // Find the new portion. baseText is what stays on screen; the drip
+         // reveals newPortion after it, and their concatenation must equal
+         // newText — never oldText + newText, or every divergence (e.g. a
+         // segment retranslated with different phrasing) appends a full
+         // duplicate of the transcript after the stale reveal.
+         let baseText;
          let newPortion = '';
          if (newText.startsWith(oldText)) {
+           baseText = oldText;
            newPortion = newText.slice(oldText.length).trim();
          } else {
-           // Fallback: drip entire new text
-           newPortion = newText;
+           // Revealed text diverged from the new state: re-base on the longest
+           // common word prefix and drip only the differing tail.
+           const oldWords = oldText.split(/\s+/).filter(w => w.length > 0);
+           const allNewWords = newText.split(/\s+/).filter(w => w.length > 0);
+           let common = 0;
+           while (common < oldWords.length && common < allNewWords.length
+                  && oldWords[common] === allNewWords[common]) common++;
+           baseText = allNewWords.slice(0, common).join(' ');
+           newPortion = allNewWords.slice(common).join(' ');
          }
 
          if (!newPortion) {
@@ -1425,6 +1438,10 @@
            else { _dripRevealedHTML = newFullHTML; }
            return;
          }
+
+         // HTML for the base: on the prefix path it's exactly what's on screen;
+         // after a divergence re-base it must be rebuilt from baseText.
+         const baseHTML = baseText === oldText ? actualPrevHTML : applyWordHighlighting(baseText);
 
          const newWords = newPortion.split(/\s+/).filter(w => w.length > 0);
 
@@ -1437,8 +1454,10 @@
            _dripTimer = null;
          }
 
-         // Show base (already revealed text) immediately
-         element.innerHTML = actualPrevHTML;
+         // Show base (retained revealed text) immediately
+         element.innerHTML = baseHTML;
+         if (isTranslation) { _transDripRevealedHTML = baseHTML; }
+         else { _dripRevealedHTML = baseHTML; }
 
          let wordIndex = 0;
          const timer = setInterval(() => {
@@ -1450,7 +1469,7 @@
              return;
            }
            wordIndex++;
-           const partialNewText = oldText + (oldText ? ' ' : '') + newWords.slice(0, wordIndex).join(' ');
+           const partialNewText = baseText + (baseText ? ' ' : '') + newWords.slice(0, wordIndex).join(' ');
            const partialHTML = applyWordHighlighting(partialNewText);
            element.innerHTML = partialHTML;
            if (isTranslation) { _transDripRevealedHTML = partialHTML; }
