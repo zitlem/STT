@@ -1421,15 +1421,26 @@
            baseText = oldText;
            newPortion = newText.slice(oldText.length).trim();
          } else {
-           // Revealed text diverged from the new state: re-base on the longest
-           // common word prefix and drip only the differing tail.
+           // Revealed text diverged from the new state (a correction or a
+           // retranslation changed words already on screen). Fix the changed
+           // words IN PLACE instantly — never re-animate text the viewer has
+           // already read — and drip only the net-new words at the end:
+           // re-base on the revealed word COUNT, not the common prefix.
            const oldWords = oldText.split(/\s+/).filter(w => w.length > 0);
            const allNewWords = newText.split(/\s+/).filter(w => w.length > 0);
-           let common = 0;
-           while (common < oldWords.length && common < allNewWords.length
-                  && oldWords[common] === allNewWords[common]) common++;
-           baseText = allNewWords.slice(0, common).join(' ');
-           newPortion = allNewWords.slice(common).join(' ');
+           if (allNewWords.length <= oldWords.length) {
+             // Same length or shrank: pure in-place correction, nothing to
+             // drip. Stop any mid-flight drip first so its timer can't
+             // overwrite the corrected text with stale partials.
+             if (isTranslation && _transDripTimer) { clearInterval(_transDripTimer); _transDripTimer = null; }
+             else if (!isTranslation && _dripTimer) { clearInterval(_dripTimer); _dripTimer = null; }
+             element.innerHTML = newFullHTML;
+             if (isTranslation) { _transDripRevealedHTML = newFullHTML; }
+             else { _dripRevealedHTML = newFullHTML; }
+             return;
+           }
+           baseText = allNewWords.slice(0, oldWords.length).join(' ');
+           newPortion = allNewWords.slice(oldWords.length).join(' ');
          }
 
          if (!newPortion) {
