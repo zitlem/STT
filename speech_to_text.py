@@ -4250,10 +4250,64 @@ SERVER_DISPLAY_VERSION = _compute_display_version()
 
 
 # --- System requirements (informational warning shown in the web UI header) ---
-# Documented minimums (README.md "System Requirements"). Two tiers: local
-# translation (NLLB) needs several GB more than transcription alone; offloaded
-# remote translation counts as transcription-only. GPU is recommended-only and
-# never warns.
+# Requirements are estimated from the configured models (live Whisper, file
+# transcription Whisper, local NLLB) rather than static tiers, and compared
+# against detected hardware: RAM, CUDA VRAM, and Apple Silicon unified memory
+# (where CPU and GPU share one pool). Every probe and lookup fails open
+# (unknown -> no warning) and must never block startup.
+
+BASELINE_RAM_GB = 4.0   # OS + Python/torch runtime + Flask + audio buffers
+GPU_HOST_RAM_GB = 1.0   # host-side RAM per GPU-resident model (weight load/copy, tokenizer)
+BASE_DISK_GB = 5.0      # logs, session databases, temp audio, headroom
+
+# Approximate runtime memory per resident model in GB (not download sizes):
+# ram = CPU inference (openai-whisper fp32, faster-whisper int8, transformers fp32),
+# vram = GPU inference (fp16), disk = on-disk model size.
+MODEL_MEMORY_ESTIMATES = {
+    "whisper": {
+        "tiny":   {"ram": 1.0,  "vram": 1.0,  "disk": 0.1},
+        "base":   {"ram": 1.2,  "vram": 1.0,  "disk": 0.15},
+        "small":  {"ram": 2.5,  "vram": 2.0,  "disk": 0.5},
+        "medium": {"ram": 5.0,  "vram": 5.0,  "disk": 1.5},
+        "large":  {"ram": 10.0, "vram": 10.0, "disk": 3.0},
+        "turbo":  {"ram": 6.0,  "vram": 6.0,  "disk": 1.6},
+    },
+    "faster-whisper": {  # CTranslate2: int8 on CPU, fp16 on GPU
+        "tiny":   {"ram": 0.5, "vram": 1.0, "disk": 0.1},
+        "base":   {"ram": 0.7, "vram": 1.0, "disk": 0.15},
+        "small":  {"ram": 1.2, "vram": 1.5, "disk": 0.5},
+        "medium": {"ram": 2.5, "vram": 3.0, "disk": 1.5},
+        "large":  {"ram": 4.5, "vram": 4.5, "disk": 3.0},
+        "turbo":  {"ram": 2.5, "vram": 3.0, "disk": 1.6},
+    },
+    "nllb": {
+        "nllb-200-distilled-600M": {"ram": 3.0,  "vram": 2.0,  "disk": 1.2},
+        "nllb-200-distilled-1.3B": {"ram": 6.5,  "vram": 3.5,  "disk": 2.6},
+        "nllb-200-1.3B":           {"ram": 6.5,  "vram": 3.5,  "disk": 5.2},
+        "nllb-200-3.3B":           {"ram": 15.0, "vram": 8.0,  "disk": 13.0},
+        "nllb-moe-54b":            {"ram": 60.0, "vram": 30.0, "disk": 17.0},
+    },
+}
+
+
+def _normalize_whisper_size(name):
+    """Map a configured Whisper model name to a MODEL_MEMORY_ESTIMATES size key.
+
+    Strips the .en suffix, folds large-v1/v2/v3 into "large" and the turbo /
+    distilled variants into "turbo". Unknown names -> None (contributes nothing).
+    """
+    if not isinstance(name, str) or not name.strip():
+        return None
+    n = name.strip().lower()
+    if n.endswith(".en"):
+        n = n[:-3]
+    if n in ("turbo", "large-v3-turbo", "distil-large-v3"):
+        return "turbo"
+    if n in ("large", "large-v1", "large-v2", "large-v3"):
+        return "large"
+    if n in ("tiny", "base", "small", "medium"):
+        return n
+    return None
 
 
 def _get_total_ram_bytes():
@@ -4290,43 +4344,212 @@ def _get_total_ram_bytes():
         return 0
 
 
-def _check_system_requirements():
-    """Human-readable warnings when below the documented minimums; [] when OK.
+def _probe_vram_bytes():
+    """Total VRAM of CUDA device 0 in bytes; None when unknown.
 
-    Picks the tier from the startup config: local live translation applies the
-    higher transcription+translation minimums. Each probe fails open (unknown
-    -> no warning) and must never block startup.
+    Never triggers the heavy torch import itself: uses torch only when it is
+    already in sys.modules, otherwise falls back to nvidia-smi (stdlib-only,
+    works at startup before the lazy ML import runs).
     """
     try:
-        _lt = config.get("live_translation", {})
+        if "torch" in sys.modules:
+            import torch
+            if torch.cuda.is_available():
+                return int(torch.cuda.get_device_properties(0).total_memory)
+            return None  # torch is loaded and says no CUDA — trust it
+    except Exception:
+        pass
+    try:
+        import subprocess
+        r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode == 0 and r.stdout.strip():
+            return int(float(r.stdout.strip().splitlines()[0])) * 1024**2
+    except Exception:
+        pass
+    return None
+
+
+_HW_PROBE_CACHE = None
+_HW_PROBE_LOCK = threading.Lock()
+
+
+def _probe_hardware():
+    """Cached hardware snapshot; every field fails open (0 / None / False).
+
+    VRAM is re-probed on later calls if it was unknown and torch has since
+    been imported (the lazy ML import can happen after startup).
+    """
+    global _HW_PROBE_CACHE
+    with _HW_PROBE_LOCK:
+        hw = _HW_PROBE_CACHE
+        if hw is None:
+            try:
+                import platform as _platform  # module-level `platform` is sys.platform
+                apple_silicon = sys.platform == "darwin" and _platform.machine() == "arm64"
+            except Exception:
+                apple_silicon = False
+            vram = _probe_vram_bytes()
+            hw = {
+                "ram_bytes": _get_total_ram_bytes(),
+                "cpu_cores": os.cpu_count() or 0,
+                "vram_bytes": vram,
+                "has_cuda": vram is not None,
+                "apple_silicon": apple_silicon,
+            }
+            _HW_PROBE_CACHE = hw
+        elif hw["vram_bytes"] is None and "torch" in sys.modules:
+            vram = _probe_vram_bytes()
+            hw["vram_bytes"] = vram
+            hw["has_cuda"] = vram is not None
+    try:
+        import shutil
+        hw["disk_free_bytes"] = shutil.disk_usage(APP_DIR).free  # cheap; keep current
+    except Exception:
+        hw["disk_free_bytes"] = 0
+    return hw
+
+
+def _estimate_memory_requirements(cfg, gpu_available=False):
+    """Pure config math: what the configured models need to run.
+
+    Returns {ram_gb, vram_gb, disk_gb, min_cores, tier, parts}; parts is a
+    per-model breakdown for building warning messages. Unknown model names or
+    malformed config contribute nothing (fail open). `gpu_available` decides
+    whether use_gpu flags put a model on the GPU (vram) or the CPU (ram).
+    """
+    ram_gb = BASELINE_RAM_GB
+    vram_gb = 0.0
+    disk_gb = BASE_DISK_GB
+    parts = [{"label": "app/OS baseline", "ram_gb": BASELINE_RAM_GB, "vram_gb": 0.0}]
+    seen = set()
+
+    def _add(label, table, key, use_gpu):
+        nonlocal ram_gb, vram_gb, disk_gb
+        est = MODEL_MEMORY_ESTIMATES.get(table, {}).get(key)
+        if not est:
+            return
+        on_gpu = bool(use_gpu) and gpu_available
+        dedupe = (table, key, on_gpu)
+        if dedupe in seen:
+            return
+        seen.add(dedupe)
+        part = {"label": label + (" on GPU" if on_gpu else " on CPU"), "ram_gb": 0.0, "vram_gb": 0.0}
+        if on_gpu:
+            vram_gb += est["vram"]
+            ram_gb += GPU_HOST_RAM_GB
+            part["vram_gb"] = est["vram"]
+            part["ram_gb"] = GPU_HOST_RAM_GB
+        else:
+            ram_gb += est["ram"]
+            part["ram_gb"] = est["ram"]
+        disk_gb += est["disk"]
+        parts.append(part)
+
+    def _add_whisper(label, model_cfg, backend, use_gpu):
+        if not isinstance(model_cfg, dict) or model_cfg.get("type", "whisper") != "whisper":
+            return  # huggingface/custom models: no estimate, fail open
+        name = model_cfg.get("whisper", {}).get("model")
+        size = _normalize_whisper_size(name)
+        if size is None:
+            return
+        table = "faster-whisper" if backend == "faster-whisper" else "whisper"
+        _add(f"{label} '{name}' via {table}", table, size, use_gpu)
+
+    main_backend = "whisper"
+    try:
+        main_backend = cfg.get("model", {}).get("backend") or "whisper"
+        _add_whisper("Whisper", cfg.get("model", {}),
+                     main_backend, cfg.get("performance", {}).get("use_gpu"))
+    except Exception:
+        pass
+    try:
+        ft = cfg.get("file_transcription", {})
+        ft_backend = ft.get("model", {}).get("backend") or main_backend
+        _add_whisper("file-transcription Whisper", ft.get("model", {}),
+                     ft_backend, ft.get("use_gpu"))
+    except Exception:
+        pass
+
+    local_translation = False
+    try:
+        _lt = cfg.get("live_translation", {})
         _remote = _lt.get("remote", {})
         local_translation = bool(_lt.get("enabled")) and not (_remote.get("enabled") and _remote.get("endpoint"))
+        if local_translation:
+            model_id = str(_lt.get("translation_model", "")).split("/")[-1]
+            _add(f"NLLB '{model_id}'", "nllb", model_id, _lt.get("use_gpu"))
     except Exception:
-        local_translation = False
+        pass
+
     if local_translation:
-        min_cores, min_ram_gb, min_disk_gb, tier = 8, 16, 25, "transcription + translation"
+        min_cores, tier = 8, "transcription + translation"
     else:
-        min_cores, min_ram_gb, min_disk_gb, tier = 6, 12, 15, "transcription"
-    ram_threshold = int((min_ram_gb - 0.5) * 1024**3)  # installed RAM reports slightly less
+        min_cores, tier = 6, "transcription"
+    return {"ram_gb": ram_gb, "vram_gb": vram_gb, "disk_gb": disk_gb,
+            "min_cores": min_cores, "tier": tier, "parts": parts}
+
+
+def _format_parts(parts, key):
+    """'Whisper 'small' via faster-whisper on CPU: ~1.2 GB; app/OS baseline: ~4 GB'."""
+    out = []
+    for p in parts:
+        if p.get(key):
+            out.append(f"{p['label']}: ~{p[key]:g} GB")
+    return "; ".join(out)
+
+
+def _check_system_requirements(cfg=None, hw=None):
+    """Human-readable warnings when the hardware falls short of what the
+    currently configured models need; [] when OK.
+
+    cfg/hw are injectable for tests and default to the live config and the
+    cached hardware probe. Each check fails open (unknown -> no warning) and
+    must never block startup.
+    """
+    try:
+        if cfg is None:
+            cfg = config
+        if hw is None:
+            hw = _probe_hardware()
+        gpu_available = bool(hw.get("has_cuda") or hw.get("apple_silicon"))
+        need = _estimate_memory_requirements(cfg, gpu_available=gpu_available)
+    except Exception:
+        return []
 
     found = []
     try:
-        cores = os.cpu_count() or 0
-        if 0 < cores < min_cores:
-            found.append(f"{cores} CPU cores (minimum {min_cores} for {tier})")
+        cores = hw.get("cpu_cores") or 0
+        if 0 < cores < need["min_cores"]:
+            found.append(f"{cores} CPU cores (minimum {need['min_cores']} for {need['tier']})")
     except Exception:
         pass
     try:
-        ram = _get_total_ram_bytes()
-        if 0 < ram < ram_threshold:
-            found.append(f"{ram / 1024**3:.1f} GB RAM (minimum {min_ram_gb} GB for {tier})")
+        ram = hw.get("ram_bytes") or 0
+        if hw.get("apple_silicon"):
+            # Unified memory: CPU and GPU draw from the same pool.
+            need_gb = need["ram_gb"] + need["vram_gb"]
+            if 0 < ram < (need_gb - 0.5) * 1024**3:  # installed RAM reports slightly less
+                found.append(f"Configured models need ~{need_gb:.1f} GB of the {ram / 1024**3:.1f} GB unified memory on this Apple Silicon Mac "
+                             f"(CPU and GPU share one pool) — transcription may be slow or unstable")
+        else:
+            if 0 < ram < (need["ram_gb"] - 0.5) * 1024**3:
+                found.append(f"Configured models need ~{need['ram_gb']:.1f} GB RAM ({_format_parts(need['parts'], 'ram_gb')}) "
+                             f"but this PC has {ram / 1024**3:.1f} GB — transcription may be slow or unstable")
     except Exception:
         pass
     try:
-        import shutil
-        free = shutil.disk_usage(APP_DIR).free
-        if free < min_disk_gb * 1024**3:
-            found.append(f"{free / 1024**3:.1f} GB free disk (minimum {min_disk_gb} GB for {tier})")
+        vram = hw.get("vram_bytes")
+        if (hw.get("has_cuda") and not hw.get("apple_silicon") and vram
+                and need["vram_gb"] > 0 and vram < (need["vram_gb"] - 0.5) * 1024**3):
+            found.append(f"Configured models need ~{need['vram_gb']:.1f} GB VRAM ({_format_parts(need['parts'], 'vram_gb')}) "
+                         f"but the GPU has {vram / 1024**3:.1f} GB — models may fail to load or fall back to CPU")
+    except Exception:
+        pass
+    try:
+        free = hw.get("disk_free_bytes") or 0
+        if 0 < free < need["disk_gb"] * 1024**3:
+            found.append(f"{free / 1024**3:.1f} GB free disk (~{need['disk_gb']:.0f} GB needed for the configured models)")
     except Exception:
         pass
     return found
@@ -5824,10 +6047,31 @@ def save_timezone_settings():
 
 @app.route("/api/system/requirements", methods=["GET"])
 def get_system_requirements():
-    """Whether this machine meets the documented minimums (drives the header banner)."""
+    """Whether this machine can run the configured models (drives the header banner).
+
+    Recomputed per request so the banner follows config changes; only the
+    hardware probe is cached.
+    """
+    warns = _check_system_requirements()
+    details = {}
+    try:
+        hw = _probe_hardware()
+        need = _estimate_memory_requirements(config, gpu_available=bool(hw.get("has_cuda") or hw.get("apple_silicon")))
+        details = {
+            "ram_gb_needed": round(need["ram_gb"], 1),
+            "vram_gb_needed": round(need["vram_gb"], 1),
+            "disk_gb_needed": round(need["disk_gb"], 1),
+            "ram_gb_found": round((hw.get("ram_bytes") or 0) / 1024**3, 1),
+            "vram_gb_found": round(hw["vram_bytes"] / 1024**3, 1) if hw.get("vram_bytes") else None,
+            "apple_silicon": bool(hw.get("apple_silicon")),
+            "has_cuda": bool(hw.get("has_cuda")),
+        }
+    except Exception:
+        pass
     return jsonify({
-        "meets_requirements": not SYSTEM_REQUIREMENTS_WARNINGS,
-        "warnings": SYSTEM_REQUIREMENTS_WARNINGS,
+        "meets_requirements": not warns,
+        "warnings": warns,
+        "details": details,
     })
 
 

@@ -1303,6 +1303,7 @@
                     showAlert('All settings saved successfully!', 'success');
                     currentConfig = data.config;
                     markClean();
+                    if (window.refreshSysreqBanner) window.refreshSysreqBanner();
                 } else {
                     showAlert('Error: ' + data.error, 'error');
                 }

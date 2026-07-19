@@ -875,6 +875,7 @@
                 if (data.success) {
                     showAlert('✅ Settings saved successfully!\n\n⚠️ Please restart the application for changes to take effect.', 'success');
                     markClean();
+                    if (window.refreshSysreqBanner) window.refreshSysreqBanner();
                 } else {
                     showAlert('❌ Error saving settings: ' + data.error, 'error');
                 }

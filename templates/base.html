@@ -774,21 +774,24 @@
     </div>
 
     <script>
-        // Reveal the header banner when the machine is below the documented
-        // minimum requirements (see README "System Requirements").
-        (function () {
+        // Reveal the header banner when the machine falls short of what the
+        // configured models need. Server messages are complete sentences;
+        // settings pages call refreshSysreqBanner() after saving config.
+        window.refreshSysreqBanner = function () {
             fetch('/api/system/requirements')
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
+                    var el = document.getElementById('sysreq_warning');
                     if (d && d.warnings && d.warnings.length) {
-                        var el = document.getElementById('sysreq_warning');
-                        el.textContent = '⚠️ This PC doesn\'t meet the minimum system requirements: '
-                            + d.warnings.join('; ') + '. Transcription may be slow or unstable.';
+                        el.textContent = '⚠️ ' + d.warnings.join(' — ');
                         el.style.display = 'block';
+                    } else {
+                        el.style.display = 'none';
                     }
                 })
                 .catch(function () {});
-        })();
+        };
+        window.refreshSysreqBanner();
     </script>
 
     {% block scripts %}{% endblock %}

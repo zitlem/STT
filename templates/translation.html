@@ -847,6 +847,7 @@
                     showAlert('Translation settings saved successfully!', 'success');
                     markClean();
                     checkStatus();
+                    if (window.refreshSysreqBanner) window.refreshSysreqBanner();
                 } else {
                     showAlert('Error saving settings: ' + data.error, 'error');
                 }
