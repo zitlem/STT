@@ -2609,15 +2609,33 @@ transcription_process = None
 _server_shutting_down = threading.Event()
 
 
+# Every way a dead Manager proxy can fail: broken pipe/EOF mid-call,
+# ConnectionRefusedError to the AF_UNIX listener, FileNotFoundError when the
+# socket file is gone, AttributeError/TypeError when the proxy itself is None.
+_TS_PROXY_ERRORS = (BrokenPipeError, EOFError, ConnectionError, FileNotFoundError, AttributeError, TypeError)
+
+
 def _ts_get(key, default=None):
     """Read from the transcription_state Manager proxy, tolerating a torn-down
     Manager during shutdown. On a proxy disconnect, flag shutdown and return the
     default instead of raising an unhandled BrokenPipeError."""
     try:
         return transcription_state.get(key, default)
-    except (BrokenPipeError, EOFError, ConnectionError):
+    except _TS_PROXY_ERRORS:
         _server_shutting_down.set()
         return default
+
+
+def _ts_snapshot():
+    """dict(transcription_state), tolerating a torn-down Manager during a
+    shutdown/restart (e.g. the auto-update window). Returns a benign
+    'restarting' state on proxy disconnect instead of raising an unhandled 500
+    from the status routes."""
+    try:
+        return dict(transcription_state)
+    except _TS_PROXY_ERRORS:
+        _server_shutting_down.set()
+        return {"running": False, "status": "restarting", "message": "Server is restarting"}
 
 # Database cache for performance
 _db_cache = {
@@ -9030,7 +9048,7 @@ def start_transcription():
             {
                 "success": True,
                 "message": "Transcription starting...",
-                "state": dict(transcription_state),  # Convert DictProxy to dict
+                "state": _ts_snapshot(),
             }
         )
     except Exception as e:
@@ -9151,7 +9169,7 @@ def stop_transcription():
             {
                 "success": True,
                 "message": "Transcription stopping...",
-                "state": dict(transcription_state),  # Convert DictProxy to dict
+                "state": _ts_snapshot(),
             }
         )
     except Exception as e:
@@ -9164,9 +9182,7 @@ def get_transcription_status():
     return jsonify(
         {
             "success": True,
-            "state": dict(
-                transcription_state
-            ),  # Convert DictProxy to regular dict for JSON serialization
+            "state": _ts_snapshot(),
         }
     )
 
@@ -9242,7 +9258,7 @@ def force_reset_transcription():
             {
                 "success": True,
                 "message": "Transcription state forcefully reset. You can now start transcription again.",
-                "state": dict(transcription_state),  # Convert DictProxy to dict for JSON serialization
+                "state": _ts_snapshot(),
             }
         )
     except Exception as e:
