@@ -1505,6 +1505,10 @@
        // repeated-text display bug. Reset whenever the server's session
        // identity changes, not only on the socket lifecycle.
        let _lastKnownSessionId = null;
+       // Rebound by initializeSocketMonitoring(): the real implementation
+       // closes over socket/audio state local to that function. Until then a
+       // session change has no state to clear, so the no-op is correct.
+       let resetSessionState = function () {};
        function checkSessionChanged(sessionId) {
          if (sessionId === undefined || sessionId === null) return;
          if (_lastKnownSessionId !== null && sessionId !== _lastKnownSessionId) {
@@ -1949,7 +1953,7 @@
         // recover from a silently-dead connection) fires only 'connect'. This
         // is called from both handlers so a manual reconnect can't leave
         // stale state around to get glued onto the next update.
-        function resetSessionState() {
+        resetSessionState = function () {
           // Clear segment state to reload fresh data on reconnect
           allSegments = [];
           lastIncompleteSegment = null;
@@ -1989,7 +1993,7 @@
           if (window.displayConfig.ttsAudio) {
             socket.emit('join_tts_audio');
           }
-        }
+        };
 
         socket.on('connect', function() {
           // console.log('WebSocket connected');
