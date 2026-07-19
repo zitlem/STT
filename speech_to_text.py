@@ -12946,6 +12946,28 @@ def _attach_segment_ids(segments):
     return segments
 
 
+def _live_preview_suppressed(text):
+    """Whether the in-progress (live) preview text should be hidden from the
+    display. Applies the same criteria that deny finalized rows so the live
+    line doesn't loop content the finalized view already filters out:
+      - empty/whitespace,
+      - a known Whisper hallucination (the "Продолжение следует…"-type stock
+        phrases Whisper invents on music/silence), or
+      - audio currently detected as Music while music transcription is disabled.
+    """
+    if not text or not text.strip():
+        return True
+    if is_whisper_hallucination(text):
+        return True
+    try:
+        if (_ts_get("audio_type") == "Music"
+                and not config.get("speech_type_detection", {}).get("transcribe_detected_music", False)):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def emit_new_entries():
     """Emit combined transcription updates and audio levels to web clients"""
     update_interval = config.get("web_server", {}).get("update_interval", 0.5)
@@ -13000,9 +13022,10 @@ def emit_new_entries():
         # below so live + staged segments (same dict refs) both carry it.
         _attach_segment_ids(segments)
 
-        # Build in-progress segment if there's text
+        # Build in-progress segment if there's text (suppressing hallucinated /
+        # music live text so the root display doesn't loop it during songs)
         in_progress_segment = None
-        if in_progress and in_progress.strip():
+        if not _live_preview_suppressed(in_progress):
             in_progress_segment = {
                 "text": in_progress,
                 "start": in_progress_start,
@@ -13558,7 +13581,10 @@ def emit_translated_entries():
             # it's in the target language (so it can suppress source-language flash).
             in_progress_translation = None
             in_progress = _ts_get("live_text", "")
-            if in_progress and in_progress.strip():
+            # Suppress on the SOURCE text — a source-language hallucination that
+            # gets translated first would otherwise slip past a check on the
+            # translated string. Also covers the music-detected gate.
+            if not _live_preview_suppressed(in_progress):
                 should_translate_ip = trans_config.get("translate_in_progress", False) and not _whisper_translation_active
                 if should_translate_ip:
                     translated_in_progress = translate_live_text(in_progress, source_lang, target_lang)
