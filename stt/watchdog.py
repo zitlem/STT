@@ -906,12 +906,19 @@ class AutoUpdater:
     # -- Check & update ------------------------------------------------------
 
     def check_for_update(self):
-        """Fetch latest release and store it as pending if newer. Does not download or apply."""
+        """Detect an available update and store it as pending. Does not download or apply.
+
+        Channel 'main' tracks the repo's main branch via git (the default);
+        'stable'/'beta' remain release-pinned via the GitHub Releases API."""
         cfg = load_config()
-        channel = cfg.get("watchdog", {}).get("update_channel", "stable")
+        channel = cfg.get("watchdog", {}).get("update_channel", "main")
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         self.state.set(last_update_check=now)
         logging.info(f"[AU] Checking for updates (channel: {channel})...")
+
+        if channel == "main":
+            self._check_for_branch_update()
+            return
 
         try:
             tag, zipball_url, assets = self.get_latest_release(channel)
@@ -939,6 +946,43 @@ class AutoUpdater:
         self._pending_update = (remote, zipball_url, assets)
         self.state.set(last_update_result=f"Update available: {remote}")
 
+    _BRANCH_TARGET = "origin/main"  # sentinel remote for branch-tracking updates
+
+    def _check_for_branch_update(self):
+        """'main' channel: update available iff local HEAD != origin/main.
+
+        Pure git — no GitHub REST call, so no API quota. Requires the managed
+        source to be a git checkout (the normal provisioned state)."""
+        if not (shutil.which("git") and os.path.isdir(os.path.join(SOURCE_DIR, ".git"))):
+            result = "Main channel needs a git checkout; switch update_channel to 'stable' or reprovision"
+            logging.warning(f"[AU] {result}")
+            self.state.set(last_update_result=result)
+            return
+        try:
+            # --tags keeps `git describe` (version display) accurate on main.
+            self._git("fetch", "--tags", "--force", "origin", "main", check=False)
+            local = self._git("rev-parse", "HEAD", check=False).stdout.strip()
+            remote = self._git("rev-parse", self._BRANCH_TARGET, check=False).stdout.strip()
+        except Exception as e:
+            result = f"Check failed: {e}"
+            logging.warning(f"[AU] {result}")
+            self.state.set(last_update_result=result)
+            return
+        if not local or not remote:
+            result = "Check failed: could not resolve HEAD/origin/main"
+            logging.warning(f"[AU] {result}")
+            self.state.set(last_update_result=result)
+            return
+        if local == remote:
+            self._pending_update = None
+            result = f"Up to date (main @ {local[:9]})"
+            logging.info(f"[AU] {result}")
+            self.state.set(last_update_result=result)
+            return
+        logging.info(f"[AU] Update available: main {local[:9]} → {remote[:9]}")
+        self._pending_update = (self._BRANCH_TARGET, None, {})
+        self.state.set(last_update_result=f"Update available: main @ {remote[:9]}")
+
     def apply_pending_update(self):
         """Apply the pending update (if any) via git; fall back to source archive."""
         if not self._pending_update:
@@ -962,6 +1006,12 @@ class AutoUpdater:
         dependencies (deps may have changed), then restart. Data dir is untouched."""
         have_git = bool(shutil.which("git")) and os.path.isdir(os.path.join(SOURCE_DIR, ".git"))
         if not have_git:
+            if remote == self._BRANCH_TARGET:
+                # Branch tracking has no archive equivalent (no zipball URL).
+                result = "Main-channel update needs a git checkout; skipped"
+                logging.warning(f"[AU] {result}")
+                self.state.set(last_update_result=result)
+                return
             logging.info("[AU] git unavailable; using source-archive update")
             self._apply_update(remote, zipball_url)
             return
@@ -971,16 +1021,20 @@ class AutoUpdater:
         try:
             logging.info(f"[AU] Fetching {remote}...")
             self._git("fetch", "--tags", "--force", "origin", check=False)
-            # Reset to the release tag (with or without a leading 'v'); else default branch.
-            target = None
-            for ref in (f"v{remote}", remote):
-                if self._git("rev-parse", "--verify", "--quiet", ref, check=False).returncode == 0:
-                    target = ref
-                    break
-            if target is None:
-                # Fall back to the fetched default branch head
-                self._git("fetch", "--depth", "1", "origin", check=False)
-                target = "origin/HEAD"
+            if remote == self._BRANCH_TARGET:
+                # 'main' channel: track the branch head directly.
+                target = self._BRANCH_TARGET
+            else:
+                # Reset to the release tag (with or without a leading 'v'); else default branch.
+                target = None
+                for ref in (f"v{remote}", remote):
+                    if self._git("rev-parse", "--verify", "--quiet", ref, check=False).returncode == 0:
+                        target = ref
+                        break
+                if target is None:
+                    # Fall back to the fetched default branch head
+                    self._git("fetch", "--depth", "1", "origin", check=False)
+                    target = "origin/HEAD"
             prev = self._git("rev-parse", "HEAD", check=False).stdout.strip() or None
             logging.info(f"[AU] Resetting to {target}")
             self._git("reset", "--hard", target)
@@ -1007,8 +1061,12 @@ class AutoUpdater:
                 self.state.set(last_update_result=result)
                 return
 
-            write_version(remote)
-            result = (f"Updated to {read_version()} "
+            if remote != self._BRANCH_TARGET:
+                write_version(remote)
+            # Branch mode: leave the VERSION file at the last release so
+            # parse_version comparisons stay sane if the install switches back
+            # to 'stable'; read_display_version reports the true main state.
+            result = (f"Updated to {read_display_version()} "
                       f"({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})")
             logging.info(f"[AU] {result}")
             self.state.set(last_update_result=result)
@@ -1236,8 +1294,8 @@ class GuiWindow:
         tk.Label(cf, text="Channel:", width=11, anchor="w").grid(
             row=2, column=0, sticky="w"
         )
-        self._chan_var = tk.StringVar(value="Stable")
-        tk.OptionMenu(cf, self._chan_var, "Stable", "Beta").grid(
+        self._chan_var = tk.StringVar(value="Main")
+        tk.OptionMenu(cf, self._chan_var, "Main", "Stable", "Beta").grid(
             row=2, column=1, sticky="w"
         )
 
@@ -1282,8 +1340,8 @@ class GuiWindow:
                .get("password_auth", {})
                .get("password", "")
         )
-        ch = cfg.get("watchdog", {}).get("update_channel", "stable")
-        self._chan_var.set("Beta" if ch == "beta" else "Stable")
+        ch = cfg.get("watchdog", {}).get("update_channel", "main")
+        self._chan_var.set({"beta": "Beta", "stable": "Stable"}.get(ch, "Main"))
 
     def _poll(self):
         if self._monitoring:
@@ -1406,7 +1464,7 @@ class GuiWindow:
         if "watchdog" not in cfg:
             cfg["watchdog"] = {}
         cfg["watchdog"]["update_channel"] = (
-            "beta" if self._chan_var.get() == "Beta" else "stable"
+            {"Beta": "beta", "Stable": "stable"}.get(self._chan_var.get(), "main")
         )
         save_config(cfg)
         self._mb.showinfo(
@@ -1750,8 +1808,8 @@ def main():
     )
     parser.add_argument(
         "--channel",
-        choices=["stable", "beta"],
-        help="Set update channel (saved to config.json)",
+        choices=["main", "stable", "beta"],
+        help="Set update channel (saved to config.json): main = track latest code, stable = tagged releases, beta = incl. prereleases",
     )
     parser.add_argument(
         "--test-crash-report",

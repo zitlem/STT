@@ -452,8 +452,8 @@
     "_transcribe_detected_music_comment": "Music is always transcribed (even when VAD would drop it). When true, its rows show in the transcript. When false, they are saved hidden with denied_reason 'music' and can be restored on /corrections."
   },
   "watchdog": {
-    "update_channel": "stable",
-    "_update_channel_comment": "Auto-update channel: 'stable' or 'beta'."
+    "update_channel": "main",
+    "_update_channel_comment": "Auto-update channel: 'main' = track the latest code on GitHub (default), 'stable' = tagged releases only, 'beta' = incl. prereleases."
   },
   "crash_reporting": {
     "enabled": true,

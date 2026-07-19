@@ -149,3 +149,139 @@ def test_preserved_venv_is_not_touched(updater, tmp_path):
     assert not (venv / "evil.txt").exists(), ".venv content from the archive must be skipped"
     assert (source_dir / "a.txt").exists()
     assert watchdog.read_version() == "9.9.9"
+
+
+# --- 'main' channel: branch-tracking detection and apply ---------------------
+# Real bare origin + clone (pattern from test_self_update.py) so the actual
+# git fetch/reset/rollback code runs; PM, state, and deps stay stubbed.
+
+import subprocess  # noqa: E402
+
+needs_git = pytest.mark.skipif(not shutil.which("git"), reason="git not available")
+
+
+def _git(repo, *args):
+    subprocess.run(["git", "-C", str(repo), *args], check=True,
+                   capture_output=True, text=True)
+
+
+def _head(repo):
+    return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+@pytest.fixture
+def git_updater(tmp_path, monkeypatch):
+    """(updater, seed, clone): clone is the managed SOURCE_DIR checkout."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(origin)],
+                   check=True, capture_output=True, text=True)
+    seed = tmp_path / "seed"
+    subprocess.run(["git", "clone", str(origin), str(seed)],
+                   check=True, capture_output=True, text=True)
+    _git(seed, "config", "user.email", "test@example.com")
+    _git(seed, "config", "user.name", "Test")
+    (seed / "file.txt").write_text("v1\n")
+    _git(seed, "add", "file.txt")
+    _git(seed, "commit", "-m", "initial")
+    _git(seed, "push", "-u", "origin", "main")
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", str(origin), str(clone)],
+                   check=True, capture_output=True, text=True)
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setattr(watchdog, "SOURCE_DIR", str(clone))
+    monkeypatch.setattr(watchdog, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(watchdog, "VERSION_FILE", str(clone / "VERSION"))
+    monkeypatch.setattr(watchdog.Provisioner, "install_deps_only",
+                        lambda self, log=None: None)
+
+    upd = watchdog.AutoUpdater.__new__(watchdog.AutoUpdater)
+    upd.pm = StubPM()
+    upd.state = StubState()
+    upd._pending_update = None
+    return upd, seed, clone
+
+
+def _advance_origin(seed, content="v2\n"):
+    (seed / "file.txt").write_text(content)
+    _git(seed, "commit", "-am", "advance")
+    _git(seed, "push", "origin", "main")
+
+
+@needs_git
+def test_main_channel_up_to_date(git_updater):
+    upd, seed, clone = git_updater
+
+    upd._check_for_branch_update()
+
+    assert upd._pending_update is None
+    assert upd.state.values["last_update_result"].startswith("Up to date (main @")
+
+
+@needs_git
+def test_main_channel_detects_and_applies_update(git_updater):
+    upd, seed, clone = git_updater
+    _advance_origin(seed)
+
+    upd._check_for_branch_update()
+    assert upd._pending_update == (watchdog.AutoUpdater._BRANCH_TARGET, None, {})
+    assert "Update available: main @" in upd.state.values["last_update_result"]
+
+    upd.apply_pending_update()
+
+    assert (clone / "file.txt").read_text() == "v2\n"
+    assert _head(clone) == _head(seed)
+    assert upd.pm.calls == ["stop", "start"]
+    assert not (clone / "VERSION").exists(), "branch mode must not write the VERSION file"
+    assert "Updated to" in upd.state.values["last_update_result"]
+
+
+@needs_git
+def test_main_channel_rollback_on_dep_failure(git_updater, monkeypatch):
+    upd, seed, clone = git_updater
+    prev = _head(clone)
+    _advance_origin(seed)
+    upd._check_for_branch_update()
+
+    calls = {"n": 0}
+
+    def flaky_deps(self, log=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("dep fail")
+
+    monkeypatch.setattr(watchdog.Provisioner, "install_deps_only", flaky_deps)
+    upd.apply_pending_update()
+
+    assert _head(clone) == prev, "failed dep install must roll the checkout back"
+    assert "rolled back" in upd.state.values["last_update_result"]
+    assert upd.pm.calls == ["stop", "start"]
+
+
+@needs_git
+def test_check_for_update_defaults_to_main_channel(git_updater, monkeypatch):
+    upd, seed, clone = git_updater
+    monkeypatch.setattr(watchdog, "load_config", lambda: {})  # no channel configured
+    _advance_origin(seed)
+
+    upd.check_for_update()  # must route to branch flow, no Releases API call
+
+    assert upd._pending_update == (watchdog.AutoUpdater._BRANCH_TARGET, None, {})
+
+
+@needs_git
+def test_stable_channel_still_uses_releases(git_updater, monkeypatch):
+    upd, seed, clone = git_updater
+    _advance_origin(seed)
+    monkeypatch.setattr(watchdog, "load_config",
+                        lambda: {"watchdog": {"update_channel": "stable"}})
+    monkeypatch.setattr(upd, "get_latest_release", lambda channel: (None, None, {}))
+
+    upd.check_for_update()
+
+    assert upd._pending_update is None
+    assert upd.state.values["last_update_result"] == "No releases yet"
+    assert _head(clone) != _head(seed), "stable channel must not track main"
