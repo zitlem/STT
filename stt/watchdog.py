@@ -14,7 +14,7 @@ Usage:
   python3 watchdog.py --gui       # force GUI window
   python3 watchdog.py --headless  # force headless daemon
   python3 watchdog.py --check-update         # one-shot update check then exit
-  python3 watchdog.py --channel beta         # set update channel and run
+  python3 watchdog.py --channel stable       # set update channel and run
 """
 
 import argparse
@@ -886,15 +886,12 @@ class AutoUpdater:
             return json.loads(resp.read().decode())
 
     def get_latest_release(self, channel):
-        """Return (tag_name, zipball_url, assets) or (None, None, {}) if no releases exist."""
+        """Return (tag_name, zipball_url, assets) or (None, None, {}) if no releases exist.
+
+        Any non-'main' channel (including a legacy 'beta' left in old configs)
+        resolves to the latest full release."""
         try:
-            if channel == "beta":
-                data = self._api_get(f"{GITHUB_API_BASE}/releases")
-                if not data:
-                    return None, None, {}
-                release = data[0]
-            else:
-                release = self._api_get(f"{GITHUB_API_BASE}/releases/latest")
+            release = self._api_get(f"{GITHUB_API_BASE}/releases/latest")
             assets = {a["name"]: a["browser_download_url"]
                       for a in release.get("assets", [])}
             return release.get("tag_name"), release.get("zipball_url"), assets
@@ -909,7 +906,7 @@ class AutoUpdater:
         """Detect an available update and store it as pending. Does not download or apply.
 
         Channel 'main' tracks the repo's main branch via git (the default);
-        'stable'/'beta' remain release-pinned via the GitHub Releases API."""
+        'stable' remains release-pinned via the GitHub Releases API."""
         cfg = load_config()
         channel = cfg.get("watchdog", {}).get("update_channel", "main")
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -1295,7 +1292,7 @@ class GuiWindow:
             row=2, column=0, sticky="w"
         )
         self._chan_var = tk.StringVar(value="Main")
-        tk.OptionMenu(cf, self._chan_var, "Main", "Stable", "Beta").grid(
+        tk.OptionMenu(cf, self._chan_var, "Main", "Stable").grid(
             row=2, column=1, sticky="w"
         )
 
@@ -1341,7 +1338,8 @@ class GuiWindow:
                .get("password", "")
         )
         ch = cfg.get("watchdog", {}).get("update_channel", "main")
-        self._chan_var.set({"beta": "Beta", "stable": "Stable"}.get(ch, "Main"))
+        # Legacy 'beta' configs display (and save back) as Stable.
+        self._chan_var.set({"beta": "Stable", "stable": "Stable"}.get(ch, "Main"))
 
     def _poll(self):
         if self._monitoring:
@@ -1464,7 +1462,7 @@ class GuiWindow:
         if "watchdog" not in cfg:
             cfg["watchdog"] = {}
         cfg["watchdog"]["update_channel"] = (
-            {"Beta": "beta", "Stable": "stable"}.get(self._chan_var.get(), "main")
+            "stable" if self._chan_var.get() == "Stable" else "main"
         )
         save_config(cfg)
         self._mb.showinfo(
@@ -1808,8 +1806,8 @@ def main():
     )
     parser.add_argument(
         "--channel",
-        choices=["main", "stable", "beta"],
-        help="Set update channel (saved to config.json): main = track latest code, stable = tagged releases, beta = incl. prereleases",
+        choices=["main", "stable"],
+        help="Set update channel (saved to config.json): main = track latest code, stable = tagged releases",
     )
     parser.add_argument(
         "--test-crash-report",

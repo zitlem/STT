@@ -453,7 +453,7 @@
   },
   "watchdog": {
     "update_channel": "main",
-    "_update_channel_comment": "Auto-update channel: 'main' = track the latest code on GitHub (default), 'stable' = tagged releases only, 'beta' = incl. prereleases."
+    "_update_channel_comment": "Auto-update channel: 'main' = track the latest code on GitHub (default), 'stable' = tagged releases only."
   },
   "crash_reporting": {
     "enabled": true,
