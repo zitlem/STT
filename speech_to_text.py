@@ -1184,7 +1184,7 @@ def get_live_translation_model(use_gpu=True, model_id=None):
 
     with _live_translation_lock:
         # Don't load model if transcription is actively stopping (to prevent GPU memory leak)
-        status = transcription_state.get("status", "")
+        status = _ts_get("status", "")
         if _live_translation_model is None and status == "stopping":
             print("[LIVE-TRANSLATION] Skipping model load - transcription is stopping")
             return None, None
@@ -1336,7 +1336,7 @@ def get_tts_model(use_gpu=False, model_name=None):
 
     # Piper backend
     with _tts_lock:
-        status = transcription_state.get("status", "")
+        status = _ts_get("status", "")
         if _tts_piper_model is None and status == "stopping":
             print("[TTS] Skipping piper model load - transcription is stopping")
             return None
@@ -2600,6 +2600,24 @@ else:
 
 # Global reference to transcription process for restart functionality
 transcription_process = None
+
+# Set once the server begins shutting down / restarting. The transcription_state
+# Manager proxy dies when the Manager process is torn down (execv restart, signal,
+# auto-update), after which any proxy access raises BrokenPipeError/EOFError/
+# ConnectionError. Background emit threads check this and exit cleanly instead of
+# crashing with an unhandled error.
+_server_shutting_down = threading.Event()
+
+
+def _ts_get(key, default=None):
+    """Read from the transcription_state Manager proxy, tolerating a torn-down
+    Manager during shutdown. On a proxy disconnect, flag shutdown and return the
+    default instead of raising an unhandled BrokenPipeError."""
+    try:
+        return transcription_state.get(key, default)
+    except (BrokenPipeError, EOFError, ConnectionError):
+        _server_shutting_down.set()
+        return default
 
 # Database cache for performance
 _db_cache = {
@@ -7723,6 +7741,9 @@ def perform_server_restart():
     scripts, then to an in-place execv as a last resort.
     """
     import subprocess
+
+    # Signal emit threads to stop touching the Manager proxy before we tear it down.
+    _server_shutting_down.set()
 
     if sys.platform.startswith('win'):
         # Windows: use restart_server.bat to cleanly stop and restart
@@ -12929,8 +12950,10 @@ def emit_new_entries():
     """Emit combined transcription updates and audio levels to web clients"""
     update_interval = config.get("web_server", {}).get("update_interval", 0.5)
     while True:
+        if _server_shutting_down.is_set():
+            return
         # Check if transcription is running - if not, send empty data to clear display
-        is_running = transcription_state.get("running", False)
+        is_running = _ts_get("running", False)
 
         if not is_running:
             # Send empty data when stopped so frontend clears the display
@@ -12942,9 +12965,9 @@ def emit_new_entries():
             # Get finalized entries from database (now includes id, timestamp, text, start_time, end_time)
             entries = get_new_entries()
             # Get in-progress text (not yet saved to DB)
-            in_progress = transcription_state.get("live_text", "")
-            in_progress_start = transcription_state.get("live_start", 0)
-            in_progress_end = transcription_state.get("live_end", 0)
+            in_progress = _ts_get("live_text", "")
+            in_progress_start = _ts_get("live_start", 0)
+            in_progress_end = _ts_get("live_end", 0)
 
 
         # Convert entries to segment format with temporal data
@@ -12988,7 +13011,7 @@ def emit_new_entries():
                 "segment_id": None,  # not yet persisted — no db row/segment_id
             }
             # Include word-level confidence for in-progress text
-            live_words = transcription_state.get("live_word_confidences")
+            live_words = _ts_get("live_word_confidences")
             if live_words:
                 in_progress_segment["word_confidences"] = list(live_words) if hasattr(live_words, '__iter__') else []
 
@@ -13025,9 +13048,9 @@ def emit_new_entries():
             "entries": [(e[1], e[2]) for e in entries],  # [(timestamp, text), ...]
             "in_progress": in_progress,  # Current incomplete text or ""
             "is_running": is_running,
-            "audio_type": transcription_state.get("audio_type"),  # "Speaking", "Music", or "Quiet"
-            "detection_mode": transcription_state.get("detection_mode"),  # "panns" or "energy"
-            "session_id": transcription_state.get("session_id"),  # stable per-session anchor
+            "audio_type": _ts_get("audio_type"),  # "Speaking", "Music", or "Quiet"
+            "detection_mode": _ts_get("detection_mode"),  # "panns" or "energy"
+            "session_id": _ts_get("session_id"),  # stable per-session anchor
         }
         if staged_segments:
             emit_data["staged_segments"] = staged_segments
@@ -13037,11 +13060,11 @@ def emit_new_entries():
         socketio.emit("transcription_update", emit_data)
 
         # Emit audio level only if transcription is running
-        is_running = transcription_state.get("running", False)
+        is_running = _ts_get("running", False)
         if is_running:
-            audio_level = transcription_state.get("audio_level")
-            audio_db = transcription_state.get("audio_db")
-            audio_energy = transcription_state.get("audio_energy")
+            audio_level = _ts_get("audio_level")
+            audio_db = _ts_get("audio_db")
+            audio_energy = _ts_get("audio_energy")
 
             if audio_level is not None and audio_db is not None:
                 try:
@@ -13051,10 +13074,10 @@ def emit_new_entries():
                             "level": audio_level,
                             "db": audio_db,
                             "energy": audio_energy if audio_energy is not None else 0,
-                            "audio_type": transcription_state.get("audio_type"),
-                            "detection_mode": transcription_state.get("detection_mode"),
-                            "audio_tag": transcription_state.get("audio_tag"),
-                            "music_prob": transcription_state.get("music_prob"),
+                            "audio_type": _ts_get("audio_type"),
+                            "detection_mode": _ts_get("detection_mode"),
+                            "audio_tag": _ts_get("audio_tag"),
+                            "music_prob": _ts_get("music_prob"),
                         },
                     )
                 except Exception as emit_error:
@@ -13064,6 +13087,17 @@ def emit_new_entries():
             socketio.sleep(update_interval)  # Emit updates based on config
         except Exception as sleep_error:
             print(f"[AUDIO-DEBUG] {time.strftime('%H:%M:%S')} - SLEEP FAILED: {sleep_error}", flush=True)
+
+
+def _translation_debug_enabled():
+    """Opt-in gate for the [TRANS-DBG] translation-loop trace. Read fresh each
+    cycle (config is hot-reloaded), or forced on via STT_TRANSLATION_DEBUG."""
+    try:
+        if config.get("live_translation", {}).get("debug_logging", False):
+            return True
+    except Exception:
+        pass
+    return os.environ.get("STT_TRANSLATION_DEBUG", "").strip().lower() in ("1", "true", "yes")
 
 
 def _translate_via_remote(text, source_lang, target_lang, endpoint,
@@ -13126,22 +13160,32 @@ def translate_live_text(text, source_lang, target_lang, return_extras=False, num
             print(f"[REMOTE_TRANSLATE] Endpoint error: {e}")
             _remote_ep = None
             remote_failed = True
+        _dbg = _translation_debug_enabled()
         if _remote_ep:
             if _check_remote_reachable(_remote_ep):
                 try:
-                    return _translate_via_remote(text, source_lang, target_lang, _remote_ep,
+                    _res = _translate_via_remote(text, source_lang, target_lang, _remote_ep,
                                                  return_extras=return_extras, num_alternatives=num_alternatives,
                                                  generation_params=gen_params, raise_on_error=True)
+                    if _dbg:
+                        print(f"[TRANS-DBG] remote result=ok ep={_remote_ep} text='{text[:40]}'", flush=True)
+                    return _res
                 except _RemoteTranslateError as e:
                     print(f"[REMOTE_TRANSLATE] Call failed: {e}")
+                    if _dbg:
+                        print(f"[TRANS-DBG] remote result=fail ep={_remote_ep} err={e} text='{text[:40]}'", flush=True)
                     remote_failed = True
             else:
                 print(f"[REMOTE_TRANSLATE] {_remote_ep} unreachable")
+                if _dbg:
+                    print(f"[TRANS-DBG] remote result=unreachable ep={_remote_ep} text='{text[:40]}'", flush=True)
                 remote_failed = True
 
         # Remote path failed — apply configured fallback ("skip" preserves the
         # untranslated text as-is; anything else falls through to local translation below)
         if remote_failed and remote_cfg.get("fallback", "skip") == "skip":
+            if _dbg:
+                print(f"[TRANS-DBG] remote result=fallback-skip (returning source) text='{text[:40]}'", flush=True)
             if return_extras:
                 return {"text": text, "confidence": None, "alternatives": []}
             return text
@@ -13179,9 +13223,14 @@ def emit_translated_entries():
     update_interval = config.get("web_server", {}).get("update_interval", 0.5)
     _translation_backlog_state = {"active": False}  # Log backlog transitions once, not per cycle
     _dual_config_warned = False  # One-shot warning for offload+trusted-client misconfig
+    _dbg_pending_streak = {}  # seg_id -> consecutive cycles stuck in _pending_fresh (loop detector)
 
     while True:
+        if _server_shutting_down.is_set():
+            return
         trans_config = config.get("live_translation", {})
+        dbg = _translation_debug_enabled()
+        _dbg_branches = []  # (seg_id, branch) collected this cycle when dbg on
 
         # Surface a machine that is BOTH an offload client and a trusted-client
         # host — a leftover trusted client used to silently disable offload and
@@ -13203,17 +13252,17 @@ def emit_translated_entries():
                 "target_language": trans_config.get("target_language", "en"),
                 "source_language": trans_config.get("source_language", "auto"),
                 "enabled": False,
-                "is_running": transcription_state.get("running", False),
+                "is_running": _ts_get("running", False),
                 "model_loaded": is_live_translation_ready(),
                 "model_loading": _live_translation_model_loading,
-                "session_id": transcription_state.get("session_id"),
+                "session_id": _ts_get("session_id"),
             })
             # Sleep longer when translation is disabled
             socketio.sleep(update_interval * 2)
             continue
 
         try:
-            is_running = transcription_state.get("running", False)
+            is_running = _ts_get("running", False)
             if not is_running:
                 # Send empty data when stopped
                 socketio.emit("translation_update", {
@@ -13225,7 +13274,7 @@ def emit_translated_entries():
                     "is_running": False,
                     "model_loaded": is_live_translation_ready(),
                     "model_loading": _live_translation_model_loading,
-                    "session_id": transcription_state.get("session_id"),
+                    "session_id": _ts_get("session_id"),
                 })
                 socketio.sleep(update_interval)
                 continue
@@ -13264,8 +13313,8 @@ def emit_translated_entries():
             # translate the segment a live consumer needs *last* during a backlog.
             _allowed_fresh = set()
             _backlogged = False
+            _pending_fresh = []
             if not _whisper_translation_active:
-                _pending_fresh = []
                 for _e in entries:
                     if _e[10]:
                         continue
@@ -13285,6 +13334,27 @@ def emit_translated_entries():
                         print(f"[TRANSLATION] Backlog: {len(_pending_fresh)} segments pending — draining newest-first, extras paused", flush=True)
                     else:
                         print("[TRANSLATION] Backlog cleared", flush=True)
+
+            if dbg:
+                # Loop detector: track how many consecutive cycles each segment
+                # stays "fresh-pending" (never persisting). A segment stuck here
+                # is the repeating-phrase signature.
+                _pf = set(_pending_fresh)
+                for _sid in list(_dbg_pending_streak):
+                    if _sid not in _pf:
+                        del _dbg_pending_streak[_sid]
+                for _sid in _pf:
+                    _dbg_pending_streak[_sid] = _dbg_pending_streak.get(_sid, 0) + 1
+                _rc = trans_config.get("remote", {})
+                print(f"[TRANS-DBG] cycle entries={len(entries)} pending_fresh={_pending_fresh} "
+                      f"allowed={sorted(_allowed_fresh)} backlog={_backlogged} "
+                      f"remote_enabled={bool(_rc.get('enabled') and _rc.get('endpoint'))} "
+                      f"ready={is_live_translation_ready()} trusted={len(_trusted_translation_clients)} "
+                      f"target={target_lang} whisper={_whisper_translation_active}", flush=True)
+                for _sid, _k in _dbg_pending_streak.items():
+                    if _k >= 3:
+                        _txt = next((e[2] for e in entries if e[0] == _sid), "")
+                        print(f"[TRANS-DBG] LOOP-SUSPECT seg {_sid} pending {_k} cycles — never persisting; text='{_txt[:60]}'", flush=True)
 
             # While backlogged, skip confidence/alternatives on fresh translations
             # to raise drain throughput (cached extras still display normally)
@@ -13325,6 +13395,8 @@ def emit_translated_entries():
                     translated_text = cached
                     # Get cached extras (confidence, alternatives)
                     extras = cache.get_extras(seg_id) if want_confidence else None
+                    if dbg:
+                        _dbg_branches.append((seg_id, "cache"))
                 else:
                     # After a hot language switch, keep old translations for already-translated segments
                     # instead of retranslating everything — only new segments get the new language
@@ -13346,6 +13418,8 @@ def emit_translated_entries():
                             seg_data["alternatives"] = extras.get("alternatives", [])
                         if not is_whisper_hallucination(translated_text):
                             translated_segments.append(seg_data)
+                        if dbg:
+                            _dbg_branches.append((seg_id, "stale"))
                         continue
                     # Cache cold (e.g. server restart): seed from DB if it has any translation
                     # and skip live retranslation, same as stale-lang cache hit.
@@ -13363,10 +13437,14 @@ def emit_translated_entries():
                                 "end": entry[4],
                                 "completed": True,
                             })
+                        if dbg:
+                            _dbg_branches.append((seg_id, "db_seed"))
                         continue
                     # Over this cycle's translation budget — a later cycle picks it
                     # up (newest-first); skip emission until it's translated
                     if seg_id not in _allowed_fresh:
+                        if dbg:
+                            _dbg_branches.append((seg_id, "over_budget"))
                         continue
 
                     # Build context from preceding segments if context_window > 1.
@@ -13423,6 +13501,8 @@ def emit_translated_entries():
                     # returns the source unchanged. Don't cache/persist that echo — leave the row
                     # NULL so it retries next cycle and translates correctly once the model is up.
                     if not is_live_translation_ready():
+                        if dbg:
+                            _dbg_branches.append((seg_id, "warmup_skip"))
                         continue
                     if extras is not None:
                         cache.set_with_extras(seg_id, original_text, translated_text, target_lang,
@@ -13432,7 +13512,7 @@ def emit_translated_entries():
 
                     # Save translation to database
                     try:
-                        current_db = transcription_state.get("db_name")
+                        current_db = _ts_get("db_name")
                         if current_db and os.path.exists(current_db):
                             with sqlite3.connect(current_db) as _tconn:
                                 _tconn.execute(
@@ -13440,10 +13520,20 @@ def emit_translated_entries():
                                     (translated_text, target_lang, int(time.time() * 1000), seg_id),
                                 )
                                 _tconn.commit()
+                                if dbg:
+                                    _row = _tconn.execute("SELECT translated_text FROM transcriptions WHERE id = ?", (seg_id,)).fetchone()
+                                    _reread = _row[0] if _row else "<no row>"
+                                    _dbg_branches.append((seg_id, "fresh(persist=ok)"))
+                                    if not _reread:
+                                        print(f"[TRANS-DBG] seg {seg_id} committed but re-read translated_text={_reread!r} (persist not sticking)", flush=True)
+                        elif dbg:
+                            _dbg_branches.append((seg_id, "fresh(persist=no-db)"))
                     except Exception as e:
                         # Translation still shows from cache, but won't survive a
                         # page reload — surface the reason instead of hiding it
                         print(f"[TRANSLATION] DB save failed for segment {seg_id}: {e}", flush=True)
+                        if dbg:
+                            _dbg_branches.append((seg_id, f"fresh(persist=FAIL:{e})"))
 
                 # Skip known Whisper hallucinations in translated text
                 if is_whisper_hallucination(translated_text):
@@ -13467,7 +13557,7 @@ def emit_translated_entries():
             # Always send in-progress text; is_translated tells the frontend whether
             # it's in the target language (so it can suppress source-language flash).
             in_progress_translation = None
-            in_progress = transcription_state.get("live_text", "")
+            in_progress = _ts_get("live_text", "")
             if in_progress and in_progress.strip():
                 should_translate_ip = trans_config.get("translate_in_progress", False) and not _whisper_translation_active
                 if should_translate_ip:
@@ -13479,8 +13569,8 @@ def emit_translated_entries():
                         "original_text": in_progress,
                         "translated_text": translated_in_progress,
                         "is_translated": should_translate_ip,
-                        "start": transcription_state.get("live_start", 0),
-                        "end": transcription_state.get("live_end", 0),
+                        "start": _ts_get("live_start", 0),
+                        "end": _ts_get("live_end", 0),
                         "completed": False,
                         "segment_id": None,  # not yet persisted — no db row/segment_id
                     }
@@ -13495,6 +13585,12 @@ def emit_translated_entries():
                 _seg["denied"] = _denied_by_id.get(_seg["id"], False)
             _attach_segment_ids(translated_segments)
 
+            if dbg:
+                _brs = " ".join(f"{_sid}={_b}" for _sid, _b in _dbg_branches) or "(none)"
+                print(f"[TRANS-DBG] branches: {_brs}", flush=True)
+                print(f"[TRANS-DBG] emit ids={[s['id'] for s in translated_segments]} "
+                      f"count={len(translated_segments)} in_progress={in_progress_translation is not None}", flush=True)
+
             # Emit translation update
             socketio.emit("translation_update", {
                 "segments": translated_segments,
@@ -13506,9 +13602,13 @@ def emit_translated_entries():
                 "is_running": is_running,
                 "model_loaded": is_live_translation_ready(),
                 "model_loading": _live_translation_model_loading,
-                "session_id": transcription_state.get("session_id"),
+                "session_id": _ts_get("session_id"),
             })
 
+        except (BrokenPipeError, EOFError, ConnectionError):
+            # Manager proxy gone — server restarting/shutting down. Exit quietly.
+            _server_shutting_down.set()
+            return
         except Exception as e:
             print(f"[LIVE-TRANSLATION EMIT ERROR] {e}")
             import traceback
@@ -13547,6 +13647,8 @@ def emit_tts_audio():
     _tts_was_off = True  # Start as off so first enable skips existing segments
 
     while True:
+        if _server_shutting_down.is_set():
+            return
         tts_config = config.get("live_translation", {}).get("tts", {})
         trans_config = config.get("live_translation", {})
 
@@ -13565,7 +13667,7 @@ def emit_tts_audio():
             if max_id > _tts_last_spoken_id:
                 _tts_last_spoken_id = max_id
 
-        if not transcription_state.get("running", False):
+        if not _ts_get("running", False):
             _tts_last_spoken_id = 0
             _tts_buffer.clear()
             socketio.sleep(1)
@@ -13632,6 +13734,10 @@ def emit_tts_audio():
 
                     _tts_buffer.clear()
 
+        except (BrokenPipeError, EOFError, ConnectionError):
+            # Manager proxy gone — server restarting/shutting down. Exit quietly.
+            _server_shutting_down.set()
+            return
         except Exception as e:
             print(f"[TTS EMIT ERROR] {e}")
 
@@ -16558,6 +16664,9 @@ def thread2_function():
 def signal_handler(signum, frame):
     print("\n[SHUTDOWN] Interrupt signal received, stopping threads...")
 
+    # Stop emit threads from touching the Manager proxy before we tear it down.
+    _server_shutting_down.set()
+
     # Terminate the transcription process (multiprocessing.Process)
     try:
         if "thread1" in globals() and globals()["thread1"].is_alive():
@@ -16640,8 +16749,10 @@ def _self_update_loop():
     interval = max(0.05, interval)  # floor to avoid a hot loop on misconfig
     while True:
         time.sleep(interval * 3600)
+        if _server_shutting_down.is_set():
+            return
         try:
-            if transcription_state.get("running"):
+            if _ts_get("running"):
                 continue  # idle-gate: never restart mid-transcription
             updated, reason = git_self_update(BUNDLE_DIR)
             if updated:
@@ -16649,7 +16760,7 @@ def _self_update_loop():
                 # seconds; re-check the idle-gate afterwards so a session that
                 # started during the pull isn't force-restarted mid-service.
                 # The pulled code stays on disk and applies on the next idle tick.
-                if transcription_state.get("running"):
+                if _ts_get("running"):
                     print("[AUTO-UPDATE] Update pulled but a session started during the pull; deferring restart")
                     continue
                 print("[AUTO-UPDATE] Update pulled; restarting to apply...")

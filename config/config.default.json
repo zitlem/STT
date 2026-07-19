@@ -380,6 +380,8 @@
     },
     "context_window": 2,
     "_context_window_comment": "Number of segments combined for translation context. 1 = translate each segment in isolation; 2-3 = include preceding sentence(s) for pronoun/gender/tense accuracy",
+    "debug_logging": false,
+    "_debug_logging_comment": "Log a per-cycle [TRANS-DBG] trace of the translation loop (which segments are cached/re-translated/persisted) to diagnose repeating-phrase issues. Hot-reloaded — no restart needed. Env var STT_TRANSLATION_DEBUG=1 also enables it.",
     "remote": {
       "enabled": false,
       "_enabled_comment": "Offload translation to another machine running this app",
