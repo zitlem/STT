@@ -151,6 +151,21 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions, system requ
 - **CPU:** 8 cores | **RAM:** 16 GB | **Storage:** 25 GB
 - The NLLB translation model adds several GB of RAM and disk.
 
+### Example configurations
+
+Actual requirements depend on which models you configure. A few representative setups to get a feel for the range:
+
+| Setup | Whisper model | Translation | Est. memory | Suggested hardware |
+|-------|---------------|-------------|-------------|--------------------|
+| Light, CPU-only | `tiny` / `base` (faster-whisper) | off / remote | ~5 GB RAM | any modern 8 GB PC |
+| Balanced, CPU-only | `small` (faster-whisper) | off / remote | ~5.5 GB RAM | 8 GB PC |
+| Default install, CPU-only | `small` (openai-whisper) | NLLB-600M local | ~9.5 GB RAM | 12 GB PC |
+| Accurate, NVIDIA GPU | `large-v3` (faster-whisper) | off / remote | ~4.5 GB VRAM + ~5 GB RAM | 6 GB GPU (RTX 2060 / 3050) |
+| Full stack, NVIDIA GPU | `large-v3` (faster-whisper) | NLLB-1.3B on GPU | ~8 GB VRAM + ~6 GB RAM | 10-12 GB GPU (RTX 3060 12GB+) |
+| Apple Silicon | `small` + NLLB-600M | local, on GPU | ~10 GB unified memory | M1 or later with 16 GB |
+
+Estimates include a ~4 GB app/OS baseline. The faster-whisper backend (int8) needs roughly half the memory of openai-whisper (fp32); Apple Silicon shares one memory pool between CPU and GPU. The web UI shows a warning banner whenever the machine falls short of what the currently configured models need.
+
 ### Acceleration (optional, recommended)
 - **NVIDIA minimum:** 4GB+ VRAM (RTX 2060 / RTX 3050) — enough for transcription with small/medium models
 - **NVIDIA recommended:** 10GB+ VRAM (RTX 3060 12GB, RTX 4070 or better) — large models and transcription + translation on GPU
