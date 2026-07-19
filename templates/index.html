@@ -1068,24 +1068,6 @@
 
     <!-- Main Content -->
     <div class="main-container">
-      <div id="sysreq_warning" role="alert" aria-live="polite" style="display: none; margin-bottom: 12px; padding: 10px 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 6px; color: #F59E0B;"></div>
-      <script>
-        // Reveal the banner when the machine is below the documented minimum
-        // requirements (see README "System Requirements").
-        (function () {
-          fetch('/api/system/requirements')
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-              if (d && d.warnings && d.warnings.length) {
-                var el = document.getElementById('sysreq_warning');
-                el.textContent = '⚠️ This PC doesn\'t meet the minimum system requirements: '
-                  + d.warnings.join('; ') + '. Transcription may be slow or unstable.';
-                el.style.display = 'block';
-              }
-            })
-            .catch(function () {});
-        })();
-      </script>
       <div id="table-container">
         <div class="empty-state" id="empty-state">
           <i class="fas fa-microphone" aria-hidden="true"></i>
