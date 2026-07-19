@@ -1168,7 +1168,11 @@ def is_live_translation_ready():
     avoid persisting a warmup echo (the source text returned unchanged while the
     model is still loading)."""
     remote_cfg = config.get("live_translation", {}).get("remote", {})
-    if remote_cfg.get("enabled") and remote_cfg.get("endpoint") and not _trusted_translation_clients:
+    if remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
+        # A machine configured to offload can produce translations for its own
+        # display regardless of whether it also hosts trusted clients. (Serving
+        # a paired machine's request always translates locally — see
+        # translate_remote's local_only=True — so this never causes chaining.)
         return True
     return _live_translation_model_loaded
 
@@ -6183,10 +6187,14 @@ def translate_remote():
     # Use generation_params from request (Machine A's settings) if provided
     generation_params = data.get("generation_params")
 
+    # local_only: we are the translation SERVER for this request — translate
+    # locally and never re-offload, even if this machine is itself configured to
+    # offload elsewhere (prevents chaining loops).
     result = translate_live_text(text, source_lang, target_lang,
                                  return_extras=return_extras,
                                  num_alternatives=num_alternatives,
-                                 generation_params=generation_params)
+                                 generation_params=generation_params,
+                                 local_only=True)
 
     if return_extras and isinstance(result, dict):
         return jsonify({
@@ -13096,15 +13104,21 @@ def _translate_via_remote(text, source_lang, target_lang, endpoint,
         return text
 
 
-def translate_live_text(text, source_lang, target_lang, return_extras=False, num_alternatives=0, generation_params=None):
-    """Translate text for live display using the singleton model"""
+def translate_live_text(text, source_lang, target_lang, return_extras=False, num_alternatives=0, generation_params=None, local_only=False):
+    """Translate text for live display using the singleton model.
+
+    local_only=True forces local translation and never offloads — used when
+    SERVING a paired machine's /api/translate request, so a machine that is both
+    an offload client and a translation server doesn't re-offload (chaining)."""
     # Get generation params: explicit param > config fallback
     gen_params = generation_params or config.get("live_translation", {}).get("generation_params", {})
 
-    # Route to remote translation server if configured
-    # Skip remote offload if this machine is itself serving remote clients (prevents chaining)
+    # Route to remote translation server if configured. Offloading a machine's own
+    # display output is honored whenever remote.enabled+endpoint are set, even if
+    # this machine also hosts trusted clients — chaining is prevented at the server
+    # endpoint (local_only) rather than by globally disabling offload here.
     remote_cfg = config.get("live_translation", {}).get("remote", {})
-    if remote_cfg.get("enabled") and remote_cfg.get("endpoint") and not _trusted_translation_clients:
+    if not local_only and remote_cfg.get("enabled") and remote_cfg.get("endpoint"):
         remote_failed = False
         try:
             _remote_ep = _get_remote_endpoint()
@@ -13164,9 +13178,22 @@ def emit_translated_entries():
     """Background task that emits translated transcription updates"""
     update_interval = config.get("web_server", {}).get("update_interval", 0.5)
     _translation_backlog_state = {"active": False}  # Log backlog transitions once, not per cycle
+    _dual_config_warned = False  # One-shot warning for offload+trusted-client misconfig
 
     while True:
         trans_config = config.get("live_translation", {})
+
+        # Surface a machine that is BOTH an offload client and a trusted-client
+        # host — a leftover trusted client used to silently disable offload and
+        # loop the display. Offload now wins for own output, but the leftover is
+        # still worth flagging so the operator can unpair it.
+        if not _dual_config_warned:
+            _rc = trans_config.get("remote", {})
+            if _rc.get("enabled") and _rc.get("endpoint") and _trusted_translation_clients:
+                print(f"[TRANSLATION] Note: offload is enabled and this machine also has trusted "
+                      f"clients {sorted(_trusted_translation_clients)}. Own output offloads to "
+                      f"{_rc.get('endpoint')}; unpair stale clients on the Translations page if unintended.", flush=True)
+                _dual_config_warned = True
         if not trans_config.get("enabled", False):
             # Translation is off — emit a disabled marker so the translate view
             # can show "Translation disabled" instead of being stuck on "Waiting..."
