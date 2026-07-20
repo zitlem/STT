@@ -323,6 +323,22 @@ def _which(name):
     return shutil.which(name, path=_augmented_path())
 
 
+def _git_usable():
+    """True when a real git is on PATH. On macOS without the Command Line
+    Tools, /usr/bin/git is an xcode-select shim that pops Apple's GUI install
+    dialog and exits 1 on first use — treat that shim as no git so provisioning
+    falls back to the archive download instead of failing."""
+    git = _which("git")
+    if not git:
+        return False
+    if sys.platform == "darwin" and os.path.realpath(git).startswith("/usr/bin"):
+        try:
+            return subprocess.run(["xcode-select", "-p"], capture_output=True).returncode == 0
+        except OSError:
+            return False
+    return True
+
+
 class Provisioner:
     """Builds the local runtime on first launch: uv, Python, git, ffmpeg, source
     checkout, venv, and dependencies. Each step is idempotent and retriable; the
@@ -448,7 +464,7 @@ class Provisioner:
                   desc=f"uv python install {UV_PYTHON_VERSION}")
 
     def _step_git(self):
-        if _which("git"):
+        if _git_usable():
             self.log("  git present")
             return
         self.log("  git missing; attempting to install...")
@@ -465,7 +481,7 @@ class Provisioner:
         except ProvisionError as e:
             self.log(f"  [WARN] git install failed: {e}")
         # Not fatal: source can still be fetched via zipball fallback.
-        if not _which("git"):
+        if not _git_usable():
             self.log("  [WARN] git unavailable; will fetch source as an archive "
                      "(auto-updates will use archive fallback).")
 
@@ -541,7 +557,7 @@ class Provisioner:
             self.log("  source checkout present")
             return
         os.makedirs(os.path.dirname(SOURCE_DIR) or DATA_DIR, exist_ok=True)
-        if _which("git"):
+        if _git_usable():
             if os.path.isdir(SOURCE_DIR) and os.listdir(SOURCE_DIR):
                 # Non-git leftovers — clear so clone can proceed (DATA is separate).
                 shutil.rmtree(SOURCE_DIR, ignore_errors=True)
