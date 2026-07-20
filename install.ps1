@@ -235,13 +235,6 @@ for mod in ['speech_recognition', 'numpy', 'flask', 'soundfile']:
     except ImportError as e:
         errors.append(str(e))
 
-try:
-    import pyaudio
-    print('  pyaudio OK')
-except ImportError:
-    print('  pyaudio MISSING - microphone input will not work')
-    print('  Try: .venv\\Scripts\\pip install pyaudio')
-
 if errors:
     print(f'\nMissing packages: {errors}')
     sys.exit(1)

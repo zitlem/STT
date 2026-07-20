@@ -32,7 +32,6 @@ sudo apt-get install -y \
     python3-dev \
     python3-pip \
     python3-venv \
-    portaudio19-dev \
     libasound2-dev \
     build-essential \
     git \
@@ -259,13 +258,6 @@ Estimates include a ~4 GB app/OS baseline. The faster-whisper backend (int8) nee
 
 ## Troubleshooting
 
-### PyAudio Build Fails
-
-```bash
-# Install missing dependencies
-sudo apt-get install -y python3-dev portaudio19-dev
-```
-
 ### NVIDIA GPU Not Detected
 
 ```bash
@@ -374,7 +366,7 @@ rm -rf models
 rm -rf _AUTOMATIC_BACKUP
 
 # Uninstall system packages (optional, be careful!)
-# sudo apt-get remove portaudio19-dev python3-dev
+# sudo apt-get remove python3-dev
 ```
 
 ---

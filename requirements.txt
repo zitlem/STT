@@ -2,9 +2,7 @@
 setuptools>=65.0.0
 wheel
 
-# Audio dependencies (may need system packages: python3-dev portaudio19-dev)
-# On Debian/Ubuntu: sudo apt-get install python3-dev portaudio19-dev libasound2-dev
-pyaudio>=0.2.13
+# Audio dependencies (capture is ffmpeg-based; no PyAudio/portaudio needed)
 SpeechRecognition>=3.10.0
 
 # PyTorch - standard PyPI build supports CUDA (Linux) and MPS (macOS ARM) automatically.

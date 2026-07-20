@@ -5,7 +5,7 @@ Real-time speech transcription platform with a modern web interface, powered by 
 ## Features
 
 ### Transcription
-- **Real-time transcription** - Live microphone capture with sub-second latency via WebSocket (FFmpeg or PyAudio backends)
+- **Real-time transcription** - Live microphone capture with sub-second latency via WebSocket (FFmpeg-based capture)
 - **File transcription** - Upload and transcribe audio/video files in batch
 - **Selectable engines** - Faster-Whisper (CTranslate2), OpenAI Whisper, and HuggingFace models (distil-whisper, wav2vec2)
 - **Voice Activity Detection** - Silero VAD filters silence and noise before transcription
@@ -179,7 +179,7 @@ Estimates include a ~4 GB app/OS baseline. The faster-whisper backend (int8) nee
 Edit `config/config.json` or use the web interface. Key settings include:
 
 - Model selection (Whisper variant, backend)
-- Audio device and capture backend (FFmpeg or PyAudio)
+- Audio device selection (FFmpeg-based capture)
 - Voice Activity Detection (Silero VAD) threshold
 - Database paths and naming format
 - Audio backup paths and formats

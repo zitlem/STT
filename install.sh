@@ -95,7 +95,7 @@ install_system_deps() {
             exit 1
         fi
         print_status "Installing system packages via Homebrew..."
-        brew install python3 ffmpeg portaudio
+        brew install python3 ffmpeg
     else
         # Linux: use apt-get
         print_status "Updating package list..."
@@ -110,7 +110,6 @@ install_system_deps() {
             "curl"
             "wget"
             "ffmpeg"
-            "portaudio19-dev"
             "libasound2-dev"
             "alsa-utils"
             "psmisc"
@@ -269,9 +268,6 @@ try:
 
     import numpy
     print('NumPy installed')
-
-    import pyaudio
-    print('PyAudio installed')
 
     import flask
     print('Flask installed')
