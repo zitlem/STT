@@ -285,3 +285,31 @@ def test_stable_channel_still_uses_releases(git_updater, monkeypatch):
     assert upd._pending_update is None
     assert upd.state.values["last_update_result"] == "No releases yet"
     assert _head(clone) != _head(seed), "stable channel must not track main"
+
+
+# --- provisioning failure reporting ------------------------------------------
+
+import types  # noqa: E402
+
+
+def test_provisioning_failure_is_captured_to_sentry(monkeypatch):
+    captured = []
+    fake = types.ModuleType("sentry_sdk")
+    fake.capture_exception = lambda e: captured.append(e)
+    fake.flush = lambda timeout=None: captured.append("flushed")
+    monkeypatch.setitem(sys.modules, "sentry_sdk", fake)
+
+    boom = watchdog.ProvisionError("step 3/8 failed: uv not found")
+
+    def raise_boom(self):
+        raise boom
+
+    monkeypatch.setattr(watchdog.Provisioner, "run", raise_boom)
+
+    assert watchdog._run_provisioning_headless() is False
+    assert captured == [boom, "flushed"], "failure must be captured then flushed"
+
+
+def test_sentry_capture_without_sdk_does_not_raise(monkeypatch):
+    monkeypatch.setitem(sys.modules, "sentry_sdk", None)  # import raises ImportError
+    watchdog._sentry_capture(Exception("x"))  # must be a silent no-op

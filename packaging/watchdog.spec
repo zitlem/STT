@@ -34,11 +34,24 @@ a = Analysis(
     datas=[
         (os.path.join(ROOT, "VERSION"), "."),
     ] + ([(_icon_file, ".")] if os.path.exists(_icon_file) else []),
-    # Bootstrapper needs only stdlib + tkinter (setup GUI) + certifi (TLS).
+    # Bootstrapper needs stdlib + tkinter (setup GUI) + certifi (TLS) +
+    # sentry_sdk (so first-run provisioning failures are reported — the venv
+    # that normally provides the SDK doesn't exist yet during setup).
     # Everything else arrives via `git clone` + `uv pip install` on first run.
     hiddenimports=[
         "tkinter", "_tkinter", "tkinter.ttk", "tkinter.scrolledtext",
         "certifi",
+        # sentry_sdk loads its default integrations dynamically; list them so
+        # PyInstaller's static analysis picks them up.
+        "sentry_sdk",
+        "sentry_sdk.integrations.stdlib",
+        "sentry_sdk.integrations.excepthook",
+        "sentry_sdk.integrations.dedupe",
+        "sentry_sdk.integrations.atexit",
+        "sentry_sdk.integrations.modules",
+        "sentry_sdk.integrations.logging",
+        "sentry_sdk.integrations.threading",
+        "sentry_sdk.integrations.argv",
     ],
     hookspath=[],
     hooksconfig={},

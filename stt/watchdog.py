@@ -1671,6 +1671,7 @@ def _run_provisioning_headless():
         return True
     except Exception as e:
         logging.error(f"[SETUP] Provisioning failed: {e}")
+        _sentry_capture(e)
         return False
 
 
@@ -1732,6 +1733,7 @@ class ProvisionWindow:
             except Exception as e:
                 self._q.put(("log", f"[ERROR] {e}"))
                 self._q.put(("done", False))
+                _sentry_capture(e)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1907,10 +1909,23 @@ def _block_until_stopped(state):
 _SENTRY_DEFAULT_DSN = "https://eff01fdec5e9330b80ffd96093038588@o4511050918723584.ingest.us.sentry.io/4511714251702272"
 
 
+def _sentry_capture(exc):
+    """Best-effort capture+flush of a watchdog-side exception (e.g. a
+    provisioning failure). Silent no-op when the SDK is absent or Sentry is
+    disabled; the flush matters because the headless path exits right after."""
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=5)
+    except Exception:
+        pass
+
+
 def _init_sentry():
     """Sentry error reporting + logs, on by default. Silent no-op when disabled
-    in config or the SDK is absent (the frozen bootstrapper doesn't bundle it —
-    only venv installs report)."""
+    in config or the SDK is absent. The frozen bootstrapper bundles the SDK
+    (see packaging/watchdog.spec) so even first-run provisioning failures are
+    reported; source runs report once the venv provides sentry-sdk."""
     try:
         cr = load_config().get("crash_reporting", {})
     except Exception:

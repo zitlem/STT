@@ -97,10 +97,11 @@ jobs:
       - name: Install build tools
         shell: bash
         run: |
-          # Thin bootstrapper only needs PyInstaller + certifi + pillow (icon).
+          # Thin bootstrapper needs PyInstaller + certifi + pillow (icon) + sentry-sdk
+          # (bundled so first-run provisioning failures report to Sentry).
           # No torch/ML: those install on the end-user machine at first run.
           uv venv
-          uv pip install pyinstaller certifi pillow
+          uv pip install pyinstaller certifi pillow "sentry-sdk>=2.0,<3"
       - name: Set version
         shell: bash
         run: |
@@ -138,7 +139,7 @@ jobs:
         run: |
           # Thin bootstrapper only; runtime deps install on the user machine.
           uv venv
-          uv pip install pyinstaller certifi pillow
+          uv pip install pyinstaller certifi pillow "sentry-sdk>=2.0,<3"
       - name: Set version
         run: |
           TAG="${{ needs.version.outputs.tag }}"
@@ -189,7 +190,7 @@ jobs:
         run: |
           # Thin bootstrapper only; runtime deps install on the user machine.
           uv venv
-          uv pip install pyinstaller certifi pillow
+          uv pip install pyinstaller certifi pillow "sentry-sdk>=2.0,<3"
       - name: Set version
         run: |
           TAG="${{ needs.version.outputs.tag }}"
