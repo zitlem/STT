@@ -6072,6 +6072,57 @@ def save_timezone_settings():
     )
 
 
+def _selected_model_downloaded(cfg):
+    """True when the *currently selected* transcription model is present on disk.
+
+    Mirrors the resolution in ModelFactory._load_* so this is "downloaded AND
+    set" — a different downloaded model does not satisfy it. The worker loads
+    exactly this model when transcription starts, so it's the real precondition.
+    """
+    model_cfg = cfg.get("model", {})
+    mtype = model_cfg.get("type", "whisper")
+    if mtype == "whisper":
+        name = model_cfg.get("whisper", {}).get("model", "small")
+        backend = model_cfg.get("backend", "whisper")
+        if backend == "faster-whisper":
+            return os.path.isdir(os.path.join(MODELS_DIR, f"faster-whisper-{name}"))
+        # OpenAI whisper: new ./models location or legacy ~/.cache/whisper/{name}.pt
+        if os.path.isdir(os.path.join(MODELS_DIR, f"whisper-{name}")):
+            return True
+        return os.path.exists(os.path.expanduser(f"~/.cache/whisper/{name}.pt"))
+    if mtype == "huggingface":
+        model_id = model_cfg.get("huggingface", {}).get("model_id", "openai/whisper-tiny")
+        return os.path.isdir(os.path.join(MODELS_DIR, model_id.replace("/", "--")))
+    if mtype == "custom":
+        return os.path.exists(model_cfg.get("custom", {}).get("model_path", ""))
+    return False
+
+
+def _mic_explicitly_selected(cfg):
+    """True once the user has actively saved a microphone (not the 'default' device).
+
+    default_microphone_name is auto-populated only when a device is saved in
+    Settings; default_microphone defaults to the literal 'default'.
+    """
+    audio = cfg.get("audio", {})
+    return bool(audio.get("default_microphone_name")) or \
+        audio.get("default_microphone", "default") != "default"
+
+
+def _setup_status():
+    """Readiness of the two prerequisites for Start (drives the checklist +
+    the greyed-out Start button on the web UI and the watchdog GUI)."""
+    model_ready = _selected_model_downloaded(config)
+    mic_ready = _mic_explicitly_selected(config)
+    return {
+        "model_ready": model_ready,
+        "mic_ready": mic_ready,
+        "ready": model_ready and mic_ready,
+        "model_hint": "" if model_ready else "Download the selected model in the Model Manager.",
+        "mic_hint": "" if mic_ready else "Select a microphone in Live Settings.",
+    }
+
+
 @app.route("/api/system/requirements", methods=["GET"])
 def get_system_requirements():
     """Whether this machine can run the configured models (drives the header banner).
@@ -6080,6 +6131,15 @@ def get_system_requirements():
     hardware probe is cached.
     """
     warns = _check_system_requirements()
+    # Prepend first-run setup gaps so the header banner nudges users on every
+    # page until transcription can actually start (model downloaded + mic chosen).
+    setup = _setup_status()
+    setup_warns = []
+    if not setup["model_ready"]:
+        setup_warns.append("No transcription model downloaded — open Model Manager to download the selected model.")
+    if not setup["mic_ready"]:
+        setup_warns.append("No microphone selected — choose one in Live Settings.")
+    warns = setup_warns + warns
     details = {}
     try:
         hw = _probe_hardware()
@@ -9193,6 +9253,7 @@ def get_transcription_status():
         {
             "success": True,
             "state": _ts_snapshot(),
+            "setup": _setup_status(),
         }
     )
 

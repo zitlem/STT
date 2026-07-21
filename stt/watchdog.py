@@ -76,6 +76,7 @@ VERSION_FILE = os.path.join(SOURCE_DIR, "VERSION")  # git-managed
 CONFIG_DIR = os.path.join(DATA_DIR, "config")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
+MODELS_DIR = os.path.join(DATA_DIR, "models")  # mirrors speech_to_text.py MODELS_DIR
 def migrate_config_layout():
     """One-time layout migration: live config files used to sit in DATA_DIR root.
     speech_to_text.py performs the same move-if-absent migration; whichever
@@ -1287,7 +1288,7 @@ class GuiWindow:
         root = self.root
         root.title(f"STT v{read_display_version()}")
         root.resizable(False, False)
-        root.geometry("330x390")
+        root.geometry("340x510")
 
         pad = {"padx": 12, "pady": 4}
 
@@ -1323,6 +1324,49 @@ class GuiWindow:
         self._transcription_btn.pack(side="right")
 
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
+
+        # ── Getting started ─────────────────────────────────────────────────
+        # A live checklist of the prerequisites for transcription to work:
+        # server running → a model downloaded → a microphone selected. Each row
+        # flips to green as its step is done; once all three pass the rows
+        # collapse to a single "Ready" line so the checklist gets out of the way.
+        tk.Label(root, text="── Getting started ──").pack()
+        # Container holds this slot in the root's pack order; _refresh_checklist
+        # swaps between the rows and the "Ready" line inside it so collapsing
+        # never reorders the surrounding widgets.
+        self._checklist_container = tk.Frame(root)
+        self._checklist_container.pack(fill="x", padx=12, pady=(0, 2))
+        self._checklist_frame = tk.Frame(self._checklist_container)
+        self._checklist_frame.pack(fill="x")
+        self._ready_lbl = tk.Label(
+            self._checklist_container,
+            text="✓ Ready — press Start under Transcription",
+            fg="green", font=("", 9, "bold"),
+        )  # packed/unpacked by _refresh_checklist when all steps pass
+
+        def _step_row(text, action=None):
+            row = tk.Frame(self._checklist_frame)
+            row.pack(fill="x", pady=1)
+            mark = tk.Label(row, text="☐", fg="red", width=2, font=("", 11))
+            mark.pack(side="left")
+            tk.Label(row, text=text, anchor="w").pack(side="left")
+            if action:
+                label, path = action
+                tk.Button(
+                    row, text=label, font=("", 8),
+                    command=lambda p=path: self._on_open_browser(p),
+                ).pack(side="right")
+            return mark
+
+        self._chk_server = _step_row("Start the web server")
+        self._chk_model = _step_row("Download & select a model", ("Model Manager", "/model-manager"))
+        self._chk_mic = _step_row("Select a microphone", ("Settings", "/live-settings"))
+        # Cache the disk/config-derived checks so _poll doesn't re-listdir every
+        # second; recomputed on a counter tick or when config.json changes.
+        self._checklist_tick = 0
+        self._checklist_cfg_mtime = None
+        self._model_ready = False
+        self._mic_ready = False
 
         # ── Configuration ───────────────────────────────────────────────────
         tk.Label(root, text="── Configuration ──").pack()
@@ -1409,6 +1453,79 @@ class GuiWindow:
         self._result_lbl = tk.Label(root, text="", fg="gray", font=("", 8))
         self._result_lbl.pack()
 
+    @staticmethod
+    def _selected_model_downloaded(cfg):
+        """True when the *currently selected* transcription model is on disk.
+
+        Mirrors _selected_model_downloaded / ModelFactory._load_* in
+        speech_to_text.py (the watchdog can't import the server), so this is
+        'downloaded AND set' — a different downloaded model doesn't satisfy it.
+        """
+        model_cfg = cfg.get("model", {})
+        mtype = model_cfg.get("type", "whisper")
+        if mtype == "whisper":
+            name = model_cfg.get("whisper", {}).get("model", "small")
+            if model_cfg.get("backend", "whisper") == "faster-whisper":
+                return os.path.isdir(os.path.join(MODELS_DIR, f"faster-whisper-{name}"))
+            if os.path.isdir(os.path.join(MODELS_DIR, f"whisper-{name}")):
+                return True
+            return os.path.exists(os.path.expanduser(f"~/.cache/whisper/{name}.pt"))
+        if mtype == "huggingface":
+            model_id = model_cfg.get("huggingface", {}).get("model_id", "openai/whisper-tiny")
+            return os.path.isdir(os.path.join(MODELS_DIR, model_id.replace("/", "--")))
+        if mtype == "custom":
+            return os.path.exists(model_cfg.get("custom", {}).get("model_path", ""))
+        return False
+
+    @staticmethod
+    def _mic_configured(cfg):
+        """True once the user has actively saved a microphone selection.
+
+        default_microphone_name is auto-populated only when a device is saved
+        in Settings; default_microphone defaults to the literal 'default'.
+        """
+        audio = cfg.get("audio", {})
+        return bool(audio.get("default_microphone_name")) or \
+            audio.get("default_microphone", "default") != "default"
+
+    def _refresh_checklist(self, status):
+        """Update the getting-started rows. Cheap config/HTTP-derived row 1 is
+        refreshed every call; the disk/config-derived model + mic checks are
+        recomputed only every 5th tick or when config.json changes."""
+        self._checklist_tick += 1
+        try:
+            mtime = os.path.getmtime(CONFIG_FILE)
+        except OSError:
+            mtime = None
+        if (self._checklist_tick % 5 == 1) or mtime != self._checklist_cfg_mtime:
+            self._checklist_cfg_mtime = mtime
+            cfg = load_config()
+            self._model_ready = self._selected_model_downloaded(cfg)
+            self._mic_ready = self._mic_configured(cfg)
+
+        def _set(mark, ok):
+            mark.config(text="☑" if ok else "☐", fg="green" if ok else "red")
+
+        server_ok = status == "running"
+        _set(self._chk_server, server_ok)
+        _set(self._chk_model, self._model_ready)
+        _set(self._chk_mic, self._mic_ready)
+
+        # Grey out the transcription Start button until setup is complete. When
+        # transcription is already active, always leave Stop clickable.
+        if server_ok and not self._transcription_running:
+            self._transcription_btn.config(
+                state="normal" if (self._model_ready and self._mic_ready) else "disabled"
+            )
+
+        all_ok = server_ok and self._model_ready and self._mic_ready
+        if all_ok and self._checklist_frame.winfo_manager():
+            self._checklist_frame.pack_forget()
+            self._ready_lbl.pack(fill="x")
+        elif not all_ok and self._ready_lbl.winfo_manager():
+            self._ready_lbl.pack_forget()
+            self._checklist_frame.pack(fill="x")
+
     def _reload_config(self):
         cfg = load_config()
         self._port_var.set(str(cfg.get("web_server", {}).get("port", 80)))
@@ -1489,6 +1606,8 @@ class GuiWindow:
                 )
             elif self._update_btn.cget("text") not in ("Checking…", "Updating…"):
                 self._update_btn.config(text="Check for Updates", state="normal")
+
+        self._refresh_checklist(status)
 
         self.root.after(1000, self._poll)
 

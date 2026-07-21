@@ -895,6 +895,24 @@
                             Force Reset
                         </button>
                     </div>
+
+                    <!-- Getting-started checklist: the prerequisites for Start.
+                         Populated by renderSetupChecklist() from the status poll;
+                         collapses to a "Ready" line once both steps pass. -->
+                    <div id="setup_checklist" style="margin-top: 12px; display: none;">
+                        <div style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 6px;">Before you can start:</div>
+                        <div id="setup_row_model" style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
+                            <span class="setup-mark" style="font-size: 1.1em;">☐</span>
+                            <span style="flex: 1;">Download &amp; select a model</span>
+                            <a href="/model-manager" class="btn-save btn-secondary" style="padding: 4px 10px; width: auto; margin: 0; font-size: 0.85em;">Model Manager</a>
+                        </div>
+                        <div id="setup_row_mic" style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
+                            <span class="setup-mark" style="font-size: 1.1em;">☐</span>
+                            <span style="flex: 1;">Select a microphone</span>
+                            <button type="button" onclick="document.getElementById('audio_device')?.scrollIntoView({behavior:'smooth',block:'center'}); document.getElementById('audio_device')?.focus();" class="btn-save btn-secondary" style="padding: 4px 10px; width: auto; margin: 0; font-size: 0.85em;">Choose</button>
+                        </div>
+                    </div>
+                    <div id="setup_ready" style="margin-top: 12px; display: none; color: var(--success); font-weight: 600;">✓ Ready — you can start transcription</div>
                 </div>
 
                 <!-- Audio Visualization -->
@@ -1440,18 +1458,40 @@
         }
 
         // Update transcription status
+        // Reflect setup readiness in the getting-started checklist. Each row's
+        // mark flips ☐→☑; once both pass the checklist collapses to "Ready".
+        function renderSetupChecklist(setup) {
+            const checklist = document.getElementById('setup_checklist');
+            const ready = document.getElementById('setup_ready');
+            if (!checklist || !ready) return;
+            const setMark = (rowId, ok) => {
+                const row = document.getElementById(rowId);
+                if (!row) return;
+                const mark = row.querySelector('.setup-mark');
+                if (mark) { mark.textContent = ok ? '☑' : '☐'; mark.style.color = ok ? 'var(--success)' : 'var(--danger)'; }
+            };
+            setMark('setup_row_model', setup.model_ready);
+            setMark('setup_row_mic', setup.mic_ready);
+            checklist.style.display = setup.ready ? 'none' : 'block';
+            ready.style.display = setup.ready ? 'block' : 'none';
+        }
+
         async function updateStatus() {
             try {
                 const response = await fetch('/api/transcription/status');
                 const data = await response.json();
                 if (data.success) {
                     const state = data.state;
+                    const setup = data.setup || { ready: true };
                     const statusText = document.getElementById('status_text');
                     const statusMessage = document.getElementById('status_message');
                     const statusModel = document.getElementById('status_model');
                     const statusIndicator = document.getElementById('status_indicator');
                     const btnStart = document.getElementById('btn_start');
                     const btnStop = document.getElementById('btn_stop');
+
+                    // Reflect setup readiness in the checklist and Start button.
+                    renderSetupChecklist(setup);
 
                     statusText.textContent = state.status.toUpperCase();
                     statusMessage.textContent = state.message;
@@ -1493,7 +1533,8 @@
                         statusText.style.color = 'var(--warning)';
                     } else if (state.status === 'error') {
                         statusIndicator.className = 'status-indicator stopped';
-                        btnStart.disabled = false;
+                        btnStart.disabled = !setup.ready;
+                        btnStart.title = setup.ready ? '' : 'Complete setup first: ' + [setup.model_hint, setup.mic_hint].filter(Boolean).join(' ');
                         btnStop.disabled = true;
                         statusText.style.color = 'var(--danger)';
                         if (state.error) {
@@ -1506,7 +1547,8 @@
                         }
                     } else {
                         statusIndicator.className = 'status-indicator stopped';
-                        btnStart.disabled = false;
+                        btnStart.disabled = !setup.ready;
+                        btnStart.title = setup.ready ? '' : 'Complete setup first: ' + [setup.model_hint, setup.mic_hint].filter(Boolean).join(' ');
                         btnStop.disabled = true;
                         statusText.style.color = 'var(--danger)';
                     }
