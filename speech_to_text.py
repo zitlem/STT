@@ -5052,6 +5052,13 @@ def update_config():
         # across reboots (USB vs onboard/GPU HDA enumeration order is not stable).
         try:
             new_mic = new_config.get("audio", {}).get("default_microphone")
+            if new_mic:
+                # Durable "the user actively chose an input" flag. Value alone
+                # can't signal this: the Default device saves as "default"
+                # (same as the initial value), and on macOS there's no ALSA
+                # card_id to populate default_microphone_name. The flag lets the
+                # setup checklist tick off even when Default is selected.
+                config.setdefault("audio", {})["microphone_selected"] = True
             if new_mic and os.path.isfile(new_mic):
                 # A "Test Audio File" selection is a file path, not hardware. Clear the
                 # stale stable-name so it doesn't keep resolving to a real device.
@@ -6099,13 +6106,16 @@ def _selected_model_downloaded(cfg):
 
 
 def _mic_explicitly_selected(cfg):
-    """True once the user has actively saved a microphone (not the 'default' device).
+    """True once the user has actively chosen a microphone in Settings.
 
-    default_microphone_name is auto-populated only when a device is saved in
-    Settings; default_microphone defaults to the literal 'default'.
+    microphone_selected is set whenever the audio device is saved (including the
+    Default device — see the settings-save handler). The other two clauses keep
+    configs saved before that flag existed working: a non-empty stable name, or
+    a default_microphone that isn't the initial literal 'default'.
     """
     audio = cfg.get("audio", {})
-    return bool(audio.get("default_microphone_name")) or \
+    return bool(audio.get("microphone_selected")) or \
+        bool(audio.get("default_microphone_name")) or \
         audio.get("default_microphone", "default") != "default"
 
 
