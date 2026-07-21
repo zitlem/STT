@@ -332,7 +332,9 @@ jobs:
           dpkg-sig --sign builder \
             -g "--batch --pinentry-mode loopback --passphrase-file $RUNNER_TEMP/gpg-pass" \
             STT-linux.deb
-          dpkg-sig --verify STT-linux.deb
+          # dpkg-sig --verify reports BADSIG on its own output with gnupg2;
+          # verify the embedded clearsigned manifest with gpg directly instead.
+          ar p STT-linux.deb _gpgbuilder | gpg --verify -
       - uses: actions/upload-artifact@v6
         with:
           name: STT-linux
