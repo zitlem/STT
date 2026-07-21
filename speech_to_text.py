@@ -17005,6 +17005,36 @@ def signal_handler(signum, frame):
     os._exit(0)
 
 
+# Loopback port used only as a single-instance lock for the server process
+# (never serves traffic). Distinct from the watchdog's own lock port (57337 in
+# stt/watchdog.py) so the watchdog and its managed server don't collide.
+_SERVER_LOCK_PORT = 57338
+_server_lock_socket = None  # module global: keeps the bound socket alive for the process lifetime
+
+
+def acquire_server_lock():
+    """Single-instance guard for the server: bind a loopback socket.
+
+    The bind is the lock — the OS releases it on any exit (including kill -9),
+    so there is no stale-lock file to clean up. If the port is already bound
+    another STT server owns this machine, so exit cleanly with status 0: the
+    watchdog treats a 0 exit as an intentional stop and won't relaunch (see
+    CrashRecoveryThread in stt/watchdog.py), so a redundant launch disappears
+    quietly instead of thrashing against the live server's port 8080 bind.
+    """
+    global _server_lock_socket
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+    try:
+        sock.bind(("127.0.0.1", _SERVER_LOCK_PORT))
+    except OSError:
+        print(f"[FATAL] Another STT server is already running (lock {_SERVER_LOCK_PORT}); exiting.")
+        sys.stdout.flush()
+        sys.exit(0)
+    _server_lock_socket = sock  # keep reference alive; OS releases on process exit
+
+
 def _is_watchdog_managed():
     """True when launched under the watchdog, which owns its own updater.
 
@@ -17080,6 +17110,11 @@ def _self_update_loop():
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     install_crash_diagnostics("main")
+    # Single-instance guard: bail out immediately if another server owns this
+    # machine, before spawning the worker/threads or doing any startup work.
+    # This makes "only one server at a time" hold regardless of launcher
+    # (watchdog child, bare service, dev run, or a post-install race).
+    acquire_server_lock()
     # Bound server.log at startup (small breadcrumb log; rotated across launches)
     try:
         _srv_log = os.path.join(APP_DIR, "server.log")

@@ -509,8 +509,16 @@ setup_watchdog_launchd() {
     # Substitute INSTALL_DIR placeholder in the plist template
     sed "s|INSTALL_DIR|$INSTALL_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
 
-    # Stop old bare server LaunchAgent if present
-    launchctl unload "$HOME/Library/LaunchAgents/com.stt.server.plist" 2>/dev/null || true
+    # Retire the old bare-server LaunchAgent so two supervisors don't both start
+    # a server. Unloading alone isn't enough — the plist auto-loads again at the
+    # next login — so remove the file too. (The 57338 server lock would keep only
+    # one server alive regardless, but this avoids the losing one flapping.)
+    local OLD_PLIST="$HOME/Library/LaunchAgents/com.stt.server.plist"
+    if [ -f "$OLD_PLIST" ]; then
+        launchctl unload "$OLD_PLIST" 2>/dev/null || true
+        rm -f "$OLD_PLIST"
+        print_status "Retired old com.stt.server LaunchAgent (watchdog now manages the server)"
+    fi
 
     launchctl load "$PLIST_DST"
 
@@ -564,16 +572,15 @@ SYSEOF
     sudo systemctl enable "$WATCHDOG_SERVICE"
     install_restart_sudoers
 
-    # Offer to disable the old bare server service to avoid conflict
-    if systemctl list-unit-files "stt-server.service" &>/dev/null; then
-        print_warning "Old stt-server.service detected."
-        read -p "Disable old stt-server service (recommended)? (Y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            sudo systemctl stop stt-server 2>/dev/null || true
-            sudo systemctl disable stt-server 2>/dev/null || true
-            print_success "stt-server disabled"
-        fi
+    # Always retire the old bare stt-server unit: running it alongside the
+    # watchdog means two supervisors both launching a server, which is never
+    # correct. (The 57338 server lock keeps only one server alive regardless,
+    # but a disabled unit avoids the losing one flapping under Restart=always.)
+    if systemctl list-unit-files --no-legend 'stt-server.service' 2>/dev/null | grep -q '^stt-server\.service'; then
+        print_status "Retiring old stt-server.service (watchdog now manages the server)..."
+        sudo systemctl stop stt-server 2>/dev/null || true
+        sudo systemctl disable stt-server 2>/dev/null || true
+        print_success "stt-server stopped and disabled"
     fi
 
     print_success "Watchdog systemd service installed and enabled"
