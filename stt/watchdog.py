@@ -1379,6 +1379,10 @@ class GuiWindow:
         tk = self._tk
         root = self.root
         root.title(f"STT v{read_display_version()}")
+        # Suppress Tk's auto-populated macOS menubar (File/Edit/…): this app
+        # uses none of it. An empty menubar clears the stock entries; macOS
+        # still provides the standard app menu (and its own Window/Help).
+        root.config(menu=tk.Menu(root))
         root.resizable(False, False)
         root.geometry("340x510")
 
