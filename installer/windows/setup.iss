@@ -12,6 +12,12 @@ SolidCompression=yes
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=..\..\icon.ico
+; Code signing: CI passes /DSignBuild plus /Ssigntool="..." when the
+; WINDOWS_CERTIFICATE_PFX secret is configured; local builds stay unsigned.
+#ifdef SignBuild
+SignTool=signtool
+SignedUninstaller=yes
+#endif
 
 [Files]
 Source: "..\..\dist\STT\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
