@@ -1300,7 +1300,7 @@ class GuiWindow:
             row=1, column=0, sticky="w", pady=3
         )
         self._pass_var = tk.StringVar()
-        tk.Entry(cf, textvariable=self._pass_var, width=14).grid(
+        tk.Entry(cf, textvariable=self._pass_var, width=14, show="•").grid(
             row=1, column=1, sticky="w"
         )
 
