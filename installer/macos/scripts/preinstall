@@ -11,6 +11,12 @@ if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" 
     AGENT_PLIST="$USER_HOME/Library/LaunchAgents/com.stt.watchdog.plist"
     launchctl bootout "gui/$CONSOLE_UID" "$AGENT_PLIST" 2>/dev/null \
         || launchctl asuser "$CONSOLE_UID" launchctl unload "$AGENT_PLIST" 2>/dev/null || true
+
+    # Also stop/remove the control-window agent so upgrades don't leave a stale one.
+    GUI_PLIST="$USER_HOME/Library/LaunchAgents/com.stt.gui.plist"
+    launchctl bootout "gui/$CONSOLE_UID" "$GUI_PLIST" 2>/dev/null \
+        || launchctl asuser "$CONSOLE_UID" launchctl unload "$GUI_PLIST" 2>/dev/null || true
+    rm -f "$GUI_PLIST" 2>/dev/null || true
 fi
 
 # Remove any stale root LaunchDaemon from versions <= the daemon era.

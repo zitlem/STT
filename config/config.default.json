@@ -453,7 +453,9 @@
   },
   "watchdog": {
     "update_channel": "main",
-    "_update_channel_comment": "Auto-update channel: 'main' = track the latest code on GitHub (default), 'stable' = tagged releases only."
+    "_update_channel_comment": "Auto-update channel: 'main' = track the latest code on GitHub (default), 'stable' = tagged releases only.",
+    "show_control_window": true,
+    "_show_control_window_comment": "macOS/Windows: open the desktop control window at login (the daemon still runs in the background). Set false to run the daemon fully headless with no window."
   },
   "crash_reporting": {
     "enabled": true,

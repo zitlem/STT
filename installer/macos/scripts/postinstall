@@ -60,5 +60,45 @@ launchctl bootstrap "gui/$CONSOLE_UID" "$PLIST" 2>/dev/null \
     || launchctl asuser "$CONSOLE_UID" launchctl load -w "$PLIST" 2>/dev/null \
     || true
 
-echo "[STT] LaunchAgent installed for $CONSOLE_USER."
+# ── Control window ───────────────────────────────────────────────────────────
+# A second LaunchAgent opens the desktop control window (--monitor) at each login.
+# It is a client of the headless daemon above: closing the window never stops the
+# server, and it self-suppresses when watchdog.show_control_window is false.
+GUI_PLIST="$AGENT_DIR/com.stt.gui.plist"
+cat > "$GUI_PLIST" << PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stt.gui</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/STT.app/Contents/MacOS/STT</string>
+        <string>--monitor</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>$LOG_DIR/launchd.gui.log</string>
+    <key>StandardErrorPath</key>
+    <string>$LOG_DIR/launchd.gui.log</string>
+</dict>
+</plist>
+PLIST_EOF
+
+chown "$CONSOLE_USER":staff "$GUI_PLIST"
+launchctl bootout "gui/$CONSOLE_UID" "$GUI_PLIST" 2>/dev/null || true
+launchctl bootstrap "gui/$CONSOLE_UID" "$GUI_PLIST" 2>/dev/null \
+    || launchctl asuser "$CONSOLE_UID" launchctl load -w "$GUI_PLIST" 2>/dev/null \
+    || true
+
+# "Launch now": open the control window immediately after an interactive install
+# (mirrors the Windows installer's post-install launch). Never fail the install.
+launchctl asuser "$CONSOLE_UID" open -a /Applications/STT.app --args --monitor 2>/dev/null || true
+
+echo "[STT] LaunchAgents installed for $CONSOLE_USER (daemon + control window)."
 exit 0

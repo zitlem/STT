@@ -1326,8 +1326,13 @@ class GuiWindow:
         tk.Button(
             bf, text="URL Builder", command=lambda: self._on_open_browser("/url-builder")
         ).pack(side="left", padx=2)
+        # Updates are driven by the daemon; a client control window can't (its
+        # state/updater are None), so disable the button in monitoring mode.
         self._update_btn = tk.Button(
-            root, text="Check for Updates", command=self._on_update
+            root,
+            text="Managed by daemon" if self._monitoring else "Check for Updates",
+            command=self._on_update,
+            state="disabled" if self._monitoring else "normal",
         )
         self._update_btn.pack(pady=2)
 
@@ -1812,6 +1817,11 @@ def main():
     grp = parser.add_mutually_exclusive_group()
     grp.add_argument("--gui", action="store_true", help="Force GUI mode")
     grp.add_argument("--headless", action="store_true", help="Force headless mode")
+    grp.add_argument(
+        "--monitor",
+        action="store_true",
+        help="Open the control window only (client of a running daemon); never manages the server",
+    )
     parser.add_argument(
         "--check-update",
         action="store_true",
@@ -1836,6 +1846,23 @@ def main():
 
     if args.test_crash_report:
         _run_crash_report_test()
+        return
+
+    if args.monitor:
+        # Control-window-only mode: a client of the (separately running) daemon.
+        # Never acquires the single-instance lock and never manages the server —
+        # closing the window leaves the daemon untouched.
+        cfg = load_config()
+        if not cfg.get("watchdog", {}).get("show_control_window", True):
+            logging.info("[MONITOR] show_control_window is false; not opening window.")
+            return
+        try:
+            gui = GuiWindow(state=None, pm=None, updater=None, monitoring=True)
+            gui.mainloop()
+        except Exception as e:
+            logging.warning(f"[MONITOR] GUI unavailable ({e}); opening browser instead.")
+            port = cfg.get("web_server", {}).get("port", 8080)
+            webbrowser.open(f"http://127.0.0.1:{port}")
         return
 
     _will_be_gui = args.gui or (not args.headless and detect_gui())
