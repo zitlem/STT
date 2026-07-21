@@ -158,7 +158,14 @@ jobs:
   build-macos:
     needs: version
     if: github.event_name == 'push' || inputs.macos
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest        # Apple Silicon
+            arch: arm64
+          - runner: macos-15-intel      # GitHub's Intel runner (supported into 2027)
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
     env:
       # App signing activates once MACOS_CERTIFICATE_P12 exists; pkg signing +
       # notarization additionally need MACOS_INSTALLER_CERTIFICATE_P12
@@ -258,9 +265,9 @@ jobs:
             # Same name as the Application identity, different cert type
             INSTALLER_IDENTITY="${IDENTITY_NAME/Developer ID Application/Developer ID Installer}"
             productbuild --package stt-component.pkg --version "$VERSION" \
-              --sign "$INSTALLER_IDENTITY" --timestamp STT-macos-arm64.pkg
+              --sign "$INSTALLER_IDENTITY" --timestamp STT-macos-${{ matrix.arch }}.pkg
           else
-            productbuild --package stt-component.pkg --version "$VERSION" STT-macos-arm64.pkg
+            productbuild --package stt-component.pkg --version "$VERSION" STT-macos-${{ matrix.arch }}.pkg
           fi
           rm stt-component.pkg
       - name: Notarize and staple
@@ -271,17 +278,17 @@ jobs:
           API_ISSUER_ID: ${{ secrets.MACOS_NOTARIZATION_API_ISSUER_ID }}
         run: |
           echo "$API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
-          xcrun notarytool submit STT-macos-arm64.pkg \
+          xcrun notarytool submit STT-macos-${{ matrix.arch }}.pkg \
             --key "$RUNNER_TEMP/AuthKey.p8" \
             --key-id "$API_KEY_ID" \
             --issuer "$API_ISSUER_ID" \
             --wait
-          xcrun stapler staple STT-macos-arm64.pkg
-          spctl --assess --type install -v STT-macos-arm64.pkg
+          xcrun stapler staple STT-macos-${{ matrix.arch }}.pkg
+          spctl --assess --type install -v STT-macos-${{ matrix.arch }}.pkg
       - uses: actions/upload-artifact@v6
         with:
-          name: STT-macos-arm64
-          path: STT-macos-arm64.pkg
+          name: STT-macos-${{ matrix.arch }}
+          path: STT-macos-${{ matrix.arch }}.pkg
           retention-days: 30
 
   build-linux:
