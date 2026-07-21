@@ -201,6 +201,22 @@ def _source_head():
         return ""
 
 
+def _strip_frozen_env():
+    """Drop env the frozen PyInstaller bootloader set before handing off to the
+    source venv python.
+
+    The bundled STT.app ships its own Tcl/Tk (8.6) and points TCL_LIBRARY /
+    TK_LIBRARY at it; the venv python's tkinter is a *different* Tcl/Tk (9.0),
+    so inheriting these makes it load the app's init.tcl and die with
+    'version conflict for package Tcl' — the GUI never opens. The DYLD_* paths
+    point into the app's Frameworks and must likewise not steer the venv
+    python's dynamic loader. Removing them lets the venv python use its own.
+    """
+    for var in ("TCL_LIBRARY", "TK_LIBRARY", "TCLLIBPATH", "TKPATH",
+                "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH"):
+        os.environ.pop(var, None)
+
+
 def _relaunch_watchdog(pm=None, mode_flag="--gui"):
     """Restart the watchdog process in place, running the current SOURCE code.
 
@@ -219,8 +235,9 @@ def _relaunch_watchdog(pm=None, mode_flag="--gui"):
     # (a frozen binary re-launches itself; a source run re-runs its script).
     if os.path.isfile(WATCHDOG_SCRIPT) and python_bin != sys.executable:
         argv = [python_bin, WATCHDOG_SCRIPT, mode_flag]
+        _strip_frozen_env()  # handing to the venv python — don't leak the app's Tcl/Tk/DYLD env
     elif _FROZEN:
-        argv = [sys.executable] + sys.argv[1:]  # sys.executable is the binary itself
+        argv = [sys.executable] + sys.argv[1:]  # re-launch the binary itself (keep its bundled env)
     else:
         argv = [sys.executable] + sys.argv      # python + this script + flags
     os.environ["STT_WD_FROMSOURCE"] = "1"  # the relaunched process is source; don't hand off again
@@ -258,6 +275,7 @@ def _maybe_handoff_to_source():
         logging.warning(f"[WATCHDOG] Source watchdog won't compile ({e}); staying on bundled code")
         return
     os.environ["STT_WD_FROMSOURCE"] = "1"
+    _strip_frozen_env()  # don't leak the frozen app's Tcl/Tk/DYLD env into the venv python
     argv = [python_bin, WATCHDOG_SCRIPT, *sys.argv[1:]]
     logging.info(f"[WATCHDOG] Handing off to source watchdog: {' '.join(argv)}")
     if IS_WINDOWS:
