@@ -10,16 +10,12 @@ on:
         description: "Build Windows"
         type: boolean
         default: true
-      macos:
-        description: "Build macOS"
-        type: boolean
-        default: true
       macos_arm:
-        description: "  ↳ macOS Apple Silicon (ARM64)"
+        description: "Build macOS Apple Silicon (ARM64)"
         type: boolean
         default: true
       macos_intel:
-        description: "  ↳ macOS Intel (x86_64)"
+        description: "Build macOS Intel (x86_64)"
         type: boolean
         default: true
       linux:
@@ -180,8 +176,9 @@ jobs:
 
   build-macos:
     needs: version
-    # Skip entirely when macOS is off or neither arch box is ticked (empty matrix).
-    if: (github.event_name == 'push' || inputs.macos) && needs.version.outputs.macos_include != '[]'
+    # macos_include is non-empty iff this is a tag push or an arch box was
+    # ticked; empty ('[]') means no macOS arch selected, so skip the job.
+    if: needs.version.outputs.macos_include != '[]'
     strategy:
       matrix:
         # arm64 = macos-latest (Apple Silicon); x86_64 = macos-15-intel
