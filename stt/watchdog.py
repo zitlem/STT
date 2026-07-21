@@ -1353,16 +1353,28 @@ class GuiWindow:
             row=2, column=1, sticky="w"
         )
 
+        # Load current values without triggering the auto-save trace below.
+        self._suppress_autosave = True
         self._reload_config()
+        self._suppress_autosave = False
 
-        tk.Button(root, text="Save Config", command=self._on_save).pack(pady=2)
+        # Auto-save whenever any field changes — no Save button needed.
+        for _var in (self._port_var, self._pass_var, self._chan_var):
+            _var.trace_add("write", self._on_config_change)
+
+        tk.Label(
+            root,
+            text="Changes save automatically · port applies after restart",
+            fg="gray",
+            font=("", 8),
+        ).pack(pady=(2, 0))
         bf = tk.Frame(root)
         bf.pack(pady=2)
         tk.Button(
             bf, text="Main Page", command=lambda: self._on_open_browser("/")
         ).pack(side="left", padx=2)
         tk.Button(
-            bf, text="Settings", command=lambda: self._on_open_browser("/server-settings")
+            bf, text="Settings", command=lambda: self._on_open_browser("/live-settings")
         ).pack(side="left", padx=2)
         tk.Button(
             bf, text="URL Builder", command=lambda: self._on_open_browser("/url-builder")
@@ -1514,11 +1526,18 @@ class GuiWindow:
                 self.updater.apply_pending_update()
         threading.Thread(target=_run, daemon=True).start()
 
-    def _on_save(self):
+    def _on_config_change(self, *_args):
+        """Trace callback: persist config whenever a field changes."""
+        if getattr(self, "_suppress_autosave", False):
+            return
+        self._persist_config()
+
+    def _persist_config(self):
         try:
             port = int(self._port_var.get())
         except ValueError:
-            self._mb.showerror("Error", "Port must be a number")
+            # Half-typed / empty port entry: skip silently and save once it's a
+            # valid number, so auto-save never writes a partial value or nags.
             return
         cfg = load_config()
         if "web_server" not in cfg:
@@ -1533,10 +1552,6 @@ class GuiWindow:
             "stable" if self._chan_var.get() == "Stable" else "main"
         )
         save_config(cfg)
-        self._mb.showinfo(
-            "Saved",
-            "Configuration saved.\nRestart STT for port changes to take effect.",
-        )
 
     def _on_open_browser(self, path="/"):
         cfg = load_config()
