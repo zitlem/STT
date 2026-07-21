@@ -755,7 +755,11 @@ class Provisioner:
         if os.path.isfile(get_python_bin()) and get_python_bin() != sys.executable:
             self.log("  venv present")
             return
-        self._run([self._uv, "venv", venv_dir, "--python", UV_PYTHON_VERSION],
+        # --clear: we only get here when no *valid* venv exists, but a broken or
+        # partial .venv dir may still be present (e.g. an interrupted first run).
+        # Without --clear, `uv venv` fails with "already exists" (exit 2) and
+        # provisioning aborts forever. Matches install.sh's `uv venv --clear`.
+        self._run([self._uv, "venv", venv_dir, "--clear", "--python", UV_PYTHON_VERSION],
                   desc="uv venv")
 
     def install_deps_only(self, log=None):
