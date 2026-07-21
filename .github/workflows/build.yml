@@ -235,6 +235,11 @@ jobs:
             # on the executables — required for notarization of PyInstaller apps.
             find dist/STT.app -type f \( -name "*.dylib" -o -name "*.so" \) \
               -exec codesign --force --options runtime --timestamp --sign "$IDENTITY_NAME" {} \;
+            # Framework bundles have an extensionless main binary the find above
+            # misses (e.g. Python.framework/Versions/3.11/Python) — notarization
+            # rejects it unsigned. Signing the .framework covers it.
+            find dist/STT.app -type d -name "*.framework" \
+              -exec codesign --force --options runtime --timestamp --sign "$IDENTITY_NAME" {} \;
             find dist/STT.app/Contents/MacOS -maxdepth 2 -name "Python" -type f \
               -exec codesign --force --options runtime --timestamp \
                 --entitlements installer/macos/entitlements.plist --sign "$IDENTITY_NAME" {} \;
@@ -254,7 +259,9 @@ jobs:
         run: |
           VERSION="${{ needs.version.outputs.tag }}"
           mkdir -p pkg_root
-          cp -r dist/STT.app pkg_root/
+          # ditto, not cp -r: cp -r follows symlinks, materializing the bundle's
+          # internal links into duplicate files and breaking the code signature.
+          ditto dist/STT.app pkg_root/STT.app
           pkgbuild \
             --root pkg_root \
             --install-location /Applications \
