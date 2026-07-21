@@ -1423,15 +1423,25 @@ class GuiWindow:
         tk.Button(
             bf, text="URL Builder", command=lambda: self._on_open_browser("/url-builder")
         ).pack(side="left", padx=2)
+        # Two manual update actions: "Check for Updates" reports availability
+        # without touching anything; "Update Now" applies it (idle-gated).
         # Updates are driven by the daemon; a client control window can't (its
-        # state/updater are None), so disable the button in monitoring mode.
-        self._update_btn = tk.Button(
-            root,
+        # state/updater are None), so both are disabled in monitoring mode.
+        uf = tk.Frame(root)
+        uf.pack(pady=2)
+        _upd_state = "disabled" if self._monitoring else "normal"
+        self._check_btn = tk.Button(
+            uf,
             text="Managed by daemon" if self._monitoring else "Check for Updates",
-            command=self._on_update,
-            state="disabled" if self._monitoring else "normal",
+            command=self._on_check_update,
+            state=_upd_state,
         )
-        self._update_btn.pack(pady=2)
+        self._check_btn.pack(side="left", padx=2)
+        self._update_now_btn = tk.Button(
+            uf, text="Update Now", command=self._on_update_now, state=_upd_state
+        )
+        if not self._monitoring:
+            self._update_now_btn.pack(side="left", padx=2)
 
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
@@ -1601,13 +1611,13 @@ class GuiWindow:
                 self._check_lbl.config(text=f"Last check: {chk}")
             if res:
                 self._result_lbl.config(text=res)
-            pending = self.updater._pending_update
-            if pending:
-                self._update_btn.config(
-                    text=f"Update to {pending[0]}", state="normal"
+            # Surface a pending update (from a manual check or the hourly
+            # scheduler) on the Update Now button, unless a click is in flight.
+            if self._update_now_btn.cget("text") not in ("Updating…",):
+                pending = self.updater._pending_update
+                self._update_now_btn.config(
+                    text="Update Now ●" if pending else "Update Now", state="normal"
                 )
-            elif self._update_btn.cget("text") not in ("Checking…", "Updating…"):
-                self._update_btn.config(text="Check for Updates", state="normal")
 
         self._refresh_checklist(status)
 
@@ -1635,16 +1645,30 @@ class GuiWindow:
                 logging.warning(f"[GUI] Transcription {action} failed: {e}")
         threading.Thread(target=_call, daemon=True).start()
 
-    def _on_update(self):
-        self._update_btn.config(state="disabled", text="Checking…")
+    def _on_check_update(self):
+        """Check for an available update and report it — never applies."""
+        self._check_btn.config(state="disabled", text="Checking…")
         def _run():
-            # Always refresh availability, but only apply when idle so a manual
-            # click never kills an in-progress transcription.
-            self.updater.check_for_update()
-            if self._transcription_running:
-                self.state.set(last_update_result="Transcription running — stop it to update")
-            else:
-                self.updater.apply_pending_update()
+            try:
+                self.updater.check_for_update()  # sets last_update_result + _pending_update
+            finally:
+                self.root.after(0, lambda: self._check_btn.config(
+                    state="normal", text="Check for Updates"))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_update_now(self):
+        """Check and apply immediately (idle-gated so it never interrupts a run)."""
+        self._update_now_btn.config(state="disabled", text="Updating…")
+        def _run():
+            try:
+                self.updater.check_for_update()
+                if self._transcription_running:
+                    self.state.set(last_update_result="Transcription running — stop it to update")
+                else:
+                    self.updater.apply_pending_update()  # may restart the process
+            finally:
+                self.root.after(0, lambda: self._update_now_btn.config(
+                    state="normal", text="Update Now"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_config_change(self, *_args):
