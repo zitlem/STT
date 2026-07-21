@@ -233,8 +233,10 @@ def _relaunch_watchdog(pm=None, mode_flag="--gui"):
     python_bin = get_python_bin()
     # Prefer the updated source watchdog; fall back to re-running ourselves
     # (a frozen binary re-launches itself; a source run re-runs its script).
+    proc_name = None  # argv[0] override so the macOS menu bar reads "STT", not "python3"
     if os.path.isfile(WATCHDOG_SCRIPT) and python_bin != sys.executable:
         argv = [python_bin, WATCHDOG_SCRIPT, mode_flag]
+        proc_name = "STT"
         _strip_frozen_env()  # handing to the venv python — don't leak the app's Tcl/Tk/DYLD env
     elif _FROZEN:
         argv = [sys.executable] + sys.argv[1:]  # re-launch the binary itself (keep its bundled env)
@@ -247,7 +249,7 @@ def _relaunch_watchdog(pm=None, mode_flag="--gui"):
         subprocess.Popen(argv, close_fds=False)
         os._exit(0)
     else:
-        os.execv(argv[0], argv)
+        os.execv(argv[0], [proc_name or argv[0]] + argv[1:])
 
 
 def _maybe_handoff_to_source():
@@ -282,7 +284,8 @@ def _maybe_handoff_to_source():
         subprocess.Popen(argv, close_fds=False)
         os._exit(0)
     else:
-        os.execv(python_bin, argv)
+        # argv[0] "STT" sets the macOS menu-bar / process name (else "python3").
+        os.execv(python_bin, ["STT", *argv[1:]])
 
 
 def load_config():
