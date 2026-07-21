@@ -19,65 +19,63 @@ from PIL import Image, ImageDraw
 
 
 # ── Design constants ──────────────────────────────────────────────────────────
+# Pillow port of packaging/icon-source.svg (256×256 viewBox); coordinates below
+# are in that viewBox space, scaled by `u`. Keep the two files in sync.
 
-BG_COLOR   = (15, 118, 110)   # teal
-FG_COLOR   = (255, 255, 255)  # white
+BG_COLOR     = (243, 242, 242)  # light  #f3f2f2
+FG_COLOR     = (32, 30, 29)     # dark   #201e1d
+ACCENT_COLOR = (236, 48, 19)    # red    #ec3013
+
+SUPERSAMPLE = 4  # render N× then LANCZOS-downscale so 16-32px sizes stay crisp
 
 
 def draw_icon(size: int) -> Image.Image:
-    img  = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    s    = size * SUPERSAMPLE
+    u    = s / 256                # SVG viewBox unit
+    img  = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    s    = size
+    lw   = 12 * u                 # SVG stroke-width
 
-    # Rounded-square background
-    pad = max(1, s // 16)
+    # Rounded-square background plate (the SVG's square bg, platform-styled)
+    pad = s / 16
     draw.rounded_rectangle(
         [pad, pad, s - pad, s - pad],
-        radius=s // 5,
+        radius=s / 5,
         fill=BG_COLOR,
     )
 
-    # ── Microphone body (pill shape) ──────────────────────────────────────────
-    bw = s * 0.28          # body width
-    bh = s * 0.36          # body height
-    cx = s / 2
-    by = s * 0.37          # body vertical centre
+    # ── Microphone body (rounded-rect outline) ───────────────────────────────
     draw.rounded_rectangle(
-        [cx - bw / 2, by - bh / 2, cx + bw / 2, by + bh / 2],
-        radius=bw / 2,
-        fill=FG_COLOR,
+        [90 * u, 34 * u, 166 * u, 156 * u],
+        radius=38 * u,
+        outline=FG_COLOR,
+        width=round(lw),
     )
 
-    # ── Stand arc (U-shape below body) ───────────────────────────────────────
-    ar   = s * 0.24        # arc radius
-    arc_cy = s * 0.555     # centre of the arc's bounding circle
-    lw   = max(2, s // 22)
+    # ── Level bars ───────────────────────────────────────────────────────────
+    for x, y, w, h in [(106, 80, 9, 30), (123, 66, 9, 58), (140, 80, 9, 30)]:
+        draw.rectangle([x * u, y * u, (x + w) * u, (y + h) * u], fill=ACCENT_COLOR)
+
+    # ── Stand: two verticals + bottom semicircle (stroke centred on path) ────
+    # Verticals at x=72 and x=184, y 132→142, square caps extending 6 up.
+    for x in (72, 184):
+        draw.rectangle(
+            [(x - 6) * u, (132 - 6) * u, (x + 6) * u, 142 * u],
+            fill=FG_COLOR,
+        )
+    # Semicircle: centreline radius 56 around (128, 142); bbox is outer edge.
     draw.arc(
-        [cx - ar, arc_cy - ar, cx + ar, arc_cy + ar],
+        [(128 - 62) * u, (142 - 62) * u, (128 + 62) * u, (142 + 62) * u],
         start=0, end=180,
         fill=FG_COLOR,
-        width=lw,
+        width=round(lw),
     )
 
-    # ── Vertical stem ────────────────────────────────────────────────────────
-    stem_top = arc_cy
-    stem_bot = s * 0.79
-    hw = lw / 2
-    draw.rectangle(
-        [cx - hw, stem_top, cx + hw, stem_bot],
-        fill=FG_COLOR,
-    )
+    # ── Stem and base ────────────────────────────────────────────────────────
+    draw.rectangle([121 * u, 198 * u, 135 * u, 220 * u], fill=FG_COLOR)
+    draw.rectangle([94 * u, 216 * u, 162 * u, 229 * u], fill=FG_COLOR)
 
-    # ── Horizontal base ───────────────────────────────────────────────────────
-    base_w = s * 0.28
-    base_h = lw
-    draw.rectangle(
-        [cx - base_w / 2, stem_bot - base_h / 2,
-         cx + base_w / 2, stem_bot + base_h / 2],
-        fill=FG_COLOR,
-    )
-
-    return img
+    return img.resize((size, size), Image.LANCZOS)
 
 
 # ── Export helpers ────────────────────────────────────────────────────────────
@@ -100,10 +98,12 @@ ICNS_SIZES = {
 
 def make_ico(path: str = "icon.ico"):
     images = [draw_icon(s).convert("RGBA") for s in ICO_SIZES]
-    images[0].save(
+    # Save from the LARGEST frame: Pillow silently drops any requested size
+    # bigger than the base image, so saving from 16px yields a 16px-only .ico.
+    images[-1].save(
         path, format="ICO",
         sizes=[(s, s) for s in ICO_SIZES],
-        append_images=images[1:],
+        append_images=images[:-1],
     )
     print(f"  {path}")
 
