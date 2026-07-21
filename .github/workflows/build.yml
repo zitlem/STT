@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  actions: write  # release job deletes its own build artifacts after publishing
 
 concurrency:
   group: release
@@ -153,7 +154,7 @@ jobs:
         with:
           name: STT-windows
           path: Output/STT-Setup.exe
-          retention-days: 30
+          retention-days: 7
 
   build-macos:
     needs: version
@@ -289,7 +290,7 @@ jobs:
         with:
           name: STT-macos-${{ matrix.arch }}
           path: STT-macos-${{ matrix.arch }}.pkg
-          retention-days: 30
+          retention-days: 7
 
   build-linux:
     needs: version
@@ -346,7 +347,7 @@ jobs:
         with:
           name: STT-linux
           path: STT-linux.deb
-          retention-days: 30
+          retention-days: 7
 
   # ── Release ────────────────────────────────────────────────────────────────
   release:
@@ -397,4 +398,19 @@ jobs:
             artifacts/**/*
             SHA256SUMS.txt
           generate_release_notes: true
+
+      # The release now holds the installers; the run's artifacts are redundant.
+      - name: Delete build artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: { artifacts } } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId,
+            });
+            for (const a of artifacts) {
+              console.log(`Deleting ${a.name} (${(a.size_in_bytes / 1048576).toFixed(1)} MB)`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner, repo: context.repo.repo, artifact_id: a.id,
+              });
+            }
 
