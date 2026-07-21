@@ -381,7 +381,17 @@ jobs:
   # ── Release ────────────────────────────────────────────────────────────────
   release:
     needs: [version, build-windows, build-macos, build-linux]
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    # Publish only when nothing failed/cancelled AND at least one build actually
+    # produced an artifact. Without the last clause, a dispatch that skips every
+    # platform (or macOS-on with no arch ticked) would still run this job, bump +
+    # tag VERSION, then fail on empty `artifacts/` in Generate checksums.
+    if: >-
+      always()
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
+      && (needs.build-windows.result == 'success'
+          || needs.build-macos.result == 'success'
+          || needs.build-linux.result == 'success')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
