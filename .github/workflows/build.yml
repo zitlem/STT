@@ -419,8 +419,11 @@ jobs:
           path: artifacts/
 
       - name: Generate checksums
+        # find, not a fixed-depth glob: download-artifact lays a single artifact
+        # out differently than several, so `artifacts/*/*` stayed literal and the
+        # step crashed when only one platform was built.
         run: |
-          for f in artifacts/*/*; do
+          find artifacts -type f -print0 | while IFS= read -r -d '' f; do
             (cd "$(dirname "$f")" && shasum -a 256 "$(basename "$f")")
           done > SHA256SUMS.txt
           cat SHA256SUMS.txt
