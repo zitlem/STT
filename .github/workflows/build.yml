@@ -14,6 +14,14 @@ on:
         description: "Build macOS"
         type: boolean
         default: true
+      macos_arm:
+        description: "  ↳ macOS Apple Silicon (ARM64)"
+        type: boolean
+        default: true
+      macos_intel:
+        description: "  ↳ macOS Intel (x86_64)"
+        type: boolean
+        default: true
       linux:
         description: "Build Linux"
         type: boolean
@@ -57,10 +65,24 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.v.outputs.tag }}
+      macos_include: ${{ steps.mac.outputs.include }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - id: mac
+        # Build the macOS matrix from the arch checkboxes. A tag push builds
+        # both arches; a manual dispatch honors macos_arm / macos_intel.
+        run: |
+          items=()
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.macos_arm }}" = "true" ]; then
+            items+=('{"runner":"macos-latest","arch":"arm64"}')
+          fi
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.macos_intel }}" = "true" ]; then
+            items+=('{"runner":"macos-15-intel","arch":"x86_64"}')
+          fi
+          IFS=,
+          echo "include=[${items[*]}]" >> "$GITHUB_OUTPUT"
       - id: v
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -158,14 +180,14 @@ jobs:
 
   build-macos:
     needs: version
-    if: github.event_name == 'push' || inputs.macos
+    # Skip entirely when macOS is off or neither arch box is ticked (empty matrix).
+    if: (github.event_name == 'push' || inputs.macos) && needs.version.outputs.macos_include != '[]'
     strategy:
       matrix:
-        include:
-          - runner: macos-latest        # Apple Silicon
-            arch: arm64
-          - runner: macos-15-intel      # GitHub's Intel runner (supported into 2027)
-            arch: x86_64
+        # arm64 = macos-latest (Apple Silicon); x86_64 = macos-15-intel
+        # (GitHub's Intel runner, supported into 2027). Legs are chosen by the
+        # macos_arm / macos_intel checkboxes — see the version job.
+        include: ${{ fromJSON(needs.version.outputs.macos_include) }}
     runs-on: ${{ matrix.runner }}
     env:
       # App signing activates once MACOS_CERTIFICATE_P12 exists; pkg signing +
