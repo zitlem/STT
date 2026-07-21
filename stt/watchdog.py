@@ -422,13 +422,20 @@ class Provisioner:
             if check:
                 raise ProvisionError(f"{cmd[0]} not found: {e}")
             return 1
+        tail = []
         for line in proc.stdout:
             line = line.rstrip()
             if line:
                 self.log("    " + line)
+                tail.append(line)
+                if len(tail) > 5:
+                    tail.pop(0)
         code = proc.wait(timeout=timeout)
         if check and code != 0:
-            raise ProvisionError(f"command failed ({code}): {' '.join(str(c) for c in cmd)}")
+            # Include the last output lines so remote crash reports carry the
+            # actual error, not just the exit code.
+            detail = f" — last output: {' | '.join(tail)}" if tail else ""
+            raise ProvisionError(f"command failed ({code}): {' '.join(str(c) for c in cmd)}{detail}")
         return code
 
     # -- environment detection ----------------------------------------------
@@ -460,10 +467,27 @@ class Provisioner:
             return
         self.log("  downloading uv installer...")
         if IS_WINDOWS:
+            # Force TLS 1.2 — PowerShell on stock Windows may still default to
+            # TLS 1.0, which astral.sh rejects (observed in the field).
             ps = ("$ErrorActionPreference='Stop';"
+                  "[Net.ServicePointManager]::SecurityProtocol="
+                  "[Net.ServicePointManager]::SecurityProtocol -bor 3072;"
                   "irm https://astral.sh/uv/install.ps1 | iex")
-            self._run(["powershell", "-NoProfile", "-Command", ps],
-                      desc="install uv (astral.sh)")
+            code = self._run(["powershell", "-NoProfile", "-Command", ps],
+                             desc="install uv (astral.sh)", check=False)
+            if code != 0 or not _which("uv"):
+                # Installer script blocked (proxy/AV/TLS)? Fetch the official
+                # zip directly over our certifi-backed urllib instead.
+                self.log("  installer script failed; downloading uv zip from GitHub...")
+                arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+                url = f"https://github.com/astral-sh/uv/releases/latest/download/uv-{arch}-pc-windows-msvc.zip"
+                dest_dir = os.path.join(os.path.expanduser("~"), ".local", "bin")
+                os.makedirs(dest_dir, exist_ok=True)
+                tmp = os.path.join(tempfile.gettempdir(), "uv-windows.zip")
+                self._download_file(url, tmp)
+                with zipfile.ZipFile(tmp) as zf:
+                    zf.extractall(dest_dir)
+                os.remove(tmp)
         else:
             script = self._download_text("https://astral.sh/uv/install.sh")
             tmp = os.path.join(tempfile.gettempdir(), "uv-install.sh")
