@@ -251,6 +251,23 @@ def read_display_version():
     return read_version()
 
 
+def read_bundle_version():
+    """Version of the installed .app/.exe itself (frozen build), matching the
+    macOS 'About STT' / Info.plist CFBundleShortVersionString. Distinct from
+    read_version(), which tracks the auto-updated SOURCE checkout that git pull
+    advances. In dev-from-repo the two coincide.
+    """
+    if _FROZEN:
+        try:
+            with open(os.path.join(sys._MEIPASS, "VERSION")) as f:  # noqa: SLF001
+                v = f.read().strip()
+            if v:
+                return v
+        except (OSError, AttributeError):
+            pass
+    return read_version()
+
+
 def write_version(version):
     tmp = VERSION_FILE + ".tmp"
     with open(tmp, "w") as f:
@@ -1344,8 +1361,14 @@ class GuiWindow:
             _footer, text="Last check: —", fg="gray", font=("", 8)
         )
         self._check_lbl.pack(side="left")
+        # Show both the installed app version and the running (auto-updated) code
+        # version. They diverge once git-pull updates advance the source checkout
+        # ahead of the installed .app/.exe; collapse to one when they match.
+        _installed = read_bundle_version()
+        _running = read_display_version()
+        _ver_text = f"v{_running}" if _running == _installed else f"app v{_installed} · run v{_running}"
         tk.Label(
-            _footer, text=f"v{read_version()}", fg="gray", font=("", 8)
+            _footer, text=_ver_text, fg="gray", font=("", 8)
         ).pack(side="right")
         self._result_lbl = tk.Label(root, text="", fg="gray", font=("", 8))
         self._result_lbl.pack()

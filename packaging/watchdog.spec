@@ -27,6 +27,15 @@ ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))  # noqa: F821 (SPECPATH is 
 _icon_file = os.path.join(ROOT, "icon.icns" if IS_MACOS else "icon.ico")
 _icon = _icon_file if os.path.exists(_icon_file) else None
 
+# Bundle version for the .app's Info.plist so macOS ("About STT", Finder Get Info)
+# shows the real version instead of PyInstaller's default 0.0.0. Read from the
+# git-managed VERSION file that's also bundled as runtime data.
+try:
+    with open(os.path.join(ROOT, "VERSION")) as _vf:
+        _bundle_version = _vf.read().strip() or "0.0.0"
+except OSError:
+    _bundle_version = "0.0.0"
+
 a = Analysis(
     [os.path.join(ROOT, "stt", "watchdog.py")],
     pathex=[ROOT],
@@ -119,6 +128,8 @@ if IS_MACOS:
             "CFBundleName": "STT",
             "CFBundleDisplayName": "STT",
             "CFBundleExecutable": "STT",
+            "CFBundleShortVersionString": _bundle_version,
+            "CFBundleVersion": _bundle_version,
             "NSHighResolutionCapable": True,
             "NSMicrophoneUsageDescription":
                 "STT needs microphone access for speech recognition.",
