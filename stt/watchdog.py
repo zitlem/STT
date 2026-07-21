@@ -97,6 +97,9 @@ def migrate_config_layout():
 
 # The worker always runs as a real script from the venv (frozen or dev).
 STT_SCRIPT = os.path.join(SOURCE_DIR, "speech_to_text.py")
+# The watchdog's own source (in the git-managed checkout). A git pull advances
+# this; a frozen binary hands off to it so watchdog updates take effect too.
+WATCHDOG_SCRIPT = os.path.join(SOURCE_DIR, "stt", "watchdog.py")
 
 # uv-provisioned Python for the venv (see requirements.txt / CI).
 UV_PYTHON_VERSION = "3.11"
@@ -180,6 +183,88 @@ def get_python_bin():
         if os.path.isfile(c):
             return c
     return sys.executable
+
+
+def _source_head():
+    """Short git HEAD of the SOURCE checkout, or '' if unavailable.
+
+    Used to tell whether an auto-update has advanced the on-disk watchdog code
+    past what the running process launched with (i.e. a restart would apply it).
+    """
+    if not (shutil.which("git") and os.path.isdir(os.path.join(SOURCE_DIR, ".git"))):
+        return ""
+    try:
+        r = subprocess.run(["git", "-C", SOURCE_DIR, "rev-parse", "HEAD"],
+                           capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _relaunch_watchdog(pm=None, mode_flag="--gui"):
+    """Restart the watchdog process in place, running the current SOURCE code.
+
+    Applies a pulled watchdog.py update without a reboot: re-execs into
+    SOURCE_DIR/stt/watchdog.py via the venv python (a frozen binary thereby
+    hands off to the updated source). Stops the managed server first so it
+    isn't orphaned; the fresh watchdog starts its own. Never returns.
+    """
+    if pm is not None:
+        try:
+            pm.stop(timeout=20)  # also sets no_restart so the crash thread stays quiet
+        except Exception as e:
+            logging.warning(f"[WATCHDOG] Could not stop STT before relaunch: {e}")
+    python_bin = get_python_bin()
+    # Prefer the updated source watchdog; fall back to re-running ourselves
+    # (a frozen binary re-launches itself; a source run re-runs its script).
+    if os.path.isfile(WATCHDOG_SCRIPT) and python_bin != sys.executable:
+        argv = [python_bin, WATCHDOG_SCRIPT, mode_flag]
+    elif _FROZEN:
+        argv = [sys.executable] + sys.argv[1:]  # sys.executable is the binary itself
+    else:
+        argv = [sys.executable] + sys.argv      # python + this script + flags
+    os.environ["STT_WD_FROMSOURCE"] = "1"  # the relaunched process is source; don't hand off again
+    logging.info(f"[WATCHDOG] Relaunching: {' '.join(argv)}")
+    if IS_WINDOWS:
+        # os.execv is unreliable under a frozen build on Windows; spawn + exit.
+        subprocess.Popen(argv, close_fds=False)
+        os._exit(0)
+    else:
+        os.execv(argv[0], argv)
+
+
+def _maybe_handoff_to_source():
+    """Frozen binary: re-exec into the pulled SOURCE watchdog so updates apply.
+
+    Once provisioned, the frozen bootstrapper hands off to
+    SOURCE_DIR/stt/watchdog.py (the git-updated code) instead of running its own
+    baked-in copy, so watchdog.py improvements arrive via the normal git pull
+    without shipping a new binary. Guarded against loops and broken pulls.
+    Source installs run stt/watchdog.py directly, so there's nothing to do.
+    """
+    if not _FROZEN or os.environ.get("STT_WD_FROMSOURCE"):
+        return
+    if not is_provisioned():
+        return  # first run: no source yet — provision as the frozen binary first
+    python_bin = get_python_bin()
+    if not (os.path.isfile(WATCHDOG_SCRIPT) and python_bin != sys.executable):
+        return
+    # Broken-pull guard: never hand off into source that won't even compile, or
+    # a supervisor would relaunch the binary → hand off → crash, forever.
+    try:
+        import py_compile
+        py_compile.compile(WATCHDOG_SCRIPT, doraise=True)
+    except Exception as e:
+        logging.warning(f"[WATCHDOG] Source watchdog won't compile ({e}); staying on bundled code")
+        return
+    os.environ["STT_WD_FROMSOURCE"] = "1"
+    argv = [python_bin, WATCHDOG_SCRIPT, *sys.argv[1:]]
+    logging.info(f"[WATCHDOG] Handing off to source watchdog: {' '.join(argv)}")
+    if IS_WINDOWS:
+        subprocess.Popen(argv, close_fds=False)
+        os._exit(0)
+    else:
+        os.execv(python_bin, argv)
 
 
 def load_config():
@@ -1269,6 +1354,9 @@ class GuiWindow:
         self._monitoring = monitoring
         self.root = tk.Tk()
         self._transcription_running = False
+        # SOURCE commit at launch; if the checkout later advances (auto-update),
+        # a watchdog restart would apply the newer code — surfaced on the button.
+        self._launch_head = _source_head()
         self._set_icon()
         self._build_ui()
         self.root.after(500, self._poll)
@@ -1443,6 +1531,15 @@ class GuiWindow:
         if not self._monitoring:
             self._update_now_btn.pack(side="left", padx=2)
 
+        # Restart the watchdog itself to load a pulled watchdog.py update. Shows
+        # "Restart Watchdog ●" once the source is ahead of the running process.
+        self._restart_wd_btn = tk.Button(
+            root, text="Restart Watchdog",
+            command=self._on_restart_watchdog, state=_upd_state,
+        )
+        if not self._monitoring:
+            self._restart_wd_btn.pack(pady=(0, 2))
+
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
         _footer = tk.Frame(root)
@@ -1514,6 +1611,13 @@ class GuiWindow:
             cfg = load_config()
             self._model_ready = self._selected_model_downloaded(cfg)
             self._mic_ready = self._mic_configured(cfg)
+            # Hint on the Restart Watchdog button when an auto-update has
+            # advanced the source past what this process launched with.
+            if not self._monitoring and self._restart_wd_btn.cget("text") != "Restarting…":
+                cur = _source_head()
+                behind = bool(self._launch_head) and bool(cur) and cur != self._launch_head
+                self._restart_wd_btn.config(
+                    text="Restart Watchdog ●" if behind else "Restart Watchdog")
 
         def _set(mark, ok):
             mark.config(text="☑" if ok else "☐", fg="green" if ok else "red")
@@ -1670,6 +1774,21 @@ class GuiWindow:
                 self.root.after(0, lambda: self._update_now_btn.config(
                     state="normal", text="Update Now"))
         threading.Thread(target=_run, daemon=True).start()
+
+    def _on_restart_watchdog(self):
+        """Restart the watchdog to load a pulled watchdog.py update."""
+        if self._transcription_running and not self._mb.askyesno(
+            "Restart Watchdog",
+            "This stops transcription and restarts the watchdog to apply the "
+            "update. Continue?",
+        ):
+            return
+        self._restart_wd_btn.config(state="disabled", text="Restarting…")
+        # Re-exec replaces this whole process, so ending the Tk loop is expected.
+        threading.Thread(
+            target=lambda: _relaunch_watchdog(self.pm, mode_flag="--gui"),
+            daemon=True,
+        ).start()
 
     def _on_config_change(self, *_args):
         """Trace callback: persist config whenever a field changes."""
@@ -2050,6 +2169,10 @@ def main():
         help="Write a synthetic local crash dump to logs/crashes/ and exit",
     )
     args = parser.parse_args()
+
+    # Frozen binary: hand off to the git-updated source watchdog so watchdog.py
+    # updates take effect. No-op for source installs and after a hand-off.
+    _maybe_handoff_to_source()
 
     if args.test_crash_report:
         _run_crash_report_test()
