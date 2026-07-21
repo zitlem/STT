@@ -107,6 +107,11 @@ UV_PYTHON_VERSION = "3.11"
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
 
+# Control channel so a client (monitor) window can drive the headless daemon's
+# updater: the client drops a one-word command; the daemon publishes status.
+WD_CMD_FILE = os.path.join(DATA_DIR, ".wd-cmd")
+WD_STATUS_FILE = os.path.join(DATA_DIR, ".wd-status.json")
+
 BACKOFF = [5, 10, 30, 60]       # seconds between crash restarts; capped at last entry
 STABLE_RUN_THRESHOLD = 30        # seconds of uptime before resetting crash counter
 UPDATE_HOUR = 1                  # hour (24h) at which daily update check fires
@@ -286,6 +291,71 @@ def _maybe_handoff_to_source():
     else:
         # argv[0] "STT" sets the macOS menu-bar / process name (else "python3").
         os.execv(python_bin, ["STT", *argv[1:]])
+
+
+def _write_wd_status(state, updater):
+    """Publish the daemon's update status so a client (monitor) window — which
+    has no access to the daemon's in-memory state — can display it."""
+    try:
+        data = {
+            "last_update_check": state.get("last_update_check"),
+            "last_update_result": state.get("last_update_result"),
+            "pending": bool(getattr(updater, "_pending_update", None)),
+        }
+        tmp = WD_STATUS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, WD_STATUS_FILE)
+    except Exception:
+        pass
+
+
+def _watchdog_control_loop(state, pm, updater):
+    """Let a client (monitor) window drive this daemon's updater.
+
+    The client can't call the updater directly (separate process), so it drops a
+    one-word command file; here we execute it and publish status back. Runs only
+    in the owning daemon (GUI or headless), never in a monitor window."""
+    busy = threading.Event()
+
+    def _run_check():
+        busy.set()
+        try:
+            updater.check_for_update()
+        finally:
+            busy.clear()
+
+    def _run_update():
+        busy.set()
+        try:
+            updater.check_for_update()
+            updater.apply_pending_update()  # stops the server, applies, restarts
+        finally:
+            busy.clear()
+
+    try:
+        if os.path.exists(WD_CMD_FILE):
+            os.remove(WD_CMD_FILE)  # discard a stale command from a previous run
+    except OSError:
+        pass
+
+    while not state.get("stop_requested"):
+        _write_wd_status(state, updater)
+        try:
+            if os.path.exists(WD_CMD_FILE):
+                with open(WD_CMD_FILE, encoding="utf-8") as f:
+                    cmd = f.read().strip()
+                os.remove(WD_CMD_FILE)
+                if cmd == "restart":
+                    _relaunch_watchdog(pm)  # never returns
+                elif not busy.is_set():
+                    if cmd == "check":
+                        threading.Thread(target=_run_check, daemon=True).start()
+                    elif cmd == "update":
+                        threading.Thread(target=_run_update, daemon=True).start()
+        except Exception:
+            pass
+        time.sleep(2)
 
 
 def load_config():
@@ -1541,33 +1611,26 @@ class GuiWindow:
             bf, text="URL Builder", command=lambda: self._on_open_browser("/url-builder")
         ).pack(side="left", padx=2)
         # Two manual update actions: "Check for Updates" reports availability
-        # without touching anything; "Update Now" applies it (idle-gated).
-        # Updates are driven by the daemon; a client control window can't (its
-        # state/updater are None), so both are disabled in monitoring mode.
+        # without touching anything; "Update Now" applies it (idle-gated). A
+        # client (monitor) window has no updater of its own, so its buttons
+        # command the background daemon over the control-file channel instead.
         uf = tk.Frame(root)
         uf.pack(pady=2)
-        _upd_state = "disabled" if self._monitoring else "normal"
         self._check_btn = tk.Button(
-            uf,
-            text="Managed by daemon" if self._monitoring else "Check for Updates",
-            command=self._on_check_update,
-            state=_upd_state,
+            uf, text="Check for Updates", command=self._on_check_update
         )
         self._check_btn.pack(side="left", padx=2)
         self._update_now_btn = tk.Button(
-            uf, text="Update Now", command=self._on_update_now, state=_upd_state
+            uf, text="Update Now", command=self._on_update_now
         )
-        if not self._monitoring:
-            self._update_now_btn.pack(side="left", padx=2)
+        self._update_now_btn.pack(side="left", padx=2)
 
         # Restart the watchdog itself to load a pulled watchdog.py update. Shows
         # "Restart Watchdog ●" once the source is ahead of the running process.
         self._restart_wd_btn = tk.Button(
-            root, text="Restart Watchdog",
-            command=self._on_restart_watchdog, state=_upd_state,
+            root, text="Restart Watchdog", command=self._on_restart_watchdog
         )
-        if not self._monitoring:
-            self._restart_wd_btn.pack(pady=(0, 2))
+        self._restart_wd_btn.pack(pady=(0, 2))
 
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
@@ -1642,7 +1705,7 @@ class GuiWindow:
             self._mic_ready = self._mic_configured(cfg)
             # Hint on the Restart Watchdog button when an auto-update has
             # advanced the source past what this process launched with.
-            if not self._monitoring and self._restart_wd_btn.cget("text") != "Restarting…":
+            if self._restart_wd_btn.cget("text") != "Restarting…":
                 cur = _source_head()
                 behind = bool(self._launch_head) and bool(cur) and cur != self._launch_head
                 self._restart_wd_btn.config(
@@ -1737,20 +1800,33 @@ class GuiWindow:
             self._transcription_lbl.config(text="● Stopped", fg="red")
             self._transcription_running = False
 
-        if not self._monitoring:
+        # Update status: the owner reads its own state; a client (monitor) reads
+        # the status file the daemon publishes over the control channel.
+        if self._monitoring:
+            chk = res = None
+            pending = False
+            try:
+                with open(WD_STATUS_FILE, encoding="utf-8") as f:
+                    _st = json.load(f)
+                chk = _st.get("last_update_check")
+                res = _st.get("last_update_result")
+                pending = bool(_st.get("pending"))
+            except (OSError, ValueError):
+                pass
+        else:
             chk = self.state.get("last_update_check")
             res = self.state.get("last_update_result")
-            if chk:
-                self._check_lbl.config(text=f"Last check: {chk}")
-            if res:
-                self._result_lbl.config(text=res)
-            # Surface a pending update (from a manual check or the hourly
-            # scheduler) on the Update Now button, unless a click is in flight.
-            if self._update_now_btn.cget("text") not in ("Updating…",):
-                pending = self.updater._pending_update
-                self._update_now_btn.config(
-                    text="Update Now ●" if pending else "Update Now", state="normal"
-                )
+            pending = bool(self.updater._pending_update)
+        if chk:
+            self._check_lbl.config(text=f"Last check: {chk}")
+        if res:
+            self._result_lbl.config(text=res)
+        # Surface a pending update (from a manual check or the hourly scheduler)
+        # on the Update Now button, unless a click is in flight.
+        if self._update_now_btn.cget("text") not in ("Updating…",):
+            self._update_now_btn.config(
+                text="Update Now ●" if pending else "Update Now", state="normal"
+            )
 
         self._refresh_checklist(status)
 
@@ -1778,9 +1854,23 @@ class GuiWindow:
                 logging.warning(f"[GUI] Transcription {action} failed: {e}")
         threading.Thread(target=_call, daemon=True).start()
 
+    def _send_wd_command(self, cmd):
+        """Client (monitor) window: ask the background daemon to run an update
+        action, since we have no updater/pm of our own."""
+        try:
+            with open(WD_CMD_FILE, "w", encoding="utf-8") as f:
+                f.write(cmd)
+        except OSError as e:
+            logging.warning(f"[GUI] Could not send '{cmd}' to daemon: {e}")
+
     def _on_check_update(self):
         """Check for an available update and report it — never applies."""
         self._check_btn.config(state="disabled", text="Checking…")
+        if self._monitoring:
+            self._send_wd_command("check")
+            self.root.after(4000, lambda: self._check_btn.config(
+                state="normal", text="Check for Updates"))
+            return
         def _run():
             try:
                 self.updater.check_for_update()  # sets last_update_result + _pending_update
@@ -1791,14 +1881,21 @@ class GuiWindow:
 
     def _on_update_now(self):
         """Check and apply immediately (idle-gated so it never interrupts a run)."""
+        # Idle-gate on the client side too: don't ask the daemon to update while
+        # a transcription is running.
+        if self._transcription_running:
+            self._result_lbl.config(text="Transcription running — stop it to update")
+            return
         self._update_now_btn.config(state="disabled", text="Updating…")
+        if self._monitoring:
+            self._send_wd_command("update")
+            self.root.after(6000, lambda: self._update_now_btn.config(
+                state="normal", text="Update Now"))
+            return
         def _run():
             try:
                 self.updater.check_for_update()
-                if self._transcription_running:
-                    self.state.set(last_update_result="Transcription running — stop it to update")
-                else:
-                    self.updater.apply_pending_update()  # may restart the process
+                self.updater.apply_pending_update()  # may restart the process
             finally:
                 self.root.after(0, lambda: self._update_now_btn.config(
                     state="normal", text="Update Now"))
@@ -1813,6 +1910,12 @@ class GuiWindow:
         ):
             return
         self._restart_wd_btn.config(state="disabled", text="Restarting…")
+        if self._monitoring:
+            # The daemon owns the process; ask it to restart itself.
+            self._send_wd_command("restart")
+            self.root.after(6000, lambda: self._restart_wd_btn.config(
+                state="normal", text="Restart Watchdog"))
+            return
         # Re-exec replaces this whole process, so ending the Tk loop is expected.
         threading.Thread(
             target=lambda: _relaunch_watchdog(self.pm, mode_flag="--gui"),
@@ -2284,6 +2387,10 @@ def main():
 
     crash_thread.start()
     updater.run_scheduler()
+    # Control channel so a client (monitor) window can drive this daemon's
+    # updater (Check / Update Now / Restart Watchdog) even when we run headless.
+    threading.Thread(target=_watchdog_control_loop, args=(state, pm, updater),
+                     daemon=True).start()
     pm.start()
 
     if use_gui:
