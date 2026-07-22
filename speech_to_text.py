@@ -4550,9 +4550,13 @@ def _memory_advice(avail_gb, on_gpu=False):
         return f" With faster-whisper (lighter), the largest model that fits is '{fit}'."
     key = "vram" if on_gpu else "ram"
     base = 0.0 if on_gpu else BASELINE_RAM_GB
-    tiny = base + MODEL_MEMORY_ESTIMATES["faster-whisper"]["tiny"][key]
-    return (f" Even faster-whisper 'tiny' (~{tiny:.1f} GB) exceeds this — "
-            f"a machine with more memory is needed.")
+    model = MODEL_MEMORY_ESTIMATES["faster-whisper"]["tiny"][key]
+    total = base + model
+    # Name the model's own size, not the total — the total (app baseline +
+    # model) is what exceeds the machine, but 'tiny' itself is tiny.
+    return (f" Even the lightest setup — STT (~{base:.0f} GB) plus faster-whisper "
+            f"'tiny' (~{model:.1f} GB) = ~{total:.1f} GB — is too big; a machine "
+            f"with more memory is needed.")
 
 
 def _format_parts(parts, key):
@@ -4601,14 +4605,15 @@ def _check_system_requirements(cfg=None, hw=None):
                 # be slow, the model likely won't load and the app can crash.
                 sev = "the model likely won't load and STT may crash" if need_gb > avail * 1.5 \
                     else "transcription may be slow or unstable"
-                found.append(f"Configured models need ~{need_gb:.1f} GB of the {avail:.1f} GB unified memory on this Apple Silicon Mac "
+                found.append(f"STT plus the configured models need ~{need_gb:.1f} GB (incl. ~{BASELINE_RAM_GB:.0f} GB app/OS baseline) "
+                             f"of the {avail:.1f} GB unified memory on this Apple Silicon Mac "
                              f"(CPU and GPU share one pool) — {sev}.{_memory_advice(avail, on_gpu=False)}")
         else:
             avail = ram / 1024**3
             if 0 < ram < (need["ram_gb"] - 0.5) * 1024**3:
                 sev = "models likely won't load and STT may crash" if need["ram_gb"] > avail * 1.5 \
                     else "transcription may be slow or unstable"
-                found.append(f"Configured models need ~{need['ram_gb']:.1f} GB RAM ({_format_parts(need['parts'], 'ram_gb')}) "
+                found.append(f"STT plus the configured models need ~{need['ram_gb']:.1f} GB RAM ({_format_parts(need['parts'], 'ram_gb')}) "
                              f"but this PC has {avail:.1f} GB — {sev}.{_memory_advice(avail, on_gpu=False)}")
     except Exception:
         pass
@@ -4623,7 +4628,7 @@ def _check_system_requirements(cfg=None, hw=None):
     try:
         free = hw.get("disk_free_bytes") or 0
         if 0 < free < need["disk_gb"] * 1024**3:
-            found.append(f"{free / 1024**3:.1f} GB free disk (~{need['disk_gb']:.0f} GB needed for the configured models)")
+            found.append(f"{free / 1024**3:.1f} GB free disk (~{need['disk_gb']:.0f} GB needed for STT + the configured models)")
     except Exception:
         pass
     return found
