@@ -40,6 +40,7 @@ def _ns():
     return extract_definitions(
         SOURCE,
         ["_normalize_whisper_size", "_estimate_memory_requirements",
+         "_largest_fitting_whisper", "_memory_advice",
          "_format_parts", "_check_system_requirements"],
         extra_globals=consts,
     )
