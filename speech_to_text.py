@@ -13260,8 +13260,10 @@ def get_new_entries(limit_override=None):
     Args:
         limit_override: Optional limit to override database.max_entries_to_send config
 
-    Returns all rows including denied ones — callers that should hide denied entries
-    (live preview, translation) must filter on entry[10] (denied flag) themselves.
+    The window holds the latest N *visible* rows — denied rows are excluded so they
+    can't consume slots and push real lines off the display. Manual deny/restore is
+    delivered live via the separate "segment_denied" broadcast, so callers no longer
+    need to filter denied entries out of this result (entry[10] is always 0 here).
     """
     global _db_cache
 
@@ -13297,7 +13299,7 @@ def get_new_entries(limit_override=None):
         with sqlite3.connect(current_db_name) as conn:
             cursor = conn.cursor()
             if limit <= 0:
-                # 0 or negative means no limit — return all entries
+                # 0 or negative means no limit — return all visible entries.
                 cursor.execute(
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
@@ -13306,12 +13308,18 @@ def get_new_entries(limit_override=None):
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
                     AND COALESCE(is_final, 1) = 1
+                    AND COALESCE(denied, 0) = 0
                     ORDER BY id ASC
                 """
                 )
             else:
-                # FIX: Get the LATEST N entries, not the oldest N
-                # Use subquery to get last N entries by id DESC, then re-order ASC for display
+                # Window the LATEST N *visible* (non-denied) rows. Denied rows —
+                # auto-filters (hallucination/cjk/short/dup/music) that are never
+                # shown, plus manual toggles — must not consume window slots, or
+                # they push older visible lines out and the display looks like it
+                # "advanced to a new screen". They're excluded here; a manual
+                # deny/restore is delivered live via the separate "segment_denied"
+                # broadcast (handle_set_segment_denied), so hiding still works.
                 cursor.execute(
                     """
                     SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob FROM (
@@ -13321,6 +13329,7 @@ def get_new_entries(limit_override=None):
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
                         AND COALESCE(is_final, 1) = 1
+                        AND COALESCE(denied, 0) = 0
                         ORDER BY id DESC
                         LIMIT ?
                     ) ORDER BY id ASC
