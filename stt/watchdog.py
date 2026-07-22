@@ -1689,7 +1689,7 @@ class GuiWindow:
         tk.Label(
             _footer, text=_ver_text, fg="gray", font=("", 8)
         ).pack(side="right")
-        self._result_lbl = tk.Label(root, text="", fg="gray", font=("", 8))
+        self._result_lbl = tk.Label(root, text="", fg="gray", font=("", 9))
         self._result_lbl.pack()
 
     @staticmethod
@@ -1880,7 +1880,18 @@ class GuiWindow:
         if chk:
             self._check_lbl.config(text=f"Last check: {chk}")
         if res:
-            self._result_lbl.config(text=res)
+            # Colour the outcome so "up to date" reads as a clear success rather
+            # than looking like nothing happened after a check.
+            _rl = res.lower()
+            if "up to date" in _rl:
+                _fg = "green"
+            elif "available" in _rl or "updated to" in _rl:
+                _fg = "#0066cc"
+            elif "fail" in _rl or "error" in _rl:
+                _fg = "red"
+            else:
+                _fg = "gray"
+            self._result_lbl.config(text=res, fg=_fg)
         # Update Now is clickable only when an update is actually available
         # (pending, from a manual check or the hourly scheduler); otherwise it's
         # disabled. Left alone while a click is in flight.
@@ -1928,6 +1939,9 @@ class GuiWindow:
     def _on_check_update(self):
         """Check for an available update and report it — never applies."""
         self._check_btn.config(state="disabled", text="Checking…")
+        # Immediate acknowledgment; _poll replaces it with the colour-coded
+        # outcome (e.g. green "Up to date …") once the check finishes.
+        self._result_lbl.config(text="Checking for updates…", fg="gray")
         if self._monitoring:
             self._send_wd_command("check")
             self.root.after(4000, lambda: self._check_btn.config(
