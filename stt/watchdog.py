@@ -313,6 +313,7 @@ def _write_wd_status(state, updater):
             "last_update_check": state.get("last_update_check"),
             "last_update_result": state.get("last_update_result"),
             "pending": bool(getattr(updater, "_pending_update", None)),
+            "status": state.get("status"),  # process-level: so a client can show Starting/Running/…
         }
         tmp = WD_STATUS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -1786,17 +1787,37 @@ class GuiWindow:
         self._chan_var.set({"beta": "Stable", "stable": "Stable"}.get(ch, "Main"))
 
     def _poll(self):
-        if self._monitoring:
+        cfg = load_config()
+        port = cfg.get("web_server", {}).get("port", 8080)
+        # Is the web server actually serving yet?
+        web_ok = False
+        try:
             import urllib.request as _ur
-            cfg = load_config()
-            port = cfg.get("web_server", {}).get("port", 8080)
+            _ur.urlopen(f"http://127.0.0.1:{port}/api/transcription/status", timeout=1)
+            web_ok = True
+        except Exception:
+            web_ok = False
+        # Process-level status: the owner reads its own state; a client reads the
+        # daemon's published status.
+        if self._monitoring:
+            proc = None
             try:
-                _ur.urlopen(f"http://127.0.0.1:{port}/api/transcription/status", timeout=1)
-                status = "running"
-            except Exception:
-                status = "stopped"
+                with open(WD_STATUS_FILE, encoding="utf-8") as f:
+                    proc = json.load(f).get("status")
+            except (OSError, ValueError):
+                pass
         else:
-            status = self.state.get("status")
+            proc = self.state.get("status")
+        # Derive the Web UI status, surfacing "starting" — the process is up but
+        # the web server hasn't bound yet — between stopped and running.
+        if web_ok:
+            status = "running"
+        elif proc in ("running", "starting"):
+            status = "starting"
+        elif proc in ("crashed", "updating", "stopped"):
+            status = proc
+        else:
+            status = "stopped"
         colors = {
             "running": "green",
             "stopped": "red",
