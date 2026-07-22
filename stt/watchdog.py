@@ -1687,6 +1687,17 @@ class GuiWindow:
             row=2, column=1, sticky="w"
         )
 
+        # Microphone: populated from the running server's /api/audio-devices;
+        # saving on change goes through /api/config (sets the flag + hot-reloads).
+        tk.Label(cf, text="Microphone:", width=11, anchor="w").grid(
+            row=3, column=0, sticky="w", pady=3
+        )
+        self._mic_var = tk.StringVar(value="— start server —")
+        self._mic_map = {}  # display label -> device_id
+        self._mic_menu = tk.OptionMenu(cf, self._mic_var, self._mic_var.get())
+        self._mic_menu.config(width=13, font=("", 9))
+        self._mic_menu.grid(row=3, column=1, sticky="w")
+
         # Load current values without triggering the auto-save trace below.
         self._suppress_autosave = True
         self._reload_config()
@@ -1986,6 +1997,11 @@ class GuiWindow:
 
         self._refresh_checklist(status)
 
+        # Populate the microphone dropdown once the server is up (it enumerates
+        # devices via ffmpeg, so fetch only until we have the list).
+        if status == "running" and not self._mic_map:
+            self._refresh_mic_options()
+
         self.root.after(1000, self._poll)
 
     def _on_toggle(self):
@@ -2009,6 +2025,64 @@ class GuiWindow:
             except Exception as e:
                 logging.warning(f"[GUI] Transcription {action} failed: {e}")
         threading.Thread(target=_call, daemon=True).start()
+
+    def _refresh_mic_options(self):
+        """Fetch audio devices from the running server and fill the dropdown.
+        Runs off the Tk thread (ffmpeg enumeration is slow); the menu is rebuilt
+        back on the main thread via root.after."""
+        if getattr(self, "_mic_fetching", False):
+            return
+        self._mic_fetching = True
+        port = load_config().get("web_server", {}).get("port", 8080)
+        def _work():
+            labels, mapping, current = [], {}, "default"
+            try:
+                import urllib.request, json as _json
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/api/audio-devices", timeout=3
+                ) as r:
+                    data = _json.loads(r.read())
+                for d in (data.get("devices") or []):
+                    name = d.get("name") or d.get("device_id") or "?"
+                    label = f"{name} (Default)" if d.get("is_default") else name
+                    mapping[label] = d.get("device_id") or "default"
+                    labels.append(label)
+                current = load_config().get("audio", {}).get("default_microphone", "default")
+            except Exception:
+                pass
+            finally:
+                self._mic_fetching = False
+            if labels:
+                self.root.after(0, lambda: self._apply_mic_options(labels, mapping, current))
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _apply_mic_options(self, labels, mapping, current):
+        self._mic_map = mapping
+        menu = self._mic_menu["menu"]
+        menu.delete(0, "end")
+        for label in labels:
+            menu.add_command(label=label, command=lambda l=label: self._on_mic_change(l))
+        sel = next((l for l, did in mapping.items() if did == current), None) or labels[0]
+        self._mic_var.set(sel)  # programmatic set doesn't fire _on_mic_change
+
+    def _on_mic_change(self, label):
+        """Save the picked mic via /api/config (sets the flag + hot-reloads)."""
+        self._mic_var.set(label)
+        device_id = self._mic_map.get(label, "default")
+        port = load_config().get("web_server", {}).get("port", 8080)
+        def _work():
+            try:
+                import urllib.request, json as _json
+                body = _json.dumps({"audio": {"default_microphone": device_id}}).encode()
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/config", data=body, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=5)
+                logging.info(f"[GUI] Microphone set to {device_id}")
+            except Exception as e:
+                logging.warning(f"[GUI] Saving microphone failed: {e}")
+        threading.Thread(target=_work, daemon=True).start()
 
     def _send_wd_command(self, cmd):
         """Client (monitor) window: ask the background daemon to run an update

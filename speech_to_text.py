@@ -4292,16 +4292,16 @@ BASE_DISK_GB = 5.0      # logs, session databases, temp audio, headroom
 # vram = GPU inference (fp16), disk = on-disk model size.
 MODEL_MEMORY_ESTIMATES = {
     "whisper": {
-        "tiny":   {"ram": 1.0,  "vram": 1.0,  "disk": 0.1},
-        "base":   {"ram": 1.2,  "vram": 1.0,  "disk": 0.15},
+        "tiny":   {"ram": 0.6,  "vram": 0.6,  "disk": 0.075},
+        "base":   {"ram": 0.8,  "vram": 0.8,  "disk": 0.15},
         "small":  {"ram": 2.5,  "vram": 2.0,  "disk": 0.5},
         "medium": {"ram": 5.0,  "vram": 5.0,  "disk": 1.5},
         "large":  {"ram": 10.0, "vram": 10.0, "disk": 3.0},
         "turbo":  {"ram": 6.0,  "vram": 6.0,  "disk": 1.6},
     },
     "faster-whisper": {  # CTranslate2: int8 on CPU, fp16 on GPU
-        "tiny":   {"ram": 0.5, "vram": 1.0, "disk": 0.1},
-        "base":   {"ram": 0.7, "vram": 1.0, "disk": 0.15},
+        "tiny":   {"ram": 0.3, "vram": 0.5, "disk": 0.075},
+        "base":   {"ram": 0.4, "vram": 0.6, "disk": 0.15},
         "small":  {"ram": 1.2, "vram": 1.5, "disk": 0.5},
         "medium": {"ram": 2.5, "vram": 3.0, "disk": 1.5},
         "large":  {"ram": 4.5, "vram": 4.5, "disk": 3.0},
