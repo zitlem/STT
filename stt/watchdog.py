@@ -116,6 +116,10 @@ _GUI_LOCK_PORT = 57339
 WD_CMD_FILE = os.path.join(DATA_DIR, ".wd-cmd")
 WD_STATUS_FILE = os.path.join(DATA_DIR, ".wd-status.json")
 
+# SOURCE git commit this process launched with; set in main(). A later divergence
+# from the current source HEAD means a restart would apply a pulled update.
+_LAUNCH_HEAD = None
+
 BACKOFF = [5, 10, 30, 60]       # seconds between crash restarts; capped at last entry
 STABLE_RUN_THRESHOLD = 30        # seconds of uptime before resetting crash counter
 UPDATE_HOUR = 1                  # hour (24h) at which daily update check fires
@@ -210,100 +214,76 @@ def _source_head():
         return ""
 
 
-def _strip_frozen_env():
-    """Drop env the frozen PyInstaller bootloader set before handing off to the
-    source venv python.
+def _relaunch_watchdog(pm=None):
+    """Restart the watchdog by re-running the current launcher. Never returns.
 
-    The bundled STT.app ships its own Tcl/Tk (8.6) and points TCL_LIBRARY /
-    TK_LIBRARY at it; the venv python's tkinter is a *different* Tcl/Tk (9.0),
-    so inheriting these makes it load the app's init.tcl and die with
-    'version conflict for package Tcl' — the GUI never opens. The DYLD_* paths
-    point into the app's Frameworks and must likewise not steer the venv
-    python's dynamic loader. Removing them lets the venv python use its own.
-    """
-    for var in ("TCL_LIBRARY", "TK_LIBRARY", "TCLLIBPATH", "TKPATH",
-                "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH"):
-        os.environ.pop(var, None)
-
-
-def _relaunch_watchdog(pm=None, mode_flag="--gui"):
-    """Restart the watchdog process in place, running the current SOURCE code.
-
-    Applies a pulled watchdog.py update without a reboot: re-execs into
-    SOURCE_DIR/stt/watchdog.py via the venv python (a frozen binary thereby
-    hands off to the updated source). Stops the managed server first so it
-    isn't orphaned; the fresh watchdog starts its own. Never returns.
+    Re-execs the *same* entry point: a frozen .app re-runs the app (so macOS
+    keeps its identity/icon), whose main() then loads the latest source
+    in-process; a source install re-runs its script. Clearing STT_WD_FROMSOURCE
+    makes the fresh run pick up any newer pulled source. Stops the managed
+    server first so it isn't orphaned; the fresh watchdog starts its own.
     """
     if pm is not None:
         try:
             pm.stop(timeout=20)  # also sets no_restart so the crash thread stays quiet
         except Exception as e:
             logging.warning(f"[WATCHDOG] Could not stop STT before relaunch: {e}")
-    python_bin = get_python_bin()
-    # Prefer the updated source watchdog; fall back to re-running ourselves
-    # (a frozen binary re-launches itself; a source run re-runs its script).
-    proc_name = None  # argv[0] override so the macOS menu bar reads "STT", not "python3"
-    if os.path.isfile(WATCHDOG_SCRIPT) and python_bin != sys.executable:
-        argv = [python_bin, WATCHDOG_SCRIPT, mode_flag]
-        proc_name = "STT"
-        _strip_frozen_env()  # handing to the venv python — don't leak the app's Tcl/Tk/DYLD env
-    elif _FROZEN:
-        argv = [sys.executable] + sys.argv[1:]  # re-launch the binary itself (keep its bundled env)
+    os.environ.pop("STT_WD_FROMSOURCE", None)  # let the fresh run re-load the latest source
+    if _FROZEN:
+        exe, argv = sys.argv[0], list(sys.argv)      # re-run the .app itself
     else:
-        argv = [sys.executable] + sys.argv      # python + this script + flags
-    os.environ["STT_WD_FROMSOURCE"] = "1"  # the relaunched process is source; don't hand off again
+        exe, argv = sys.executable, [sys.executable, *sys.argv]  # python + script + flags
     logging.info(f"[WATCHDOG] Relaunching: {' '.join(argv)}")
     if IS_WINDOWS:
         # os.execv is unreliable under a frozen build on Windows; spawn + exit.
         subprocess.Popen(argv, close_fds=False)
         os._exit(0)
     else:
-        os.execv(argv[0], [proc_name or argv[0]] + argv[1:])
+        os.execv(exe, argv)
 
 
 def _maybe_handoff_to_source(args):
-    """Frozen binary: re-exec into the pulled SOURCE watchdog so updates apply.
+    """Frozen binary: run the pulled SOURCE watchdog *in-process* so updates apply.
 
-    Once provisioned, the frozen bootstrapper hands off to
-    SOURCE_DIR/stt/watchdog.py (the git-updated code) instead of running its own
-    baked-in copy, so watchdog.py improvements arrive via the normal git pull
-    without shipping a new binary. Guarded against loops and broken pulls.
-    Source installs run stt/watchdog.py directly, so there's nothing to do.
+    Once provisioned, the frozen bootstrapper loads SOURCE_DIR/stt/watchdog.py
+    (the git-updated code) and runs its main() within this very process, instead
+    of exec-ing into the venv python. Staying inside the .app keeps its identity
+    and Dock icon (and its bundled Tcl/Tk), while still running the latest
+    watchdog code — for the daemon and the GUI window alike. The watchdog only
+    needs stdlib + tkinter + certifi + sentry, all bundled, so no venv is needed
+    (only the server subprocess uses the venv). Source installs run directly.
 
-    Only the headless daemon hands off. A launch that will show a window keeps
-    running the frozen .app, so macOS shows the real app icon and treats it as
-    the running app (a bare venv python would show a generic Python icon and
-    break 'click reactivates the running app'). GUI/monitor code therefore
-    updates with a new binary; server + daemon logic still hot-update.
+    Guarded against loops (STT_WD_FROMSOURCE) and broken pulls (py_compile); any
+    load/run failure falls back to the bundled code so a bad pull can't brick it.
     """
     if not _FROZEN or os.environ.get("STT_WD_FROMSOURCE"):
         return
-    will_show_window = args.monitor or args.gui or (not args.headless and detect_gui())
-    if will_show_window:
-        return
     if not is_provisioned():
         return  # first run: no source yet — provision as the frozen binary first
-    python_bin = get_python_bin()
-    if not (os.path.isfile(WATCHDOG_SCRIPT) and python_bin != sys.executable):
+    if not os.path.isfile(WATCHDOG_SCRIPT):
         return
-    # Broken-pull guard: never hand off into source that won't even compile, or
-    # a supervisor would relaunch the binary → hand off → crash, forever.
+    # Broken-pull guard: don't run source that won't even compile.
     try:
         import py_compile
         py_compile.compile(WATCHDOG_SCRIPT, doraise=True)
     except Exception as e:
         logging.warning(f"[WATCHDOG] Source watchdog won't compile ({e}); staying on bundled code")
         return
-    os.environ["STT_WD_FROMSOURCE"] = "1"
-    _strip_frozen_env()  # don't leak the frozen app's Tcl/Tk/DYLD env into the venv python
-    argv = [python_bin, WATCHDOG_SCRIPT, *sys.argv[1:]]
-    logging.info(f"[WATCHDOG] Handing off to source watchdog: {' '.join(argv)}")
-    if IS_WINDOWS:
-        subprocess.Popen(argv, close_fds=False)
-        os._exit(0)
-    else:
-        # argv[0] "STT" sets the macOS menu-bar / process name (else "python3").
-        os.execv(python_bin, ["STT", *argv[1:]])
+    os.environ["STT_WD_FROMSOURCE"] = "1"  # so the source's own hand-off check no-ops (no re-entry)
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("stt_watchdog_source", WATCHDOG_SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        logging.info("[WATCHDOG] Running source watchdog in-process (keeps app identity/icon)")
+        mod.main()
+        sys.exit(0)
+    except SystemExit:
+        raise
+    except Exception as e:
+        logging.error(f"[WATCHDOG] Source watchdog failed in-process ({e}); using bundled code")
+        os.environ.pop("STT_WD_FROMSOURCE", None)
+        return  # fall through: frozen main() continues with the bundled code
 
 
 def _quit_watchdog(pm=None):
@@ -337,11 +317,16 @@ def _write_wd_status(state, updater):
     """Publish the daemon's update status so a client (monitor) window — which
     has no access to the daemon's in-memory state — can display it."""
     try:
+        # A restart is needed when the daemon's running code is behind the pulled
+        # source (its launch commit != the current source HEAD).
+        cur = _source_head()
+        restart_needed = bool(_LAUNCH_HEAD) and bool(cur) and cur != _LAUNCH_HEAD
         data = {
             "last_update_check": state.get("last_update_check"),
             "last_update_result": state.get("last_update_result"),
             "pending": bool(getattr(updater, "_pending_update", None)),
             "status": state.get("status"),  # process-level: so a client can show Starting/Running/…
+            "restart_needed": restart_needed,
         }
         tmp = WD_STATUS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -1522,6 +1507,7 @@ class GuiWindow:
         # SOURCE commit at launch; if the checkout later advances (auto-update),
         # a watchdog restart would apply the newer code — surfaced on the button.
         self._launch_head = _source_head()
+        self._restart_needed = False  # published by the daemon (monitor mode)
         self._set_icon()
         self._build_ui()
         self.root.after(500, self._poll)
@@ -1695,12 +1681,14 @@ class GuiWindow:
         )
         self._update_now_btn.pack(side="left", padx=2)
 
-        # Restart the watchdog itself to load a pulled watchdog.py update. Shows
-        # "Restart Watchdog ●" once the source is ahead of the running process.
+        # "Restart" applies a pulled update (reloads the watchdog + server, and
+        # this window, from source). Hidden until a restart is actually needed;
+        # the container holds its slot so showing it doesn't shift other widgets.
+        self._restart_container = tk.Frame(root)
+        self._restart_container.pack(fill="x")
         self._restart_wd_btn = tk.Button(
-            root, text="Restart Watchdog", command=self._on_restart_watchdog
-        )
-        self._restart_wd_btn.pack(pady=(0, 2))
+            self._restart_container, text="Restart", command=self._on_restart_watchdog
+        )  # packed on demand by _refresh_checklist
 
         # Fully stop STT (server + background daemon). Closing the window only
         # hides it; this is how a user quits when it runs as a daemon.
@@ -1779,13 +1767,25 @@ class GuiWindow:
             cfg = load_config()
             self._model_ready = self._selected_model_downloaded(cfg)
             self._mic_ready = self._mic_configured(cfg)
-            # Hint on the Restart Watchdog button when an auto-update has
-            # advanced the source past what this process launched with.
+            # Show the Restart button only when a restart would apply a pulled
+            # update, hidden otherwise. Owner: the source advanced past what this
+            # process launched with. Client: the daemon says it's behind, or this
+            # frozen window is behind the pulled source (a window update waits).
             if self._restart_wd_btn.cget("text") != "Restarting…":
-                cur = _source_head()
-                behind = bool(self._launch_head) and bool(cur) and cur != self._launch_head
-                self._restart_wd_btn.config(
-                    text="Restart Watchdog ●" if behind else "Restart Watchdog")
+                if self._monitoring:
+                    needs_restart = self._restart_needed
+                    try:
+                        if read_version() != read_bundle_version():
+                            needs_restart = True
+                    except Exception:
+                        pass
+                else:
+                    cur = _source_head()
+                    needs_restart = bool(self._launch_head) and bool(cur) and cur != self._launch_head
+                if needs_restart and not self._restart_wd_btn.winfo_manager():
+                    self._restart_wd_btn.pack(pady=(0, 2))
+                elif not needs_restart and self._restart_wd_btn.winfo_manager():
+                    self._restart_wd_btn.pack_forget()
 
         def _set(mark, ok):
             mark.config(text="☑" if ok else "☐", fg="green" if ok else "red")
@@ -1907,6 +1907,7 @@ class GuiWindow:
                 chk = _st.get("last_update_check")
                 res = _st.get("last_update_result")
                 pending = bool(_st.get("pending"))
+                self._restart_needed = bool(_st.get("restart_needed"))
             except (OSError, ValueError):
                 pass
         else:
@@ -2014,25 +2015,24 @@ class GuiWindow:
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_restart_watchdog(self):
-        """Restart the watchdog to load a pulled watchdog.py update."""
+        """Restart to apply a pulled update — reloads the watchdog, server, and
+        this window from source (keeping the app icon via the in-process load)."""
         if self._transcription_running and not self._mb.askyesno(
-            "Restart Watchdog",
-            "This stops transcription and restarts the watchdog to apply the "
+            "Restart",
+            "This stops transcription briefly and restarts STT to apply the "
             "update. Continue?",
         ):
             return
         self._restart_wd_btn.config(state="disabled", text="Restarting…")
         if self._monitoring:
-            # The daemon owns the process; ask it to restart itself.
+            # Ask the daemon to restart itself (reloads watchdog + restarts the
+            # server from updated source), then re-run this window so its code
+            # updates too. Re-exec ends the Tk loop, which is expected.
             self._send_wd_command("restart")
-            self.root.after(6000, lambda: self._restart_wd_btn.config(
-                state="normal", text="Restart Watchdog"))
+            threading.Thread(target=lambda: _relaunch_watchdog(None), daemon=True).start()
             return
-        # Re-exec replaces this whole process, so ending the Tk loop is expected.
-        threading.Thread(
-            target=lambda: _relaunch_watchdog(self.pm, mode_flag="--gui"),
-            daemon=True,
-        ).start()
+        # Owner window: re-exec restarts the watchdog, server, and this window.
+        threading.Thread(target=lambda: _relaunch_watchdog(self.pm), daemon=True).start()
 
     def _on_quit_stt(self):
         """Fully stop STT (server + background daemon), not just close the window."""
@@ -2431,10 +2431,15 @@ def main():
     )
     args = parser.parse_args()
 
-    # Frozen binary: hand off to the git-updated source watchdog so watchdog.py
-    # updates take effect (headless only — see the function). No-op for source
-    # installs, interactive launches, and after a hand-off.
+    # Frozen binary: run the git-updated source watchdog in-process so watchdog.py
+    # updates take effect while keeping the .app identity/icon. No-op for source
+    # installs and after a hand-off.
     _maybe_handoff_to_source(args)
+
+    # Record the source commit this (now-final) code launched with, so a later
+    # auto-update advancing the checkout surfaces the "Restart" affordance.
+    global _LAUNCH_HEAD
+    _LAUNCH_HEAD = _source_head()
 
     if args.test_crash_report:
         _run_crash_report_test()
@@ -2527,7 +2532,7 @@ def main():
     crash_thread.start()
     updater.run_scheduler()
     # Control channel so a client (monitor) window can drive this daemon's
-    # updater (Check / Update Now / Restart Watchdog) even when we run headless.
+    # updater (Check / Update Now / Restart / Quit) even when we run headless.
     threading.Thread(target=_watchdog_control_loop, args=(state, pm, updater),
                      daemon=True).start()
     pm.start()
