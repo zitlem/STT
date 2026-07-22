@@ -4525,6 +4525,29 @@ def _estimate_memory_requirements(cfg, gpu_available=False):
             "min_cores": min_cores, "tier": tier, "parts": parts}
 
 
+def _largest_fitting_whisper(avail_gb, on_gpu=False):
+    """Largest Whisper size whose footprint (OS/runtime baseline + the model)
+    fits in avail_gb, or None if not even 'tiny' fits. Used to tell the user
+    which model they can actually run instead of just what's too big."""
+    key = "vram" if on_gpu else "ram"
+    base = GPU_HOST_RAM_GB if on_gpu else BASELINE_RAM_GB
+    for size in ("large", "turbo", "medium", "small", "base", "tiny"):
+        est = MODEL_MEMORY_ESTIMATES.get("whisper", {}).get(size)
+        if est and base + est.get(key, 0) <= avail_gb:
+            return size
+    return None
+
+
+def _memory_advice(avail_gb, on_gpu=False):
+    """A short 'here's what fits' hint appended to a memory-shortfall warning."""
+    fit = _largest_fitting_whisper(avail_gb, on_gpu=on_gpu)
+    if fit:
+        return f" Largest Whisper model that fits: '{fit}'."
+    base = GPU_HOST_RAM_GB if on_gpu else BASELINE_RAM_GB
+    tiny = base + MODEL_MEMORY_ESTIMATES["whisper"]["tiny"][("vram" if on_gpu else "ram")]
+    return f" Even the smallest model ('tiny', ~{tiny:.0f} GB) exceeds this — a larger machine is needed."
+
+
 def _format_parts(parts, key):
     """'Whisper 'small' via faster-whisper on CPU: ~1.2 GB; app/OS baseline: ~4 GB'."""
     out = []
@@ -4564,13 +4587,21 @@ def _check_system_requirements(cfg=None, hw=None):
         if hw.get("apple_silicon"):
             # Unified memory: CPU and GPU draw from the same pool.
             need_gb = need["ram_gb"] + need["vram_gb"]
+            avail = ram / 1024**3
             if 0 < ram < (need_gb - 0.5) * 1024**3:  # installed RAM reports slightly less
-                found.append(f"Configured models need ~{need_gb:.1f} GB of the {ram / 1024**3:.1f} GB unified memory on this Apple Silicon Mac "
-                             f"(CPU and GPU share one pool) — transcription may be slow or unstable")
+                # Severity scales with the shortfall: a big overshoot won't just
+                # be slow, the model likely won't load and the app can crash.
+                sev = "the model likely won't load and STT may crash" if need_gb > avail * 1.5 \
+                    else "transcription may be slow or unstable"
+                found.append(f"Configured models need ~{need_gb:.1f} GB of the {avail:.1f} GB unified memory on this Apple Silicon Mac "
+                             f"(CPU and GPU share one pool) — {sev}.{_memory_advice(avail, on_gpu=False)}")
         else:
+            avail = ram / 1024**3
             if 0 < ram < (need["ram_gb"] - 0.5) * 1024**3:
+                sev = "models likely won't load and STT may crash" if need["ram_gb"] > avail * 1.5 \
+                    else "transcription may be slow or unstable"
                 found.append(f"Configured models need ~{need['ram_gb']:.1f} GB RAM ({_format_parts(need['parts'], 'ram_gb')}) "
-                             f"but this PC has {ram / 1024**3:.1f} GB — transcription may be slow or unstable")
+                             f"but this PC has {avail:.1f} GB — {sev}.{_memory_advice(avail, on_gpu=False)}")
     except Exception:
         pass
     try:
