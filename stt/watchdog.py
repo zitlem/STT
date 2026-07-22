@@ -1881,11 +1881,13 @@ class GuiWindow:
             self._check_lbl.config(text=f"Last check: {chk}")
         if res:
             self._result_lbl.config(text=res)
-        # Surface a pending update (from a manual check or the hourly scheduler)
-        # on the Update Now button, unless a click is in flight.
+        # Update Now is clickable only when an update is actually available
+        # (pending, from a manual check or the hourly scheduler); otherwise it's
+        # disabled. Left alone while a click is in flight.
         if self._update_now_btn.cget("text") not in ("Updating…",):
             self._update_now_btn.config(
-                text="Update Now ●" if pending else "Update Now", state="normal"
+                text="Update Now ●" if pending else "Update Now",
+                state="normal" if pending else "disabled",
             )
 
         self._refresh_checklist(status)
