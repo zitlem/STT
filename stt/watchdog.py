@@ -1531,7 +1531,10 @@ class GuiWindow:
         # still provides the standard app menu (and its own Window/Help).
         root.config(menu=tk.Menu(root))
         root.resizable(False, False)
-        root.geometry("340x510")
+        # Fixed width, but let the height track the content (Tk sizes the window
+        # to its packed widgets when no explicit height is forced) — otherwise a
+        # hard-coded height clips the lower buttons as sections are added/shown.
+        root.minsize(340, 1)
 
         pad = {"padx": 12, "pady": 4}
 
