@@ -47,6 +47,7 @@ except Exception as e:
     _SSL_CTX = None
 
 IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
 
 # ---------------------------------------------------------------------------
 # Crash reporting is fully local: crashes are written to logs/crashes/ and
@@ -305,6 +306,33 @@ def _maybe_handoff_to_source(args):
         os.execv(python_bin, ["STT", *argv[1:]])
 
 
+def _quit_watchdog(pm=None):
+    """Fully stop STT: stop the managed server, and on macOS boot the LaunchAgents
+    out so KeepAlive doesn't relaunch the daemon. Never returns.
+
+    macOS: the daemon is a per-user LaunchAgent (KeepAlive=true) — a bare exit
+    would be relaunched, so `launchctl bootout` the daemon and the control-window
+    agent (which also closes any monitor window). Linux/Windows: the supervisor
+    doesn't restart a clean exit, so stopping + exiting is enough."""
+    try:
+        if pm is not None:
+            pm.stop(timeout=15)
+    except Exception as e:
+        logging.warning(f"[WATCHDOG] Error stopping STT during quit: {e}")
+    if IS_MACOS:
+        uid = str(os.getuid())
+        agents = os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents")
+        for label in ("com.stt.gui", "com.stt.watchdog"):
+            plist = os.path.join(agents, f"{label}.plist")
+            try:
+                subprocess.run(["launchctl", "bootout", f"gui/{uid}", plist],
+                               capture_output=True, timeout=10)
+            except Exception:
+                pass
+    logging.info("[WATCHDOG] Quit requested — STT stopped.")
+    os._exit(0)
+
+
 def _write_wd_status(state, updater):
     """Publish the daemon's update status so a client (monitor) window — which
     has no access to the daemon's in-memory state — can display it."""
@@ -361,6 +389,8 @@ def _watchdog_control_loop(state, pm, updater):
                 os.remove(WD_CMD_FILE)
                 if cmd == "restart":
                     _relaunch_watchdog(pm)  # never returns
+                elif cmd == "quit":
+                    _quit_watchdog(pm)  # never returns
                 elif not busy.is_set():
                     if cmd == "check":
                         threading.Thread(target=_run_check, daemon=True).start()
@@ -1672,6 +1702,12 @@ class GuiWindow:
         )
         self._restart_wd_btn.pack(pady=(0, 2))
 
+        # Fully stop STT (server + background daemon). Closing the window only
+        # hides it; this is how a user quits when it runs as a daemon.
+        tk.Button(
+            root, text="Quit STT", fg="#b00020", command=self._on_quit_stt
+        ).pack(pady=(0, 2))
+
         tk.Frame(root, height=1, bg="#cccccc").pack(fill="x", padx=12, pady=4)
 
         _footer = tk.Frame(root)
@@ -1997,6 +2033,23 @@ class GuiWindow:
             target=lambda: _relaunch_watchdog(self.pm, mode_flag="--gui"),
             daemon=True,
         ).start()
+
+    def _on_quit_stt(self):
+        """Fully stop STT (server + background daemon), not just close the window."""
+        if not self._mb.askyesno(
+            "Quit STT",
+            "Stop STT completely?\n\nThis stops transcription and the background "
+            "service. Re-open STT from Applications to start it again.",
+        ):
+            return
+        if self._monitoring:
+            # The daemon owns the process/LaunchAgents; ask it to quit, then close
+            # this client window (the daemon also boots out the control-window agent).
+            self._send_wd_command("quit")
+            self.root.destroy()
+            return
+        # Owner window: stop everything from here.
+        threading.Thread(target=lambda: _quit_watchdog(self.pm), daemon=True).start()
 
     def _on_config_change(self, *_args):
         """Trace callback: persist config whenever a field changes."""
