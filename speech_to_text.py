@@ -4502,9 +4502,17 @@ def _estimate_memory_requirements(cfg, gpu_available=False):
     try:
         _lt = cfg.get("live_translation", {})
         _remote = _lt.get("remote", {})
-        local_translation = bool(_lt.get("enabled")) and not (_remote.get("enabled") and _remote.get("endpoint"))
+        _enabled_local = bool(_lt.get("enabled")) and not (_remote.get("enabled") and _remote.get("endpoint"))
+        # Only count local translation toward the requirement when it's actually
+        # set up — enabled AND its model downloaded. Translation is on by default
+        # in config, so counting it before a model exists over-warned ("minimum 8
+        # for transcription + translation") on machines not doing translation.
+        _model_full = str(_lt.get("translation_model", ""))
+        _model_dir = os.path.join(MODELS_DIR, _model_full.replace("/", "--")) if _model_full else ""
+        _model_present = bool(_model_dir) and os.path.isdir(_model_dir)
+        local_translation = _enabled_local and _model_present
         if local_translation:
-            model_id = str(_lt.get("translation_model", "")).split("/")[-1]
+            model_id = _model_full.split("/")[-1]
             _add(f"NLLB '{model_id}'", "nllb", model_id, _lt.get("use_gpu"))
     except Exception:
         pass

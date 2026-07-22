@@ -1,11 +1,22 @@
 """Tests for the dynamic system-requirements estimate/warning logic."""
 
 import ast
+import os
+import shutil
 import sys
+import tempfile
 
 from conftest import REPO, extract_definitions
 
 SOURCE = "speech_to_text.py"
+
+# Fake models dir so the estimate's "translation model downloaded?" check has
+# somewhere to look; tests create/remove the NLLB subdir to simulate set-up.
+_MODELS_DIR = tempfile.mkdtemp(prefix="stt-test-models-")
+
+
+def _nllb_dir(nllb="facebook/nllb-200-distilled-600M"):
+    return os.path.join(_MODELS_DIR, nllb.replace("/", "--"))
 
 
 def _extract_constants(names):
@@ -24,6 +35,8 @@ def _extract_constants(names):
 def _ns():
     consts = _extract_constants(["BASELINE_RAM_GB", "GPU_HOST_RAM_GB", "BASE_DISK_GB", "MODEL_MEMORY_ESTIMATES"])
     consts["sys"] = sys
+    consts["os"] = os
+    consts["MODELS_DIR"] = _MODELS_DIR
     return extract_definitions(
         SOURCE,
         ["_normalize_whisper_size", "_estimate_memory_requirements",
@@ -106,11 +119,23 @@ class TestEstimate:
         assert need["ram_gb"] == BASELINE + EST["whisper"]["medium"]["ram"]
 
     def test_local_nllb_adds(self):
-        base = self.est(_cfg())
-        with_t = self.est(_cfg(translation=True))
+        # Counted only when the translation model is actually downloaded.
+        os.makedirs(_nllb_dir(), exist_ok=True)
+        try:
+            base = self.est(_cfg())
+            with_t = self.est(_cfg(translation=True))
+        finally:
+            shutil.rmtree(_nllb_dir(), ignore_errors=True)
         assert with_t["ram_gb"] == base["ram_gb"] + EST["nllb"]["nllb-200-distilled-600M"]["ram"]
         assert with_t["tier"] == "transcription + translation"
         assert with_t["min_cores"] == 8
+
+    def test_local_nllb_not_counted_without_model(self):
+        # Enabled but no model downloaded → not set up → transcription-only.
+        shutil.rmtree(_nllb_dir(), ignore_errors=True)
+        need = self.est(_cfg(translation=True))
+        assert need["tier"] == "transcription"
+        assert need["min_cores"] == 6
 
     def test_remote_nllb_adds_nothing(self):
         base = self.est(_cfg())
