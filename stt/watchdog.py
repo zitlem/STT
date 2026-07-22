@@ -286,6 +286,50 @@ def _maybe_handoff_to_source(args):
         return  # fall through: frozen main() continues with the bundled code
 
 
+def _sync_source_to_bundle():
+    """Bring the source checkout up to the installed app's version.
+
+    A newer .app installed over an older source checkout leaves the running
+    ('run') version behind the app ('app') version until the scheduled/manual
+    auto-update catches up. When the frozen bundle is newer than the source,
+    fast-forward the source to the bundle's release tag (and reinstall deps,
+    which may have changed) so a fresh install is immediately in sync. Frozen +
+    provisioned only; run it before handing off so the newer code is loaded.
+    """
+    if not _FROZEN or os.environ.get("STT_WD_FROMSOURCE"):
+        return
+    if not (shutil.which("git") and os.path.isdir(os.path.join(SOURCE_DIR, ".git"))):
+        return
+    try:
+        bundle = read_bundle_version()
+        source = read_version()
+        if parse_version(source) >= parse_version(bundle):
+            return  # source already at least as new as the app
+        logging.info(f"[WATCHDOG] Source ({source}) is behind the app ({bundle}); syncing…")
+        subprocess.run(["git", "-C", SOURCE_DIR, "fetch", "--depth", "1", "--force",
+                        "origin", "+refs/tags/*:refs/tags/*"],
+                       capture_output=True, timeout=120)
+        target = None
+        for ref in (f"v{bundle}", bundle):
+            if subprocess.run(["git", "-C", SOURCE_DIR, "rev-parse", "--verify", "--quiet", ref],
+                              capture_output=True).returncode == 0:
+                target = ref
+                break
+        if not target:
+            logging.warning(f"[WATCHDOG] No tag for {bundle}; leaving auto-update to catch up")
+            return
+        subprocess.run(["git", "-C", SOURCE_DIR, "reset", "--hard", target],
+                       capture_output=True, timeout=60)
+        subprocess.run(["git", "-C", SOURCE_DIR, "clean", "-fd"], capture_output=True, timeout=60)
+        try:
+            Provisioner(log=lambda m: logging.info(f"[SYNC] {m}")).install_deps_only()
+        except Exception as e:
+            logging.warning(f"[WATCHDOG] Dep sync after source bump failed: {e}")
+        logging.info(f"[WATCHDOG] Source synced to {read_version()}")
+    except Exception as e:
+        logging.warning(f"[WATCHDOG] Source sync skipped: {e}")
+
+
 def _quit_watchdog(pm=None):
     """Fully stop STT: stop the managed server, and on macOS boot the LaunchAgents
     out so KeepAlive doesn't relaunch the daemon. Never returns.
@@ -2433,6 +2477,12 @@ def main():
         help="Write a synthetic local crash dump to logs/crashes/ and exit",
     )
     args = parser.parse_args()
+
+    # Headless daemon only (clients would race on git): if a newer .app was
+    # installed over an older source checkout, fast-forward the source to the
+    # app's version before handing off, so 'run' matches 'app' immediately.
+    if not (args.monitor or args.gui or (not args.headless and detect_gui())):
+        _sync_source_to_bundle()
 
     # Frozen binary: run the git-updated source watchdog in-process so watchdog.py
     # updates take effect while keeping the .app identity/icon. No-op for source
