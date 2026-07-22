@@ -1649,7 +1649,7 @@ class GuiWindow:
             return mark
 
         self._chk_server = _step_row("Start the web server")
-        self._chk_model = _step_row("Download & select a model", ("Model Manager", "/model-manager"))
+        self._chk_model = _step_row("Download & select a model (faster-whisper recommended)", ("Model Manager", "/model-manager"))
         self._chk_mic = _step_row("Select a microphone", ("Settings", "/live-settings"))
         # Cache the disk/config-derived checks so _poll doesn't re-listdir every
         # second; recomputed on a counter tick or when config.json changes.

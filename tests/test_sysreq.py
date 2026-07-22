@@ -119,6 +119,16 @@ class TestEstimate:
         assert need["vram_gb"] == 0
         assert need["ram_gb"] == BASELINE + EST["whisper"]["medium"]["ram"]
 
+    def test_apple_silicon_unified_skips_host_copy(self):
+        # Discrete GPU keeps a host-side copy per model (GPU_HOST); unified
+        # memory shares one pool, so it must not be added.
+        discrete = self.est(_cfg(model="medium", use_gpu=True, ft_gpu=True), gpu=True)
+        unified = NS["_estimate_memory_requirements"](
+            _cfg(model="medium", use_gpu=True, ft_gpu=True), gpu_available=True, unified=True)
+        assert unified["vram_gb"] == discrete["vram_gb"] == EST["whisper"]["medium"]["vram"]
+        assert discrete["ram_gb"] == BASELINE + GPU_HOST
+        assert unified["ram_gb"] == BASELINE  # no phantom host copy on unified
+
     def test_local_nllb_adds(self):
         # Counted only when the translation model is actually downloaded.
         os.makedirs(_nllb_dir(), exist_ok=True)

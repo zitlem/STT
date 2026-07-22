@@ -4437,13 +4437,15 @@ def _probe_hardware():
     return hw
 
 
-def _estimate_memory_requirements(cfg, gpu_available=False):
+def _estimate_memory_requirements(cfg, gpu_available=False, unified=False):
     """Pure config math: what the configured models need to run.
 
     Returns {ram_gb, vram_gb, disk_gb, min_cores, tier, parts}; parts is a
     per-model breakdown for building warning messages. Unknown model names or
     malformed config contribute nothing (fail open). `gpu_available` decides
     whether use_gpu flags put a model on the GPU (vram) or the CPU (ram).
+    `unified` (Apple Silicon) means CPU and GPU share one pool, so there's no
+    separate host-side copy — the per-model GPU_HOST_RAM_GB is skipped.
     """
     ram_gb = BASELINE_RAM_GB
     vram_gb = 0.0
@@ -4464,9 +4466,10 @@ def _estimate_memory_requirements(cfg, gpu_available=False):
         part = {"label": label + (" on GPU" if on_gpu else " on CPU"), "ram_gb": 0.0, "vram_gb": 0.0}
         if on_gpu:
             vram_gb += est["vram"]
-            ram_gb += GPU_HOST_RAM_GB
             part["vram_gb"] = est["vram"]
-            part["ram_gb"] = GPU_HOST_RAM_GB
+            if not unified:  # discrete GPU keeps a host-side copy; unified doesn't
+                ram_gb += GPU_HOST_RAM_GB
+                part["ram_gb"] = GPU_HOST_RAM_GB
         else:
             ram_gb += est["ram"]
             part["ram_gb"] = est["ram"]
@@ -4525,27 +4528,31 @@ def _estimate_memory_requirements(cfg, gpu_available=False):
             "min_cores": min_cores, "tier": tier, "parts": parts}
 
 
-def _largest_fitting_whisper(avail_gb, on_gpu=False):
+def _largest_fitting_whisper(avail_gb, on_gpu=False, table="faster-whisper"):
     """Largest Whisper size whose footprint (OS/runtime baseline + the model)
-    fits in avail_gb, or None if not even 'tiny' fits. Used to tell the user
-    which model they can actually run instead of just what's too big."""
+    fits in avail_gb, or None if not even 'tiny' fits. Uses the faster-whisper
+    (CTranslate2 int8) estimates by default — the recommended, lighter backend —
+    so 'what fits' reflects the best-case setup."""
     key = "vram" if on_gpu else "ram"
-    base = GPU_HOST_RAM_GB if on_gpu else BASELINE_RAM_GB
+    base = 0.0 if on_gpu else BASELINE_RAM_GB  # unified: model shares the pool, no host copy
     for size in ("large", "turbo", "medium", "small", "base", "tiny"):
-        est = MODEL_MEMORY_ESTIMATES.get("whisper", {}).get(size)
+        est = MODEL_MEMORY_ESTIMATES.get(table, {}).get(size)
         if est and base + est.get(key, 0) <= avail_gb:
             return size
     return None
 
 
 def _memory_advice(avail_gb, on_gpu=False):
-    """A short 'here's what fits' hint appended to a memory-shortfall warning."""
+    """A short 'here's what fits' hint appended to a memory-shortfall warning,
+    steering toward faster-whisper (much lighter than openai-whisper)."""
     fit = _largest_fitting_whisper(avail_gb, on_gpu=on_gpu)
     if fit:
-        return f" Largest Whisper model that fits: '{fit}'."
-    base = GPU_HOST_RAM_GB if on_gpu else BASELINE_RAM_GB
-    tiny = base + MODEL_MEMORY_ESTIMATES["whisper"]["tiny"][("vram" if on_gpu else "ram")]
-    return f" Even the smallest model ('tiny', ~{tiny:.0f} GB) exceeds this — a larger machine is needed."
+        return f" With faster-whisper (lighter), the largest model that fits is '{fit}'."
+    key = "vram" if on_gpu else "ram"
+    base = 0.0 if on_gpu else BASELINE_RAM_GB
+    tiny = base + MODEL_MEMORY_ESTIMATES["faster-whisper"]["tiny"][key]
+    return (f" Even faster-whisper 'tiny' (~{tiny:.1f} GB) exceeds this — "
+            f"a machine with more memory is needed.")
 
 
 def _format_parts(parts, key):
@@ -4571,7 +4578,8 @@ def _check_system_requirements(cfg=None, hw=None):
         if hw is None:
             hw = _probe_hardware()
         gpu_available = bool(hw.get("has_cuda") or hw.get("apple_silicon"))
-        need = _estimate_memory_requirements(cfg, gpu_available=gpu_available)
+        need = _estimate_memory_requirements(cfg, gpu_available=gpu_available,
+                                             unified=bool(hw.get("apple_silicon")))
     except Exception:
         return []
 
@@ -6192,7 +6200,8 @@ def get_system_requirements():
     details = {}
     try:
         hw = _probe_hardware()
-        need = _estimate_memory_requirements(config, gpu_available=bool(hw.get("has_cuda") or hw.get("apple_silicon")))
+        need = _estimate_memory_requirements(config, gpu_available=bool(hw.get("has_cuda") or hw.get("apple_silicon")),
+                                             unified=bool(hw.get("apple_silicon")))
         details = {
             "ram_gb_needed": round(need["ram_gb"], 1),
             "vram_gb_needed": round(need["vram_gb"], 1),
