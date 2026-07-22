@@ -1789,16 +1789,15 @@ class GuiWindow:
 
     @staticmethod
     def _mic_configured(cfg):
-        """True once the user has actively chosen a microphone in Settings.
-
-        microphone_selected is set by the server whenever the audio device is
-        saved (including the Default device). The other clauses keep configs
-        saved before that flag existed working.
+        """True when an audio input is configured. The system default ('default')
+        counts — on a single-mic machine it's the only option, so requiring an
+        explicit non-default pick was a dead-end. Only a truly empty value reads
+        as 'no mic configured'. Mirrors _mic_explicitly_selected in the server.
         """
         audio = cfg.get("audio", {})
-        return bool(audio.get("microphone_selected")) or \
+        return bool(audio.get("default_microphone")) or \
             bool(audio.get("default_microphone_name")) or \
-            audio.get("default_microphone", "default") != "default"
+            bool(audio.get("microphone_selected"))
 
     def _refresh_checklist(self, status):
         """Update the getting-started rows. Cheap config/HTTP-derived row 1 is

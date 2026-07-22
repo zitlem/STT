@@ -6106,17 +6106,17 @@ def _selected_model_downloaded(cfg):
 
 
 def _mic_explicitly_selected(cfg):
-    """True once the user has actively chosen a microphone in Settings.
+    """True when an audio input is configured.
 
-    microphone_selected is set whenever the audio device is saved (including the
-    Default device — see the settings-save handler). The other two clauses keep
-    configs saved before that flag existed working: a non-empty stable name, or
-    a default_microphone that isn't the initial literal 'default'.
+    The system default ('default') counts: on a single-mic machine it is the
+    only option in the dropdown, so requiring an explicit non-default pick was a
+    dead-end (you literally can't choose anything else). Only a truly empty
+    value — or having none of the audio keys — reads as 'no mic configured'.
     """
     audio = cfg.get("audio", {})
-    return bool(audio.get("microphone_selected")) or \
+    return bool(audio.get("default_microphone")) or \
         bool(audio.get("default_microphone_name")) or \
-        audio.get("default_microphone", "default") != "default"
+        bool(audio.get("microphone_selected"))
 
 
 def _setup_status():
