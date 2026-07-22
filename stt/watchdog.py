@@ -260,7 +260,7 @@ def _relaunch_watchdog(pm=None, mode_flag="--gui"):
         os.execv(argv[0], [proc_name or argv[0]] + argv[1:])
 
 
-def _maybe_handoff_to_source():
+def _maybe_handoff_to_source(args):
     """Frozen binary: re-exec into the pulled SOURCE watchdog so updates apply.
 
     Once provisioned, the frozen bootstrapper hands off to
@@ -268,8 +268,17 @@ def _maybe_handoff_to_source():
     baked-in copy, so watchdog.py improvements arrive via the normal git pull
     without shipping a new binary. Guarded against loops and broken pulls.
     Source installs run stt/watchdog.py directly, so there's nothing to do.
+
+    Only the headless daemon hands off. A launch that will show a window keeps
+    running the frozen .app, so macOS shows the real app icon and treats it as
+    the running app (a bare venv python would show a generic Python icon and
+    break 'click reactivates the running app'). GUI/monitor code therefore
+    updates with a new binary; server + daemon logic still hot-update.
     """
     if not _FROZEN or os.environ.get("STT_WD_FROMSOURCE"):
+        return
+    will_show_window = args.monitor or args.gui or (not args.headless and detect_gui())
+    if will_show_window:
         return
     if not is_provisioned():
         return  # first run: no source yet — provision as the frozen binary first
@@ -513,12 +522,18 @@ class ProvisionError(Exception):
 
 
 def is_provisioned():
-    """True when SOURCE is checked out with a venv the worker can run from."""
+    """True when SOURCE is checked out with a venv the worker can run from.
+
+    Checks the venv interpreter *file* exists rather than 'get_python_bin() !=
+    sys.executable' — that comparison is False whenever this process already is
+    the venv python (i.e. after the hand-off), which made a handed-off watchdog
+    re-run first-time setup on every launch.
+    """
     have_source = os.path.isdir(os.path.join(SOURCE_DIR, ".git")) or os.path.exists(PROVISION_MARKER)
     return (
         have_source
         and os.path.isfile(STT_SCRIPT)
-        and get_python_bin() != sys.executable
+        and os.path.isfile(venv_python())
     )
 
 
@@ -865,7 +880,9 @@ class Provisioner:
 
     def _step_venv(self):
         venv_dir = os.path.join(SOURCE_DIR, ".venv")
-        if os.path.isfile(get_python_bin()) and get_python_bin() != sys.executable:
+        # Skip when the venv interpreter already exists (keying off its file, not
+        # '!= sys.executable', which is False when we're running the venv python).
+        if os.path.isfile(venv_python(venv_dir)):
             self.log("  venv present")
             return
         # --clear: we only get here when no *valid* venv exists, but a broken or
@@ -2325,8 +2342,9 @@ def main():
     args = parser.parse_args()
 
     # Frozen binary: hand off to the git-updated source watchdog so watchdog.py
-    # updates take effect. No-op for source installs and after a hand-off.
-    _maybe_handoff_to_source()
+    # updates take effect (headless only — see the function). No-op for source
+    # installs, interactive launches, and after a hand-off.
+    _maybe_handoff_to_source(args)
 
     if args.test_crash_report:
         _run_crash_report_test()
