@@ -92,13 +92,11 @@ PLIST_EOF
 
 chown "$CONSOLE_USER":staff "$GUI_PLIST"
 launchctl bootout "gui/$CONSOLE_UID" "$GUI_PLIST" 2>/dev/null || true
+# bootstrap with RunAtLoad=true already opens the control window now; a separate
+# `open -a` would race it and pop a second, duplicate window, so don't add one.
 launchctl bootstrap "gui/$CONSOLE_UID" "$GUI_PLIST" 2>/dev/null \
     || launchctl asuser "$CONSOLE_UID" launchctl load -w "$GUI_PLIST" 2>/dev/null \
     || true
-
-# "Launch now": open the control window immediately after an interactive install
-# (mirrors the Windows installer's post-install launch). Never fail the install.
-launchctl asuser "$CONSOLE_UID" open -a /Applications/STT.app --args --monitor 2>/dev/null || true
 
 echo "[STT] LaunchAgents installed for $CONSOLE_USER (daemon + control window)."
 exit 0

@@ -106,6 +106,9 @@ UV_PYTHON_VERSION = "3.11"
 
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
+# Separate lock so only one desktop control window opens at a time (57337 guards
+# the daemon; monitors don't take it, so they need their own guard).
+_GUI_LOCK_PORT = 57339
 
 # Control channel so a client (monitor) window can drive the headless daemon's
 # updater: the client drops a one-word command; the daemon publishes status.
@@ -476,6 +479,25 @@ def acquire_lock(open_browser_if_taken=False):
         print("[ERROR] Another watchdog instance is already running.", file=sys.stderr)
         sys.exit(1)
     return sock  # keep reference alive; OS releases on process exit
+
+
+def acquire_gui_lock():
+    """Single-control-window guard.
+
+    Only one desktop control window should exist at a time. On macOS several
+    launches can race in (the com.stt.gui LaunchAgent, the post-install open,
+    a user re-opening the app) — each would otherwise pop its own window.
+    Binding a dedicated loopback port lets the first control window win and
+    later ones detect it and exit. Returns the socket (keep alive) or None if a
+    control window is already up. Separate from the daemon lock (57337), which
+    monitors deliberately don't take."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+    try:
+        sock.bind(("127.0.0.1", _GUI_LOCK_PORT))
+    except OSError:
+        return None
+    return sock
 
 
 # ---------------------------------------------------------------------------
@@ -2318,6 +2340,10 @@ def main():
         if not cfg.get("watchdog", {}).get("show_control_window", True):
             logging.info("[MONITOR] show_control_window is false; not opening window.")
             return
+        _gui_lock = acquire_gui_lock()  # noqa: F841 — keep socket alive for the window's lifetime
+        if _gui_lock is None:
+            logging.info("[MONITOR] A control window is already open; not opening another.")
+            return
         try:
             gui = GuiWindow(state=None, pm=None, updater=None, monitoring=True)
             gui.mainloop()
@@ -2331,7 +2357,12 @@ def main():
     _lock = acquire_lock(open_browser_if_taken=_will_be_gui)  # noqa: F841 — keep socket alive
 
     if _lock is None:
-        # Headless daemon is already running — open a monitoring-only GUI.
+        # Headless daemon is already running — open a monitoring-only GUI, unless
+        # a control window is already up (avoid stacking duplicate windows).
+        _gui_lock = acquire_gui_lock()  # noqa: F841 — keep socket alive
+        if _gui_lock is None:
+            logging.info("[MONITOR] A control window is already open; exiting.")
+            return
         try:
             gui = GuiWindow(state=None, pm=None, updater=None, monitoring=True)
             gui.mainloop()
@@ -2393,6 +2424,12 @@ def main():
                      daemon=True).start()
     pm.start()
 
+    _gui_lock = acquire_gui_lock() if use_gui else None  # noqa: F841 — keep socket alive
+    if use_gui and _gui_lock is None:
+        # A control window is already open (e.g. a --monitor client); don't open a
+        # second one — keep managing the server headlessly.
+        logging.info("[WATCHDOG] A control window is already open; running headless.")
+        use_gui = False
     if use_gui:
         try:
             gui = GuiWindow(state, pm, updater)
