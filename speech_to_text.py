@@ -855,6 +855,11 @@ def load_translation_model(use_gpu=True, model_id=None):
     return model, tokenizer
 
 
+# Glossary application and the TranslationCache live in stt/translation_utils.py
+# (importable, unit-tested); the wrapper below resolves config/session state.
+from stt.translation_utils import TranslationCache, apply_glossary as _apply_glossary_dict
+
+
 def _apply_glossary(text, source_lang, target_lang):
     """Apply NLLB glossary post-processing replacements from custom dictionary."""
     try:
@@ -876,22 +881,7 @@ def _apply_glossary(text, source_lang, target_lang):
             with open(dict_file, "r", encoding="utf-8") as f:
                 dictionary = _json.load(f)
 
-        glossary_key = f"{source_lang}_to_{target_lang}"
-        glossary = dictionary.get("glossary", {}).get(glossary_key, {})
-        if not glossary:
-            return text
-
-        import re
-        # Longest terms first so a short term can't clobber a longer one containing it.
-        # Lookarounds instead of \b: terms may start/end with punctuation, where \b
-        # silently fails. Lambda replacement so backslashes in the target aren't
-        # treated as regex templates. Note: \w matches CJK, so terms embedded in
-        # unspaced CJK runs won't match.
-        for source_term, target_term in sorted(glossary.items(), key=lambda kv: -len(kv[0])):
-            pattern = r"(?<!\w)" + re.escape(source_term) + r"(?!\w)"
-            text = re.sub(pattern, lambda m, t=target_term: t, text, flags=re.IGNORECASE)
-
-        return text
+        return _apply_glossary_dict(text, source_lang, target_lang, dictionary)
     except Exception as e:
         print(f"[WARNING] Glossary application failed: {e}")
         return text
@@ -1472,90 +1462,6 @@ def synthesize_tts(text, language="en"):
     else:
         print(f"[TTS ERROR] Unknown backend: {backend}")
         return None, None
-
-
-class TranslationCache:
-    """Cache translated segments to avoid re-translating"""
-
-    def __init__(self, max_size=1000):
-        self._cache = {}  # {segment_id: {original, translated, target_lang}}
-        self._max_size = max_size
-        self._lock = threading.Lock()
-        self._target_lang = None
-
-    def get(self, segment_id, original_text, target_lang, accept_stale_lang=False):
-        """Get cached translation or None.
-        If accept_stale_lang=True, return cached translation even if target_lang differs
-        (used to avoid retranslating old segments after a hot language switch)."""
-        with self._lock:
-            entry = self._cache.get(segment_id)
-            if entry and entry['original'] == original_text and entry['target_lang'] == target_lang:
-                return entry['translated']
-            if accept_stale_lang and entry and entry['original'] == original_text:
-                return entry['translated']
-            return None
-
-    def _evict_if_full(self):
-        """Remove oldest entries when full (insertion order). Caller must hold _lock."""
-        if len(self._cache) >= self._max_size:
-            oldest = list(self._cache.keys())[:100]
-            for key in oldest:
-                del self._cache[key]
-
-    def set(self, segment_id, original_text, translated_text, target_lang):
-        """Cache a translation"""
-        with self._lock:
-            self._evict_if_full()
-            self._cache[segment_id] = {
-                'original': original_text,
-                'translated': translated_text,
-                'target_lang': target_lang
-            }
-
-    def invalidate(self, segment_id):
-        """Invalidate a specific cached translation (e.g., after correction)"""
-        with self._lock:
-            if segment_id in self._cache:
-                del self._cache[segment_id]
-
-    def set_with_extras(self, segment_id, original_text, translated_text, target_lang, confidence=None, alternatives=None):
-        """Cache a translation with confidence and alternatives"""
-        with self._lock:
-            self._evict_if_full()
-            self._cache[segment_id] = {
-                'original': original_text,
-                'translated': translated_text,
-                'target_lang': target_lang,
-                'confidence': confidence,
-                'alternatives': alternatives or [],
-            }
-
-    def get_extras(self, segment_id):
-        """Get cached confidence and alternatives for a segment"""
-        with self._lock:
-            entry = self._cache.get(segment_id)
-            if entry:
-                return {
-                    'confidence': entry.get('confidence'),
-                    'alternatives': entry.get('alternatives', []),
-                }
-            return None
-
-    def clear(self):
-        """Clear all cached translations"""
-        with self._lock:
-            self._cache.clear()
-            print("[LIVE-TRANSLATION] Translation cache cleared")
-
-    def get_size(self):
-        """Get current cache size"""
-        with self._lock:
-            return len(self._cache)
-
-    def max_segment_id(self):
-        """Highest integer segment id currently cached, or 0 if none"""
-        with self._lock:
-            return max((sid for sid in self._cache if isinstance(sid, int)), default=0)
 
 
 # Global translation cache instance
