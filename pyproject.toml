@@ -52,6 +52,9 @@ disable_error_code = ["union-attr"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Repo root on sys.path so tests import the stt/ package regardless of how
+# pytest is invoked (`uv run pytest` doesn't add the cwd, `python -m pytest` does).
+pythonpath = ["."]
 
 # Coverage is measured over the whole stt/ package, which grows as pure logic
 # is extracted out of speech_to_text.py (which cannot be imported — it has
