@@ -121,3 +121,71 @@ class TestWriteVersion:
         watchdog.write_version("26.1.64")
         assert vf.read_text() == "26.1.64\n"
         assert sorted(p.name for p in tmp_path.iterdir()) == ["VERSION"]
+
+
+class TestStepPythonUntrustedMountFallback:
+    """Windows 24H2 blocks elevated processes from traversing user-created
+    junctions (os error 448) — uv's default Python store can be behind one
+    (OneDrive-redirected %APPDATA%). _step_python must retry with the store
+    relocated to UV_PYTHON_FALLBACK_DIR, and _step_venv must reuse that env."""
+
+    ERR_448 = watchdog.ProvisionError(
+        "command failed (2): uv python install 3.11 — last output: "
+        "error: Failed to create Python minor version link directory | "
+        "Caused by: The path cannot be traversed because it contains an "
+        "untrusted mount point. (os error 448)"
+    )
+
+    def _provisioner(self, run_impl):
+        p = watchdog.Provisioner(log=lambda m: None)
+        p._uv = "uv"
+        p._run = run_impl
+        return p
+
+    def test_retries_with_relocated_store(self):
+        calls = []
+
+        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            calls.append((list(cmd), extra_env))
+            if len(calls) == 1:
+                raise self.ERR_448
+            return 0
+
+        p = self._provisioner(fake_run)
+        p._step_python()
+
+        assert len(calls) == 2
+        assert calls[0][1] is None
+        assert calls[1][1] == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
+        assert p._uv_env == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
+
+    def test_unrelated_failure_is_not_retried(self):
+        calls = []
+
+        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            calls.append(list(cmd))
+            raise watchdog.ProvisionError("command failed (1): uv python install 3.11 — last output: network unreachable")
+
+        p = self._provisioner(fake_run)
+        try:
+            p._step_python()
+            raise AssertionError("expected ProvisionError")
+        except watchdog.ProvisionError:
+            pass
+        assert len(calls) == 1
+        assert p._uv_env is None
+
+    def test_venv_reuses_fallback_env(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(watchdog, "SOURCE_DIR", str(tmp_path))
+        seen = {}
+
+        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            seen["cmd"], seen["extra_env"] = list(cmd), extra_env
+            return 0
+
+        p = self._provisioner(fake_run)
+        p._uv_env = {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
+        p._step_venv()
+
+        assert seen["extra_env"] == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
+        assert "venv" in seen["cmd"]

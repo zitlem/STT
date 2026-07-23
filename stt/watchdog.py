@@ -105,6 +105,12 @@ WATCHDOG_SCRIPT = os.path.join(SOURCE_DIR, "stt", "watchdog.py")
 
 # uv-provisioned Python for the venv (see requirements.txt / CI).
 UV_PYTHON_VERSION = "3.11"
+# Fallback store for uv-managed Pythons. uv's default (%APPDATA%\uv\python on
+# Windows) can sit behind a user-created junction — OneDrive folder redirection,
+# a relocated profile — that Windows 11 24H2 refuses to let an elevated process
+# traverse ("untrusted mount point", os error 448; seen in the field). When
+# `uv python install` fails that way, we retry with the store under DATA_DIR.
+UV_PYTHON_FALLBACK_DIR = os.path.join(DATA_DIR, "uv-python")
 
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
@@ -655,6 +661,9 @@ class Provisioner:
     def __init__(self, log=None):
         self.log = log or (lambda m: logging.info(m))
         self._uv = None  # resolved uv path
+        # Extra env for uv python/venv steps; set when the managed-Python store
+        # is relocated to UV_PYTHON_FALLBACK_DIR (see _step_python).
+        self._uv_env = None
 
     # -- orchestration -------------------------------------------------------
 
@@ -780,8 +789,19 @@ class Provisioner:
 
     def _step_python(self):
         # uv-managed Python removes any dependency on a system Python.
-        self._run([self._uv, "python", "install", UV_PYTHON_VERSION],
-                  desc=f"uv python install {UV_PYTHON_VERSION}")
+        try:
+            self._run([self._uv, "python", "install", UV_PYTHON_VERSION],
+                      desc=f"uv python install {UV_PYTHON_VERSION}")
+        except ProvisionError as e:
+            msg = str(e)
+            if "untrusted mount point" not in msg and "os error 448" not in msg:
+                raise
+            self.log("  default uv Python dir is behind an untrusted mount point; "
+                     f"retrying with the store under {UV_PYTHON_FALLBACK_DIR}")
+            self._uv_env = {"UV_PYTHON_INSTALL_DIR": UV_PYTHON_FALLBACK_DIR}
+            self._run([self._uv, "python", "install", UV_PYTHON_VERSION],
+                      desc=f"uv python install {UV_PYTHON_VERSION} (fallback dir)",
+                      extra_env=self._uv_env)
 
     def _step_git(self):
         if _git_usable():
@@ -954,8 +974,10 @@ class Provisioner:
         # partial .venv dir may still be present (e.g. an interrupted first run).
         # Without --clear, `uv venv` fails with "already exists" (exit 2) and
         # provisioning aborts forever. Matches install.sh's `uv venv --clear`.
+        # _uv_env carries UV_PYTHON_INSTALL_DIR when _step_python fell back to
+        # the relocated store — uv must look there to find the interpreter.
         self._run([self._uv, "venv", venv_dir, "--clear", "--python", UV_PYTHON_VERSION],
-                  desc="uv venv")
+                  desc="uv venv", extra_env=self._uv_env)
 
     def install_deps_only(self, log=None):
         """Resolve uv and (re)install dependencies — reused by the auto-updater."""
