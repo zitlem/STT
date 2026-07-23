@@ -382,7 +382,7 @@ class FFmpegAudioCapture:
                 else:
                     # Unix: use select to wait for data with timeout
                     try:
-                        ready, _, _ = select.select([self.process.stdout], [], [], 2.0)
+                        ready, _, _ = select.select([self.process.stdout], [], [], 2.0)  # type: ignore[type-var]  # stdout=PIPE at start()
                     except (ValueError, OSError) as e:
                         print(f"[FFMPEG] Select error: {e}", flush=True)
                         break

@@ -24,7 +24,9 @@ ignore = [
 # Type checking is scoped to the stt/ package (the logic layer); the monolith
 # can't be imported, so it stays unchecked until its logic is extracted here.
 files = ["stt"]
-python_version = "3.9"
+# Runtime target is 3.9 (see ruff target-version), but mypy >=1.19 dropped
+# 3.9 analysis support — 3.10 is the closest it accepts.
+python_version = "3.10"
 check_untyped_defs = true
 ignore_missing_imports = true
 
