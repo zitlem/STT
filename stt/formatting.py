@@ -12,8 +12,9 @@ import json
 import os
 import re
 import sqlite3
+from typing import List, Optional
 
-def format_transcription(segments, format_type):
+def format_transcription(segments: List[dict], format_type: str) -> str:
     """
     Format transcription segments into requested format.
 
@@ -61,7 +62,7 @@ def format_transcription(segments, format_type):
         return "\n".join([seg["text"] for seg in segments])
 
 
-def format_timestamp_srt(seconds):
+def format_timestamp_srt(seconds: float) -> str:
     """Format timestamp for SRT format: HH:MM:SS,mmm"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -70,7 +71,7 @@ def format_timestamp_srt(seconds):
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
-def format_timestamp_vtt(seconds):
+def format_timestamp_vtt(seconds: float) -> str:
     """Format timestamp for VTT format: HH:MM:SS.mmm"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -78,7 +79,7 @@ def format_timestamp_vtt(seconds):
     millis = int((seconds % 1) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
 
-def convert_db_to_srt(db_path, html_enabled=True, highlight_config_path=None):
+def convert_db_to_srt(db_path: Optional[str], html_enabled: bool = True, highlight_config_path: Optional[str] = None) -> Optional[str]:
     """
     Convert a Transcriptions.db file to SRT subtitle format.
 
@@ -181,7 +182,7 @@ def convert_db_to_srt(db_path, html_enabled=True, highlight_config_path=None):
         traceback.print_exc()
         return None
 
-def convert_db_to_translation_srt(db_path):
+def convert_db_to_translation_srt(db_path: Optional[str]) -> Optional[str]:
     """Convert translated text from a Transcriptions.db to SRT subtitle format."""
     from datetime import datetime
 
@@ -249,7 +250,7 @@ def convert_db_to_translation_srt(db_path):
         print(f"[SRT-TRANSLATION] Error: {e}")
         return None
 
-def apply_word_highlighting_server(text, config):
+def apply_word_highlighting_server(text: str, config: Optional[dict]) -> str:
     """
     Apply word highlighting to text using the highlighting configuration.
     Server-side equivalent of the JavaScript applyWordHighlighting() function.
@@ -308,7 +309,7 @@ def apply_word_highlighting_server(text, config):
 
     return result
 
-def convert_db_to_html(db_path, highlight_config_path=None):
+def convert_db_to_html(db_path: Optional[str], highlight_config_path: Optional[str] = None) -> Optional[str]:
     """
     Convert a Transcriptions.db file to HTML format with word highlighting.
 
@@ -826,7 +827,7 @@ def convert_db_to_html(db_path, highlight_config_path=None):
         traceback.print_exc()
         return None
 
-def format_file_size(bytes_value):
+def format_file_size(bytes_value: float) -> str:
     """Convert bytes to human-readable format"""
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if bytes_value < 1024.0:

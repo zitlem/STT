@@ -30,5 +30,10 @@ jobs:
           uv pip install -r requirements-dev.txt certifi
       - name: Lint
         run: uv run ruff check .
+      - name: Type check (stt/ package)
+        run: uv run mypy
       - name: Test with coverage
-        run: uv run pytest --cov --cov-report=term
+        # Ratchet: fail only if stt/ coverage drops below the recorded
+        # watermark (45% local on 2026-07-23, minus slack for platform-specific
+        # lines on the Linux runner). Raise it as coverage grows; never lower it.
+        run: uv run pytest --cov --cov-report=term --cov-fail-under=42

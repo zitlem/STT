@@ -9,9 +9,10 @@ thin wrappers in speech_to_text.py supplying the live config.
 
 import re
 from difflib import SequenceMatcher
+from typing import List, Optional, Sequence, Tuple
 
 
-def filter_hallucinated_text(text, language="auto"):
+def filter_hallucinated_text(text: Optional[str], language: str = "auto") -> Optional[str]:
     """
     Filter out hallucinated foreign characters when transcribing specific languages.
     Whisper sometimes hallucinates random Chinese/Japanese/Korean characters
@@ -61,14 +62,14 @@ DEFAULT_WHISPER_HALLUCINATIONS = [
 ]
 
 
-def get_hallucination_phrases(hallucination_config):
+def get_hallucination_phrases(hallucination_config: dict) -> List[str]:
     """Get hallucination phrases from the hallucination_filter config section, falling back to defaults."""
     if not hallucination_config.get("enabled", True):
         return []  # Filter disabled
     return hallucination_config.get("phrases", DEFAULT_WHISPER_HALLUCINATIONS)
 
 
-def normalize_for_hallucination_check(text):
+def normalize_for_hallucination_check(text: Optional[str]) -> str:
     """Normalize text for hallucination comparison: lowercase, remove apostrophes and punctuation."""
     if not text:
         return ""
@@ -83,7 +84,7 @@ def normalize_for_hallucination_check(text):
     return normalized
 
 
-def apply_profanity_filter(text, cfg):
+def apply_profanity_filter(text: str, cfg: dict) -> str:
     """Replace broadcast-forbidden words with **** (or configured replacement).
 
     cfg is the profanity_filter config section.
@@ -100,7 +101,7 @@ def apply_profanity_filter(text, cfg):
     return re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
 
-def is_whisper_hallucination(text, phrases):
+def is_whisper_hallucination(text: Optional[str], phrases: Sequence[str]) -> bool:
     """Check if text is a known Whisper hallucination (exact phrase match, case/punctuation insensitive)."""
     if not text:
         return False
@@ -115,7 +116,7 @@ def is_whisper_hallucination(text, phrases):
     return False
 
 
-def split_into_sentences(text):
+def split_into_sentences(text: str) -> Tuple[List[str], str]:
     """
     Split text into complete sentences and remainder.
 
@@ -145,7 +146,7 @@ def split_into_sentences(text):
     return sentences, remainder
 
 
-def count_sentence_units(text):
+def count_sentence_units(text: str) -> int:
     """Count sentence units in text (a trailing incomplete fragment counts as one)."""
     sentences, remainder = split_into_sentences(text)
     return len(sentences) + (1 if remainder else 0)
@@ -154,7 +155,7 @@ def count_sentence_units(text):
 _ctx_align_stats = {"exact": 0, "proportional": 0, "failed": 0}
 
 
-def extract_context_translation(combined_translated, num_context_sentences, source_char_ratio=None):
+def extract_context_translation(combined_translated: str, num_context_sentences: int, source_char_ratio: Optional[float] = None) -> Optional[str]:
     """
     Extract the target portion from a translation of (context + target) text.
 
@@ -195,14 +196,14 @@ def extract_context_translation(combined_translated, num_context_sentences, sour
     return None
 
 
-def _log_ctx_align_stats():
+def _log_ctx_align_stats() -> None:
     """Log alignment mix every 50 extractions so the mismatch rate is measurable."""
     total = sum(_ctx_align_stats.values())
     if total and total % 50 == 0:
         print(f"[CTX-ALIGN] exact={_ctx_align_stats['exact']} proportional={_ctx_align_stats['proportional']} failed={_ctx_align_stats['failed']}", flush=True)
 
 
-def distribute_whisper_translation(translated_text, row_texts):
+def distribute_whisper_translation(translated_text: str, row_texts: Sequence[str]) -> List[str]:
     """
     Split a whole-chunk Whisper translation across the rows saved from that chunk.
 
@@ -249,7 +250,7 @@ def distribute_whisper_translation(translated_text, row_texts):
     return parts
 
 
-def scope_whisper_translation(pass2_timed, span_end, margin=0.5):
+def scope_whisper_translation(pass2_timed: Sequence[Tuple[float, float, str]], span_end: Optional[float], margin: float = 0.5) -> Optional[str]:
     """
     Keep only pass-2 translation segments that fall within the finalized span.
 
@@ -268,7 +269,7 @@ def scope_whisper_translation(pass2_timed, span_end, margin=0.5):
     return " ".join(parts).strip() or None
 
 
-def is_fuzzy_duplicate(new_sentence, saved_sentences, threshold=0.85):
+def is_fuzzy_duplicate(new_sentence: str, saved_sentences: Sequence[str], threshold: float = 0.85) -> bool:
     """
     Check if new_sentence is a fuzzy duplicate of any saved sentence.
 
@@ -296,7 +297,7 @@ def is_fuzzy_duplicate(new_sentence, saved_sentences, threshold=0.85):
     return False
 
 
-def remove_overlapping_prefix(new_text, previous_text, min_overlap_words=3):
+def remove_overlapping_prefix(new_text: str, previous_text: str, min_overlap_words: int = 3) -> str:
     """
     Remove overlapping prefix from new_text if it matches the end of previous_text.
 

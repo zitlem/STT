@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import tempfile
+from typing import Any, Optional, Tuple
 
 SUPPORTED_AUDIO_FORMATS = ["mp3", "wav", "flac", "ogg", "m4a", "aac", "wma", "opus"]
 SUPPORTED_VIDEO_FORMATS = [
@@ -28,7 +29,7 @@ SUPPORTED_VIDEO_FORMATS = [
 ]
 
 
-def _atomic_write_json(path, data, *, ensure_ascii=True):
+def _atomic_write_json(path: str, data: Any, *, ensure_ascii: bool = True) -> None:
     """Write JSON to ``path`` atomically.
 
     Dumps to a temp file in the same directory, flushes+fsyncs it, then
@@ -51,7 +52,7 @@ def _atomic_write_json(path, data, *, ensure_ascii=True):
         raise
 
 
-def _merge_missing_keys(dst, src):
+def _merge_missing_keys(dst: dict, src: dict) -> bool:
     """Recursively add keys present in src but absent in dst. Returns True if dst changed.
 
     Existing values are never overwritten — a key the user has set (even to a
@@ -68,7 +69,7 @@ def _merge_missing_keys(dst, src):
     return changed
 
 
-def restore_config_from_template(template_file, config_file, reason=""):
+def restore_config_from_template(template_file: str, config_file: str, reason: str = "") -> bool:
     """Copy the bundled config.default.json over config_file. Returns True on success."""
     if not os.path.exists(template_file):
         print(f"[CONFIG] ERROR: template '{template_file}' is missing; cannot {reason or 'restore config'}.")
@@ -77,7 +78,7 @@ def restore_config_from_template(template_file, config_file, reason=""):
     return True
 
 
-def validate_file(file):
+def validate_file(file: Any) -> Tuple[bool, Optional[str]]:
     """
     Validate uploaded file.
 
@@ -98,7 +99,7 @@ def validate_file(file):
     return True, None
 
 
-def compute_display_version(describe, commit, version):
+def compute_display_version(describe: str, commit: str, version: str) -> str:
     """Single monotonic version string for scripts and the UI.
 
     Folds git describe's commits-since-tag count into the patch number:

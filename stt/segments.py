@@ -7,8 +7,10 @@ supply the live config).
 """
 
 import json
+from typing import List, Optional, Tuple
 
-def panns_label_from_prob(smoothed_prob, audio_db, cfg):
+
+def panns_label_from_prob(smoothed_prob: float, audio_db: Optional[float], cfg: dict) -> str:
     """Map a (smoothed) music probability to a Speaking/Music/Quiet label."""
     quiet_db_threshold = cfg.get("quiet_db_threshold", -40)
     if smoothed_prob > cfg.get("music_prob_threshold", 0.5):
@@ -16,7 +18,7 @@ def panns_label_from_prob(smoothed_prob, audio_db, cfg):
     return "Quiet" if (audio_db or -60) <= quiet_db_threshold else "Speaking"
 
 
-def classify_audio_type(audio_db, cfg):
+def classify_audio_type(audio_db: Optional[float], cfg: dict) -> str:
     """Energy-based fallback label (no PANNs): audible => Speaking, else Quiet.
     We never claim Music without the PANNs detector.
 
@@ -26,7 +28,7 @@ def classify_audio_type(audio_db, cfg):
     return "Speaking" if (audio_db or -60) > quiet_db_threshold else "Quiet"
 
 
-def words_to_session_ms(completed_segments):
+def words_to_session_ms(completed_segments: Optional[List[dict]]) -> List[dict]:
     """Flatten faster-whisper word lists from a batch of completed segments into an
     ordered stream of {w, s_ms, e_ms, c} dicts on a session-relative millisecond
     timeline (so words from every row share one timeline for offline replay).
@@ -61,7 +63,7 @@ def words_to_session_ms(completed_segments):
     return stream
 
 
-def attribute_words_to_sentences(stream, num_sentences):
+def attribute_words_to_sentences(stream: List[dict], num_sentences: int) -> List[List[dict]]:
     """Assign each word in an ordered session-ms `stream` to one of `num_sentences`
     re-split rows by MAX TEMPORAL OVERLAP, so no boundary word is ever dropped
     (re-splits fall on pauses, exactly where book tokens sit).
@@ -73,7 +75,7 @@ def attribute_words_to_sentences(stream, num_sentences):
     list of `num_sentences` word-lists; every word lands in exactly one list.
     """
     n = max(1, num_sentences)
-    groups = [[] for _ in range(n)]
+    groups: List[List[dict]] = [[] for _ in range(n)]
     if not stream:
         return groups
     if n == 1:
@@ -93,7 +95,7 @@ def attribute_words_to_sentences(stream, num_sentences):
     prov = prov[:n]
     spans = [((g[0]["s_ms"], g[-1]["e_ms"]) if g else None) for g in prov]
 
-    def _overlap(w, span):
+    def _overlap(w: dict, span: Optional[Tuple[int, int]]) -> Optional[int]:
         if span is None:
             return None
         return min(w["e_ms"], span[1]) - max(w["s_ms"], span[0])
@@ -110,7 +112,7 @@ def attribute_words_to_sentences(stream, num_sentences):
     return groups
 
 
-def words_json_or_none(word_objs):
+def words_json_or_none(word_objs: Optional[List[dict]]) -> Optional[str]:
     """Serialize a list of {w, s_ms, e_ms, c} word dicts to a JSON array string for
     the `words_json` column, or None when empty (NULL = no per-word data — see
     `words_source` to tell 'backend has no words' from an alignment miss)."""

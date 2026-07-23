@@ -38,11 +38,11 @@ import urllib.error
 import urllib.request
 import webbrowser
 import zipfile
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 try:
     import certifi
-    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+    _SSL_CTX: Optional[ssl.SSLContext] = ssl.create_default_context(cafile=certifi.where())
 except Exception as e:
     logging.warning(f"[SSL] certifi unavailable ({e}); using system default certificates")
     _SSL_CTX = None
@@ -140,7 +140,7 @@ _UPDATE_PRESERVE = frozenset({".venv", "config"})
 def setup_logging():
     from logging.handlers import RotatingFileHandler
     fmt = "%(asctime)s [%(levelname)s] %(message)s"
-    handlers = [logging.StreamHandler(sys.stdout)]
+    handlers: "list[logging.Handler]" = [logging.StreamHandler(sys.stdout)]
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
         handlers.insert(0, RotatingFileHandler(
@@ -274,6 +274,8 @@ def _maybe_handoff_to_source(args):
     try:
         import importlib.util
         spec = importlib.util.spec_from_file_location("stt_watchdog_source", WATCHDOG_SCRIPT)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load {WATCHDOG_SCRIPT}")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         logging.info("[WATCHDOG] Running source watchdog in-process (keeps app identity/icon)")
@@ -464,7 +466,7 @@ def read_version():
             pass
     candidates = [VERSION_FILE]
     if _FROZEN:
-        candidates.append(os.path.join(sys._MEIPASS, "VERSION"))
+        candidates.append(os.path.join(sys._MEIPASS, "VERSION"))  # type: ignore[attr-defined]
     for path in candidates:
         try:
             with open(path) as f:
@@ -510,7 +512,7 @@ def read_bundle_version():
     """
     if _FROZEN:
         try:
-            with open(os.path.join(sys._MEIPASS, "VERSION")) as f:  # noqa: SLF001
+            with open(os.path.join(sys._MEIPASS, "VERSION")) as f:  # type: ignore[attr-defined] # noqa: SLF001
                 v = f.read().strip()
             if v:
                 return v
@@ -692,13 +694,14 @@ class Provisioner:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, bufsize=1, env=env,
-                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
+                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,  # type: ignore[attr-defined]
             )
         except FileNotFoundError as e:
             if check:
                 raise ProvisionError(f"{cmd[0]} not found: {e}") from e
             return 1
         tail = []
+        assert proc.stdout is not None  # stdout=PIPE above
         for line in proc.stdout:
             line = line.rstrip()
             if line:
@@ -1064,7 +1067,7 @@ class ProcessManager:
                 stdout=self._log_fh,
                 stderr=self._log_fh,
                 close_fds=not IS_WINDOWS,
-                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,
+                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,  # type: ignore[attr-defined]
             )
             self.state.set(process=proc, status="running", consecutive_crashes=0)
             logging.info(f"[PM] STT started (PID {proc.pid})")
@@ -1457,7 +1460,7 @@ class AutoUpdater:
         self.pm.stop(timeout=20)
         backup_dir = os.path.join(tmpdir, "backup")
         os.makedirs(backup_dir, exist_ok=True)
-        moved = []  # (item, had_backup) in swap order
+        moved: "list[tuple[str, bool]]" = []  # (item, had_backup) in swap order
 
         def _restore():
             for item, had_backup in reversed(moved):
@@ -1560,7 +1563,7 @@ class GuiWindow:
 
     def _set_icon(self):
         try:
-            icon_path = os.path.join(sys._MEIPASS if _FROZEN else
+            icon_path = os.path.join(sys._MEIPASS if _FROZEN else  # type: ignore[attr-defined]
                                      os.path.dirname(os.path.abspath(__file__)),
                                      "icon.ico")
             if os.path.exists(icon_path):
@@ -2418,7 +2421,7 @@ class ProvisionWindow:
         self.root = tk.Tk()
         self.root.title(f"STT Setup v{read_version()}")
         self.root.geometry("580x440")
-        self._q = queue.Queue()
+        self._q: "queue.Queue[tuple]" = queue.Queue()
         self.success = False
         self._set_icon()
 
@@ -2442,7 +2445,7 @@ class ProvisionWindow:
 
     def _set_icon(self):
         try:
-            icon = os.path.join(sys._MEIPASS if _FROZEN else
+            icon = os.path.join(sys._MEIPASS if _FROZEN else  # type: ignore[attr-defined]
                                 os.path.dirname(os.path.abspath(__file__)), "icon.ico")
             if os.path.exists(icon):
                 self.root.iconbitmap(icon)

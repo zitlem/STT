@@ -20,6 +20,34 @@ ignore = [
 # Class-level constant dicts/lists are idiomatic in test classes.
 "tests/*" = ["RUF012"]
 
+[tool.mypy]
+# Type checking is scoped to the stt/ package (the logic layer); the monolith
+# can't be imported, so it stays unchecked until its logic is extracted here.
+files = ["stt"]
+python_version = "3.9"
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The extracted logic modules are fully annotated — keep them that way.
+module = [
+    "stt.text_utils",
+    "stt.formatting",
+    "stt.segments",
+    "stt.config_utils",
+    "stt.translation_utils",
+    "stt.downloads",
+    "stt.paths",
+    "stt.self_update",
+]
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# Legacy capture loop: Optional process/queue attributes are runtime-guarded
+# (start() sets them before the loop runs); not worth restructuring for types.
+module = "stt.audio_capture"
+disable_error_code = ["union-attr"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

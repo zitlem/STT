@@ -7,9 +7,10 @@ supplies APP_DIR as the file-manager default).
 """
 
 import os
+from typing import Optional
 
 
-def safe_model_path(base_dir, name):
+def safe_model_path(base_dir: str, name: Optional[str]) -> Optional[str]:
     """Resolve a user-supplied model name against base_dir and return the
     absolute path only if it stays strictly inside base_dir. Returns None for
     traversal payloads ('..', '../x', absolute paths, backslash variants).
@@ -34,7 +35,7 @@ def safe_model_path(base_dir, name):
     return model_path
 
 
-def safe_managed_path(path, base_dir):
+def safe_managed_path(path: Optional[str], base_dir: str) -> Optional[str]:
     """Resolve a file-manager path and return its realpath only if it stays
     inside base_dir. Resolves symlinks so a symlink inside the tree can't
     escape it. Returns None on any escape.

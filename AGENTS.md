@@ -43,6 +43,8 @@ The server is mostly a monolith — most changes land in `speech_to_text.py`.
 
 ## Conventions
 
+- **New logic goes in `stt/` modules, not speech_to_text.py.** The monolith cannot be imported by tests (import-time side effects), so any new pure logic — and logic being touched anyway — belongs in an importable `stt/` module with unit tests shipped in the same commit. `stt/` modules must import clean with stdlib only (CI installs no ML deps), take config/paths as explicit parameters (never read the monolith's globals), and be fully type-annotated (mypy enforces `disallow_untyped_defs` on the logic modules — see pyproject). The monolith re-imports the names via thin wrappers so call sites stay unchanged.
+- **Tests**: no fixed-time sleeps (wait on events/poll with deadline), deterministic, `tmp_path` for filesystem/sqlite, assert behavior rather than incidental values. Coverage target is 85% per logic module; the `stt/` package total deliberately includes untested IO-heavy code and understates the logic layer — don't add coverage omits.
 - **Commits**: conventional-commit style with a scope, e.g. `fix(translation): …`, `feat(server): …`. **No co-author lines** in commit messages — Claude attribution goes in `git notes` instead (push with `refs/notes/commits`).
 - **UI work**: follow the design tokens in `DESIGN.md` (colors, typography, spacing, component styles).
 - **Do not touch** `_AUTOMATIC_BACKUP/`, `models/`, `panns_data/`, `logs/` — generated/runtime data.

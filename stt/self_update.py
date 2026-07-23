@@ -22,6 +22,7 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import Tuple
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ log = logging.getLogger(__name__)
 _GIT_TIMEOUT = 60
 
 
-def _git(repo_dir, *args, timeout=_GIT_TIMEOUT):
+def _git(repo_dir: str, *args: str, timeout: int = _GIT_TIMEOUT) -> "subprocess.CompletedProcess[str]":
     """Run ``git -C repo_dir <args>`` and return the CompletedProcess.
 
     Never raises on a non-zero exit (``check=False``); callers inspect
@@ -44,7 +45,7 @@ def _git(repo_dir, *args, timeout=_GIT_TIMEOUT):
     )
 
 
-def git_commit(repo_dir):
+def git_commit(repo_dir: str) -> str:
     """Short git commit SHA of repo_dir, or '' if unavailable (frozen build / no git)."""
     try:
         if not shutil.which("git") or not os.path.isdir(os.path.join(repo_dir, ".git")):
@@ -55,7 +56,7 @@ def git_commit(repo_dir):
         return ""
 
 
-def git_describe(repo_dir):
+def git_describe(repo_dir: str) -> str:
     """`git describe --tags --always` of repo_dir (e.g. '26.1.2-9-gc588d29'),
     or '' if unavailable (frozen build / no git)."""
     try:
@@ -67,7 +68,7 @@ def git_describe(repo_dir):
         return ""
 
 
-def _requirements_hash(repo_dir):
+def _requirements_hash(repo_dir: str) -> str:
     """sha256 of requirements.txt, or '' if it doesn't exist / can't be read."""
     req = os.path.join(repo_dir, "requirements.txt")
     try:
@@ -77,13 +78,13 @@ def _requirements_hash(repo_dir):
         return ""
 
 
-def _sync_marker_path(repo_dir):
+def _sync_marker_path(repo_dir: str) -> str:
     # Lives inside the gitignored .venv so it never dirties the worktree
     # (a dirty tree blocks future updates) and dies with the venv it describes.
     return os.path.join(repo_dir, ".venv", ".requirements-synced")
 
 
-def _sync_deps(repo_dir):
+def _sync_deps(repo_dir: str) -> bool:
     """Best-effort dependency sync; returns True on success.
 
     The venv is uv-managed and has no pip (see AGENTS.md), so use ``uv pip``.
@@ -111,7 +112,7 @@ def _sync_deps(repo_dir):
         return False
 
 
-def _sync_deps_if_needed(repo_dir):
+def _sync_deps_if_needed(repo_dir: str) -> None:
     """Sync the venv whenever requirements.txt differs from the last synced state.
 
     Compares against a hash marker instead of the pulled diff, so a box that
@@ -138,7 +139,7 @@ def _sync_deps_if_needed(repo_dir):
             log.warning("[self-update] could not write sync marker: %s", e)
 
 
-def git_self_update(repo_dir):
+def git_self_update(repo_dir: str) -> Tuple[bool, str]:
     """Fast-forward ``repo_dir`` to its upstream branch, non-destructively.
 
     Returns ``(updated, reason)``:
@@ -195,7 +196,7 @@ def git_self_update(repo_dir):
         return False, "error"
 
 
-def restart_via_execv():
+def restart_via_execv() -> None:
     """Replace the current process image with a fresh interpreter run.
 
     Python does not hot-reload source, so after a successful update the process

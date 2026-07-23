@@ -52,6 +52,8 @@ jobs:
           uv pip install -r requirements-dev.txt certifi
       - name: Lint
         run: uv run ruff check .
+      - name: Type check (stt/ package)
+        run: uv run mypy
       - name: Test
         run: uv run pytest
 

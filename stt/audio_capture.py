@@ -28,7 +28,7 @@ def parse_asound_cards(content, deprioritize_markers=None):
     import re
 
     deprioritize_markers = [m.lower() for m in (deprioritize_markers or [])]
-    devices = []
+    devices: "list[dict]" = []
 
     # Parse card entries (format: " N [ID]: TYPE - NAME")
     # Match lines like " 0 [NVidia         ]: HDA-Intel - HDA NVidia"
@@ -636,7 +636,7 @@ class FFmpegAudioCapture:
                 # Each audio device line looks like:
                 #   [AVFoundation indev @ 0x...] [0] Built-in Microphone
                 # Splitting on '] ' gives: ['[prefix', '[0', 'Built-in Microphone']
-                devices = []
+                devices: "list[dict]" = []
                 in_audio_section = False
                 for line in result.stderr.split('\n'):
                     if 'AVFoundation audio devices' in line:

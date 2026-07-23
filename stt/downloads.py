@@ -14,24 +14,25 @@ import os
 import shutil
 import threading
 import time
+from typing import Any, Callable, Dict, Optional, Set
 
 # Path of the JSON progress file; set via configure(). While None, persistence
 # is skipped (state-machine behavior is unaffected).
-_progress_file = None
+_progress_file: Optional[str] = None
 
 # Global dictionary to track active downloads
-active_downloads = {}
+active_downloads: Dict[str, dict] = {}
 active_downloads_lock = threading.Lock()
-cancelled_downloads = set()  # Track cancelled download IDs to prevent re-adding
+cancelled_downloads: Set[str] = set()  # Track cancelled download IDs to prevent re-adding
 
 
-def configure(progress_file):
+def configure(progress_file: Optional[str]) -> None:
     """Set the on-disk location for download-progress persistence."""
     global _progress_file
     _progress_file = progress_file
 
 
-def load_state():
+def load_state() -> None:
     """Restore active_downloads from disk IN PLACE (the dict object is shared
     with importers, so it must never be rebound)."""
     data = load_download_progress()
@@ -40,7 +41,7 @@ def load_state():
         active_downloads.update(data)
 
 
-def load_download_progress():
+def load_download_progress() -> dict:
     """Load download progress from file"""
     try:
         if _progress_file and os.path.exists(_progress_file):
@@ -51,7 +52,7 @@ def load_download_progress():
     return {}
 
 
-def save_download_progress():
+def save_download_progress() -> None:
     """Save download progress to file"""
     if _progress_file is None:
         return  # not configured (e.g. tests exercising only the state machine)
@@ -63,7 +64,7 @@ def save_download_progress():
         print(f"[ERROR] Failed to save download progress: {e}")
 
 
-def cleanup_stale_downloads():
+def cleanup_stale_downloads() -> None:
     """Remove downloads based on status and age"""
     import time
 
@@ -114,7 +115,7 @@ def cleanup_stale_downloads():
             print(f"[CLEANUP] Removed {len(stale_keys)} stale download record(s)")
 
 
-def try_register_download(key, total=None):
+def try_register_download(key: str, total: Optional[int] = None) -> bool:
     """Atomically register a download in active_downloads.
 
     Returns False if a download for this key is already in progress."""
@@ -135,7 +136,7 @@ def try_register_download(key, total=None):
     return True
 
 
-def finish_download(key, error=None, cancelled=False):
+def finish_download(key: str, error: Optional[Any] = None, cancelled: bool = False) -> None:
     """Mark a download completed/failed and drop it from the cancelled set."""
     with active_downloads_lock:
         cancelled_downloads.discard(key)
@@ -154,7 +155,7 @@ def finish_download(key, error=None, cancelled=False):
     save_download_progress()
 
 
-def _path_size(path):
+def _path_size(path: str) -> int:
     """Size in bytes of a file, or recursive size of a directory."""
     if os.path.isfile(path):
         return os.path.getsize(path)
@@ -168,7 +169,7 @@ def _path_size(path):
     return total
 
 
-def monitor_download_progress(key, path, total=None, interval=2):
+def monitor_download_progress(key: str, path: str, total: Optional[int] = None, interval: float = 2) -> None:
     """Poll the size of `path` (file or directory) and update active_downloads[key].
 
     Runs until the entry leaves "downloading" state, disappears, or is cancelled.
@@ -195,7 +196,7 @@ def monitor_download_progress(key, path, total=None, interval=2):
         _time.sleep(interval)
 
 
-def start_download_monitor(key, path, total=None, interval=2):
+def start_download_monitor(key: str, path: str, total: Optional[int] = None, interval: float = 2) -> None:
     """Spawn the directory-size progress monitor as a daemon thread."""
     threading.Thread(
         target=monitor_download_progress,
@@ -205,7 +206,7 @@ def start_download_monitor(key, path, total=None, interval=2):
     ).start()
 
 
-def download_url_to_file(url, dest_path, cancel_check=None, max_attempts=5, log=print):
+def download_url_to_file(url: str, dest_path: str, cancel_check: Optional[Callable[[], bool]] = None, max_attempts: int = 5, log: Callable[[str], Any] = print) -> str:
     """Download a URL to a file with resume + retry, preferring wget/curl.
 
     Falls back to a pure-Python streaming download when neither tool exists
