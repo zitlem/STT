@@ -11,3 +11,14 @@ select = ["E9", "F63", "F7", "F82", "F811"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Coverage is measured over the logic layer: the stt/ package, which grows as
+# pure logic is extracted out of speech_to_text.py (which cannot be imported —
+# it has import-time side effects, so coverage can't instrument it directly).
+# Target: 85% of stt/. Run: pytest --cov
+[tool.coverage.run]
+source = ["stt"]
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = true
