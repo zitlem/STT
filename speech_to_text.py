@@ -52,48 +52,16 @@ for _mig_name in ("config.json", "custom_dictionary.json", "word_highlighting.js
             print(f"[MIGRATE] Could not move {_mig_name}: {_mig_err}")
 
 
-def safe_model_path(base_dir, name):
-    """Resolve a user-supplied model name against base_dir and return the
-    absolute path only if it stays strictly inside base_dir. Returns None for
-    traversal payloads ('..', '../x', absolute paths, backslash variants).
-
-    Used by every route that rmtree's a model directory built from request
-    input — see cancel_download / remove_* handlers.
-    """
-    if not name or not isinstance(name, str):
-        return None
-    # Normalize slash variants so a Windows-style '..\\' can't slip past.
-    candidate = name.replace("\\", "/")
-    base = os.path.normpath(base_dir)
-    model_path = os.path.normpath(os.path.join(base, candidate))
-    if model_path == base:
-        return None
-    try:
-        if os.path.commonpath([model_path, base]) != base:
-            return None
-    except ValueError:
-        # Different drives (Windows) or mixed absolute/relative — reject.
-        return None
-    return model_path
+# Path-containment guards live in stt/paths.py (importable, unit-tested);
+# safe_model_path is re-imported and safe_managed_path keeps its APP_DIR default.
+from stt import paths as _paths
+from stt.paths import safe_model_path  # noqa: F401
 
 
 def safe_managed_path(path, base_dir=None):
     """Resolve a file-manager path and return its realpath only if it stays
-    inside base_dir (defaults to APP_DIR). Resolves symlinks so a symlink
-    inside the tree can't escape it. Returns None on any escape.
-    """
-    base = os.path.realpath(base_dir if base_dir is not None else APP_DIR)
-    if not path:
-        return base
-    target = os.path.realpath(path if os.path.isabs(path) else os.path.join(base, path))
-    if target == base:
-        return target
-    try:
-        if os.path.commonpath([target, base]) != base:
-            return None
-    except ValueError:
-        return None
-    return target
+    inside base_dir (defaults to APP_DIR). See stt/paths.py."""
+    return _paths.safe_managed_path(path, base_dir if base_dir is not None else APP_DIR)
 
 
 def _seed_from_bundle(filename):

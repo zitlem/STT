@@ -1,34 +1,18 @@
 """Path containment / input validation logic used by the model routes.
 
-These replicate the exact expressions used in speech_to_text.py
-(cancel_download containment, upload_local_model name validation) so a
-regression in the logic shape is caught even though the route functions
-themselves can't be imported.
+safe_model_path / safe_managed_path are the real guards (stt/paths.py).
+The remaining helpers replicate route-local expressions (cancel_download's
+"/"->"--" mapping, upload_local_model name validation) so a regression in
+the logic shape is caught even though the route functions themselves can't
+be imported.
 """
 
 import os
 import re
 
+from stt.paths import safe_managed_path, safe_model_path
 
 MODELS_DIR = "/srv/stt/models"
-
-
-def safe_model_path(base_dir, name):
-    # mirrors safe_model_path (speech_to_text.py) — the shared guard used by
-    # cancel_download and every remove_* route
-    if not name or not isinstance(name, str):
-        return None
-    candidate = name.replace("\\", "/")
-    base = os.path.normpath(base_dir)
-    model_path = os.path.normpath(os.path.join(base, candidate))
-    if model_path == base:
-        return None
-    try:
-        if os.path.commonpath([model_path, base]) != base:
-            return None
-    except ValueError:
-        return None
-    return model_path
 
 
 def cancel_path_allowed(model_id, models_dir=MODELS_DIR):
@@ -84,22 +68,6 @@ def test_safe_model_path_normal_names():
     assert safe_model_path(MODELS_DIR, "whisper-small.en")
     assert safe_model_path(MODELS_DIR, "faster-whisper-base.en")
     assert safe_model_path(MODELS_DIR, "facebook--nllb-200-distilled-600M")
-
-
-def safe_managed_path(path, base_dir):
-    # mirrors safe_managed_path (speech_to_text.py) — file-manager confinement
-    base = os.path.realpath(base_dir)
-    if not path:
-        return base
-    target = os.path.realpath(path if os.path.isabs(path) else os.path.join(base, path))
-    if target == base:
-        return target
-    try:
-        if os.path.commonpath([target, base]) != base:
-            return None
-    except ValueError:
-        return None
-    return target
 
 
 def test_safe_managed_path_confinement(tmp_path):
