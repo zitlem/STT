@@ -50,3 +50,6 @@ dist/
 .github/skills/
 PRODUCT.md
 MARKETING.md
+
+# Coverage tooling artifact (pytest --cov)
+.coverage
