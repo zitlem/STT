@@ -8,7 +8,6 @@ import threading
 import time
 import sys
 import os
-import numpy as np
 from queue import Queue
 from typing import Callable, Optional
 from datetime import datetime
@@ -447,7 +446,9 @@ class FFmpegAudioCapture:
                     if self.data_queue is not None:
                         self.data_queue.put(audio_data)
                     else:
-                        # Convert to numpy array
+                        # Convert to numpy array (lazy import: numpy is a runtime
+                        # dep the test/CI environment doesn't install)
+                        import numpy as np
                         audio_array = np.frombuffer(audio_data, dtype=np.int16)
                         # Call the callback with the audio data
                         callback(audio_array)
