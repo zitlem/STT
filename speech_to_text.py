@@ -865,14 +865,26 @@ def load_translation_model(use_gpu=True, model_id=None):
     else:
         model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
 
+    global _live_translation_device
     if use_gpu and torch.cuda.is_available():
         model = model.to("cuda")
+        _live_translation_device = "cuda"
         print("[INFO] Translation model loaded on GPU (CUDA)")
     elif use_gpu and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         model = model.to("mps")
+        _live_translation_device = "mps"
         print("[INFO] Translation model loaded on GPU (MPS)")
     else:
+        _live_translation_device = "cpu"
         print("[INFO] Translation model loaded on CPU")
+        if use_gpu:
+            # GPU was requested but no accelerator was usable — translations will
+            # be seconds-per-sentence instead of sub-second. This is the silent
+            # failure mode behind "translations got slower" field reports (e.g. a
+            # torch upgrade that dropped CUDA support for the installed driver).
+            print(f"[WARNING] Translation model '{model_id}' requested GPU but is running on CPU — "
+                  "expect slow translations. Check torch CUDA/MPS availability "
+                  "(.venv python -c 'import torch; print(torch.cuda.is_available())').", flush=True)
 
     return model, tokenizer
 
@@ -1164,6 +1176,7 @@ _live_translation_lock = threading.Lock()
 _live_translation_model_loaded = False
 _live_translation_model_loading = False  # Track when model is being loaded
 _live_translation_model_id = None  # Track which model is loaded to detect config changes
+_live_translation_device = None  # 'cuda' | 'mps' | 'cpu' once loaded — exposed in /api/translation/status
 _live_translation_target_lang = None
 # Set True by load/preload, False by unload. A queued unload re-checks this under
 # the lock and aborts if a preload re-requested the model in the meantime, so a
@@ -1231,7 +1244,7 @@ def get_live_translation_model(use_gpu=True, model_id=None):
 
 def unload_live_translation_model():
     """Unload the live translation model to free GPU memory"""
-    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_id, _live_translation_model_wanted
+    global _live_translation_model, _live_translation_tokenizer, _live_translation_model_loaded, _live_translation_model_id, _live_translation_model_wanted, _live_translation_device
     import gc
 
     _live_translation_model_wanted = False
@@ -1249,6 +1262,7 @@ def unload_live_translation_model():
             _live_translation_tokenizer = None
             _live_translation_model_loaded = False
             _live_translation_model_id = None
+            _live_translation_device = None
             gc.collect()
             _empty_device_cache()
             print("[LIVE-TRANSLATION] Live translation model unloaded")
@@ -6227,6 +6241,13 @@ def get_system_requirements():
     if not setup["mic_ready"]:
         setup_warns.append("No microphone selected — choose one in Live Settings.")
     warns = setup_warns + warns
+    # Runtime check, not a hardware estimate: the loaded NLLB model actually
+    # landed on CPU despite use_gpu — translations run seconds-per-sentence and
+    # nothing else surfaces it (field reports arrive as "translation got slow").
+    trans_cfg = config.get("live_translation", {})
+    if (_live_translation_device == "cpu" and trans_cfg.get("use_gpu", True)
+            and trans_cfg.get("translation_method", "nllb") == "nllb"):
+        warns = warns + ["Translation model is running on CPU (GPU requested but unavailable) — expect slow translations. Check GPU drivers / torch install."]
     details = {}
     try:
         hw = _probe_hardware()
@@ -6564,6 +6585,10 @@ def get_translation_status():
         "remote_fallback": remote_cfg.get("fallback", "skip"),
         "cache_size": get_translation_cache().get_size(),
         "is_transcription_running": transcription_state.get("running", False),
+        # Device the local NLLB model actually landed on ('cuda'/'mps'/'cpu',
+        # null until loaded). 'cpu' on a machine meant to accelerate is the
+        # classic cause of seconds-per-sentence translations.
+        "model_device": _live_translation_device if not (remote_active or _using_whisper) else None,
     }
 
     # Only expose sensitive info (clients, pairs) to local/whitelisted or paired callers
