@@ -9040,75 +9040,25 @@ def get_model_info():
 DOWNLOAD_PROGRESS_FILE = os.path.join(APP_DIR, "download_progress.json")
 
 
-def load_download_progress():
-    """Load download progress from file"""
-    try:
-        if os.path.exists(DOWNLOAD_PROGRESS_FILE):
-            with open(DOWNLOAD_PROGRESS_FILE, "r") as f:
-                return json.load(f)
-    except Exception as e:
-        print(f"[ERROR] Failed to load download progress: {e}")
-    return {}
+# Download tracking lives in stt/downloads.py (importable, unit-tested); the
+# module owns the shared state and these names are re-imported so call sites
+# stay unchanged.
+from stt import downloads as _downloads
+from stt.downloads import (  # noqa: F401
+    active_downloads,
+    active_downloads_lock,
+    cancelled_downloads,
+    cleanup_stale_downloads,
+    download_url_to_file,
+    finish_download,
+    load_download_progress,
+    monitor_download_progress,
+    save_download_progress,
+    start_download_monitor,
+    try_register_download,
+)
 
-
-def save_download_progress():
-    """Save download progress to file"""
-    try:
-        with active_downloads_lock:
-            with open(DOWNLOAD_PROGRESS_FILE, "w") as f:
-                json.dump(active_downloads, f, indent=2)
-    except Exception as e:
-        print(f"[ERROR] Failed to save download progress: {e}")
-
-
-def cleanup_stale_downloads():
-    """Remove downloads based on status and age"""
-    import time
-
-    current_time = time.time()
-
-    # Different retention periods by status
-    DOWNLOADING_STALE_THRESHOLD = 86400  # 24 hours for stuck downloads
-    COMPLETED_GRACE_PERIOD = 7200  # 2 hours for completed downloads
-    FAILED_GRACE_PERIOD = 3600  # 1 hour for failed downloads
-
-    with active_downloads_lock:
-        stale_keys = []
-        for model_id, info in active_downloads.items():
-            last_update = info.get("last_update", 0)
-            status = info.get("status", "downloading")
-            age = current_time - last_update
-
-            # Determine if should be removed based on status
-            should_remove = False
-
-            if status == "downloading" and age > DOWNLOADING_STALE_THRESHOLD:
-                # Stuck download, likely stale
-                should_remove = True
-                print(f"[CLEANUP] Removing stale downloading: {model_id} (age: {age/3600:.1f}h)")
-            elif status == "completed" and age > COMPLETED_GRACE_PERIOD:
-                # Completed downloads after grace period
-                should_remove = True
-                print(f"[CLEANUP] Removing old completed download: {model_id} (age: {age/3600:.1f}h)")
-            elif status == "failed" and age > FAILED_GRACE_PERIOD:
-                # Failed downloads after shorter grace period
-                should_remove = True
-                print(f"[CLEANUP] Removing old failed download: {model_id} (age: {age/3600:.1f}h)")
-
-            if should_remove:
-                stale_keys.append(model_id)
-
-        for key in stale_keys:
-            del active_downloads[key]
-
-        if stale_keys:
-            # Save while still holding the lock - don't call save_download_progress() which would deadlock
-            try:
-                with open(DOWNLOAD_PROGRESS_FILE, "w") as f:
-                    json.dump(active_downloads, f, indent=2)
-            except Exception as e:
-                print(f"[ERROR] Failed to save download progress: {e}")
-            print(f"[CLEANUP] Removed {len(stale_keys)} stale download record(s)")
+_downloads.configure(DOWNLOAD_PROGRESS_FILE)
 
 
 # Whisper model sizes in bytes (for progress tracking)
@@ -9146,10 +9096,8 @@ FASTER_WHISPER_MODELS = {
     "distil-large-v3": {"repo": "Systran/faster-distil-whisper-large-v3", "size": "~1.5GB", "params": "756M", "lang": "Multilingual"},
 }
 
-# Global dictionary to track active downloads
-active_downloads = load_download_progress()
-active_downloads_lock = threading.Lock()
-cancelled_downloads = set()  # Track cancelled download IDs to prevent re-adding
+# Restore download state from the previous run.
+_downloads.load_state()
 
 # A "downloading" entry loaded from disk means the server died mid-download:
 # the download thread is gone, so mark it failed instead of showing it for 24h
@@ -9163,168 +9111,6 @@ save_download_progress()
 
 # Clean up stale downloads on startup
 cleanup_stale_downloads()
-
-
-def try_register_download(key, total=None):
-    """Atomically register a download in active_downloads.
-
-    Returns False if a download for this key is already in progress."""
-    with active_downloads_lock:
-        existing = active_downloads.get(key)
-        if existing and existing.get("status") == "downloading":
-            return False
-        cancelled_downloads.discard(key)
-        active_downloads[key] = {
-            "downloaded": 0,
-            "total": total,
-            "percentage": 0 if total else None,
-            "start_time": time.time(),
-            "last_update": time.time(),
-            "status": "downloading",
-        }
-    save_download_progress()
-    return True
-
-
-def finish_download(key, error=None, cancelled=False):
-    """Mark a download completed/failed and drop it from the cancelled set."""
-    with active_downloads_lock:
-        cancelled_downloads.discard(key)
-        if not cancelled and key in active_downloads:
-            entry = active_downloads[key]
-            entry["last_update"] = time.time()
-            if error is not None:
-                entry["status"] = "failed"
-                entry["error"] = str(error)
-            else:
-                entry["status"] = "completed"
-                entry["percentage"] = 100
-                entry["completion_time"] = time.time()
-                if entry.get("total"):
-                    entry["downloaded"] = entry["total"]
-    save_download_progress()
-
-
-def _path_size(path):
-    """Size in bytes of a file, or recursive size of a directory."""
-    if os.path.isfile(path):
-        return os.path.getsize(path)
-    total = 0
-    for root, _dirs, files in os.walk(path):
-        for name in files:
-            try:
-                total += os.path.getsize(os.path.join(root, name))
-            except OSError:
-                pass
-    return total
-
-
-def monitor_download_progress(key, path, total=None, interval=2):
-    """Poll the size of `path` (file or directory) and update active_downloads[key].
-
-    Runs until the entry leaves "downloading" state, disappears, or is cancelled.
-    Percentage is capped at 99 — the download code sets 100 on completion."""
-    import time as _time
-
-    while True:
-        with active_downloads_lock:
-            entry = active_downloads.get(key)
-            if entry is None or entry.get("status") != "downloading" or key in cancelled_downloads:
-                return
-        if os.path.exists(path):
-            size = _path_size(path)
-            with active_downloads_lock:
-                entry = active_downloads.get(key)
-                if entry is None or entry.get("status") != "downloading":
-                    return
-                entry["downloaded"] = size
-                entry["last_update"] = _time.time()
-                entry_total = entry.get("total") or total
-                if entry_total and entry_total > 0:
-                    entry["percentage"] = min(int((size / entry_total) * 100), 99)
-            save_download_progress()
-        _time.sleep(interval)
-
-
-def start_download_monitor(key, path, total=None, interval=2):
-    """Spawn the directory-size progress monitor as a daemon thread."""
-    threading.Thread(
-        target=monitor_download_progress,
-        args=(key, path, total, interval),
-        daemon=True,
-        name=f"dl-monitor-{key}",
-    ).start()
-
-
-def download_url_to_file(url, dest_path, cancel_check=None, max_attempts=5, log=print):
-    """Download a URL to a file with resume + retry, preferring wget/curl.
-
-    Falls back to a pure-Python streaming download when neither tool exists
-    (e.g. minimal Windows installs). `cancel_check` is polled during the
-    download; returning True aborts it. Returns "ok" or "cancelled"; raises
-    after all attempts fail."""
-    import subprocess
-    import tempfile as _tempfile
-    import time as _time
-    import urllib.request
-
-    if shutil.which("wget"):
-        dl_cmd = ['wget', '-c', '-t', '3', '-T', '120', '--retry-connrefused',
-                  '--waitretry', '5', '-O', dest_path, url]
-    elif shutil.which("curl"):
-        dl_cmd = ['curl', '-L', '-C', '-', '--retry', '3', '--retry-delay', '5',
-                  '--retry-connrefused', '--connect-timeout', '30',
-                  '--max-time', '600', '-o', dest_path, url]
-    else:
-        dl_cmd = None  # pure-Python fallback below
-
-    last_error = ""
-    for attempt in range(1, max_attempts + 1):
-        if dl_cmd:
-            # Output goes to a temp file: a PIPE would fill up with progress
-            # noise and block the process, since nothing drains it while we poll
-            with _tempfile.TemporaryFile(mode="w+", errors="replace") as outf:
-                proc = subprocess.Popen(dl_cmd, stdout=outf, stderr=subprocess.STDOUT)
-                while proc.poll() is None:
-                    if cancel_check and cancel_check():
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=10)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()
-                        return "cancelled"
-                    _time.sleep(0.5)
-                if proc.returncode == 0:
-                    return "ok"
-                outf.seek(0)
-                last_error = outf.read()[-500:]
-            returncode = proc.returncode
-        else:
-            try:
-                with urllib.request.urlopen(url, timeout=120) as src, open(dest_path, "wb") as out:
-                    while True:
-                        if cancel_check and cancel_check():
-                            return "cancelled"
-                        chunk = src.read(65536)
-                        if not chunk:
-                            break
-                        out.write(chunk)
-                return "ok"
-            except Exception as e:
-                last_error = str(e)
-                returncode = 1
-
-        log(f"[WARNING] Download attempt {attempt}/{max_attempts} failed for "
-            f"{os.path.basename(dest_path)} (exit code {returncode})")
-        if attempt < max_attempts:
-            if os.path.exists(dest_path):
-                partial_size = os.path.getsize(dest_path)
-                log(f"[INFO] Partial file exists ({partial_size / (1024*1024):.1f} MB), will resume")
-            _time.sleep(5 * attempt)
-
-    raise Exception(
-        f"Failed to download {os.path.basename(dest_path)} after {max_attempts} attempts: {last_error[:300]}"
-    )
 
 
 def download_hf_repo_files(repo_id, local_dir, download_key, log=print):

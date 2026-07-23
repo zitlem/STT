@@ -1,4 +1,4 @@
-"""download_url_to_file: retry/resume/cancel downloader (speech_to_text.py)."""
+"""download_url_to_file: retry/resume/cancel downloader (stt/downloads.py)."""
 
 import http.server
 import shutil
@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from conftest import extract_definitions
+from stt import downloads
 
 CONTENT = b"x" * 300_000
 
@@ -49,28 +49,29 @@ class _NoToolShutil:
         return None
 
 
-def _downloader(shutil_impl):
-    ns = extract_definitions(
-        "speech_to_text.py", ["download_url_to_file"],
-        extra_globals={"shutil": shutil_impl},
-    )
-    return ns["download_url_to_file"]
+@pytest.fixture
+def no_tools(monkeypatch):
+    monkeypatch.setattr(downloads, "shutil", _NoToolShutil)
 
 
-def test_python_fallback_ok(http_server, tmp_path):
-    dl = _downloader(_NoToolShutil)
+def _downloader(shutil_impl=None):
+    return downloads.download_url_to_file
+
+
+def test_python_fallback_ok(http_server, tmp_path, no_tools):
+    dl = _downloader()
     dest = tmp_path / "f.bin"
     assert dl(f"{http_server}/fast", str(dest)) == "ok"
     assert dest.stat().st_size == len(CONTENT)
 
 
-def test_python_fallback_cancel(http_server, tmp_path):
-    dl = _downloader(_NoToolShutil)
+def test_python_fallback_cancel(http_server, tmp_path, no_tools):
+    dl = _downloader()
     assert dl(f"{http_server}/fast", str(tmp_path / "c.bin"), cancel_check=lambda: True) == "cancelled"
 
 
-def test_python_fallback_raises_after_retries(http_server, tmp_path):
-    dl = _downloader(_NoToolShutil)
+def test_python_fallback_raises_after_retries(http_server, tmp_path, no_tools):
+    dl = _downloader()
     bad_url = http_server.rsplit(":", 1)[0] + ":1/nope"  # nothing listens on port 1
     with pytest.raises(Exception, match="Failed to download"):
         dl(bad_url, str(tmp_path / "f.bin"), max_attempts=1)
@@ -84,7 +85,7 @@ needs_tool = pytest.mark.skipif(
 
 @needs_tool
 def test_subprocess_path_ok(http_server, tmp_path):
-    dl = _downloader(shutil)
+    dl = _downloader()
     dest = tmp_path / "a.bin"
     assert dl(f"{http_server}/fast", str(dest)) == "ok"
     assert dest.stat().st_size == len(CONTENT)
@@ -92,7 +93,7 @@ def test_subprocess_path_ok(http_server, tmp_path):
 
 @needs_tool
 def test_subprocess_path_cancel_mid_download(http_server, tmp_path):
-    dl = _downloader(shutil)
+    dl = _downloader()
     cancel = {"flag": False}
     threading.Timer(1.0, lambda: cancel.update(flag=True)).start()
     t0 = time.time()
