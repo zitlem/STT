@@ -3284,6 +3284,15 @@ def initialize_database():
                 db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN denied_reason TEXT DEFAULT NULL")
                 db_connection.commit()
                 print("[DB] OK: Migration complete (added denied_reason column)")
+            if "marked" not in columns:
+                # Manual operator bookmark (0 = normal, 1 = marked). Set from the
+                # corrections page so a segment can be found again later; unrelated
+                # to needs_review (the low-confidence review queue).
+                print("[DB] Migrating database: adding marked column...")
+                db_cursor.execute("ALTER TABLE transcriptions ADD COLUMN marked INTEGER DEFAULT 0")
+                db_cursor.execute("CREATE INDEX IF NOT EXISTS idx_marked ON transcriptions(marked) WHERE marked = 1")
+                db_connection.commit()
+                print("[DB] OK: Migration complete (added marked column)")
             if "translation_ts_ms" not in columns:
                 # Epoch-ms when translated_text was written. Translation arrives via a
                 # later async UPDATE, so the row's ts_ms alone can't reproduce the
@@ -3722,9 +3731,14 @@ def convert_db_to_html(db_path):
         # Read entries from database
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
+            # Older .db files predate the 'marked' column and COALESCE can't
+            # save a missing column, so probe the schema first.
+            cursor.execute("PRAGMA table_info(transcriptions)")
+            has_marked = any(row[1] == "marked" for row in cursor.fetchall())
+            marked_col = "COALESCE(marked, 0)" if has_marked else "0"
             cursor.execute(
-                """
-                SELECT timestamp, text FROM transcriptions
+                f"""
+                SELECT timestamp, text, {marked_col} FROM transcriptions
                 WHERE timestamp IS NOT NULL AND timestamp != ''
                 AND text IS NOT NULL AND TRIM(text) != '' AND TRIM(text) != ' '
                 AND COALESCE(denied, 0) = 0
@@ -3742,7 +3756,7 @@ def convert_db_to_html(db_path):
         segments_html = []
         first_time = None
 
-        for i, (timestamp_str, text) in enumerate(entries):
+        for i, (timestamp_str, text, row_marked) in enumerate(entries):
             try:
                 # Parse ISO timestamp
                 ts_normalized = timestamp_str.replace("T", " ").strip()
@@ -3762,8 +3776,10 @@ def convert_db_to_html(db_path):
                 # Apply word highlighting
                 highlighted_text = apply_word_highlighting_server(text.strip(), highlight_config)
 
+                seg_cls = "segment marked" if row_marked else "segment"
+                mark_badge = '<span class="mark-badge" title="Marked during session">&#9873;</span>' if row_marked else ""
                 segments_html.append(
-                    f'<div class="segment"><span class="timestamp" data-clock="{clock_time}" data-elapsed="{elapsed_time}">[{clock_time}]</span><span class="text">{highlighted_text}</span></div>'
+                    f'<div class="{seg_cls}"><span class="timestamp" data-clock="{clock_time}" data-elapsed="{elapsed_time}">[{clock_time}]</span><span class="text">{highlighted_text}</span>{mark_badge}</div>'
                 )
             except Exception as e:
                 print(f"[HTML] Error parsing entry {i}: {e}")
@@ -3824,6 +3840,15 @@ def convert_db_to_html(db_path):
         }}
         .segment:hover {{
             border-left-color: #bb86fc;
+        }}
+        .segment.marked {{
+            border-left-color: #ffb74d;
+            background: #2e2a22;
+        }}
+        .mark-badge {{
+            color: #ffb74d;
+            margin-left: 10px;
+            font-size: 0.9em;
         }}
         .timestamp {{
             color: #888;
@@ -12774,6 +12799,7 @@ def handle_request_all_entries():
             "speech_type": e[9] if len(e) > 9 else None,
             "denied": bool(e[10]) if len(e) > 10 and e[10] is not None else False,
             "denied_reason": e[11] if len(e) > 11 else None,
+            "marked": bool(e[13]) if len(e) > 13 and e[13] is not None else False,
         }
         for e in entries
     ]
@@ -13254,6 +13280,47 @@ def handle_set_segment_denied(data):
         print(f"[DENY] set_segment_denied failed: {e}")
 
 
+@socketio.on("set_segment_marked")
+def handle_set_segment_marked(data):
+    """Toggle the 'marked' bookmark flag on one or more segments.
+
+    Marked segments are a manual operator bookmark set from the corrections
+    page so a spot can be found again later (in the DB or the HTML export).
+    Independent of needs_review. Broadcasts the new state so every open
+    corrections page updates live.
+    """
+    if not _socket_auth_ok():
+        return
+    if not data:
+        return
+
+    segment_ids = data.get("segment_ids", [])
+    if not segment_ids:
+        return
+    marked_val = 1 if data.get("marked", True) else 0
+
+    try:
+        with _db_lock:
+            conn = _open_db_writer()
+            if conn is None:
+                return
+            try:
+                placeholders = ",".join("?" for _ in segment_ids)
+                conn.execute(
+                    f"UPDATE transcriptions SET marked = ? WHERE id IN ({placeholders})",
+                    [marked_val, *segment_ids],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+        _invalidate_entries_cache()
+
+        socketio.emit("segment_marked", {"segment_ids": segment_ids, "marked": bool(marked_val)})
+    except Exception as e:
+        print(f"[MARK] set_segment_marked failed: {e}")
+
+
 def get_new_entries(limit_override=None):
     """Get recent transcriptions with caching and efficient querying
 
@@ -13304,7 +13371,7 @@ def get_new_entries(limit_override=None):
                     """
                     SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
                            confidence, needs_review, translated_text, translation_language, speech_type,
-                           COALESCE(denied, 0), denied_reason, music_prob
+                           COALESCE(denied, 0), denied_reason, music_prob, COALESCE(marked, 0)
                     FROM transcriptions
                     WHERE timestamp != '' AND TRIM(text) != ''
                     AND COALESCE(is_final, 1) = 1
@@ -13322,10 +13389,10 @@ def get_new_entries(limit_override=None):
                 # broadcast (handle_set_segment_denied), so hiding still works.
                 cursor.execute(
                     """
-                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob FROM (
+                    SELECT id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob, marked FROM (
                         SELECT id, timestamp, text, COALESCE(start_time, 0) as start_time, COALESCE(end_time, 0) as end_time,
                                confidence, needs_review, translated_text, translation_language, speech_type,
-                               COALESCE(denied, 0) as denied, denied_reason, music_prob
+                               COALESCE(denied, 0) as denied, denied_reason, music_prob, COALESCE(marked, 0) as marked
                         FROM transcriptions
                         WHERE timestamp != '' AND TRIM(text) != ''
                         AND COALESCE(is_final, 1) = 1
@@ -13408,7 +13475,7 @@ def emit_new_entries():
 
 
         # Convert entries to segment format with temporal data
-        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob)
+        # entries format: (id, timestamp, text, start_time, end_time, confidence, needs_review, translated_text, translation_language, speech_type, denied, denied_reason, music_prob, marked)
         segments = []
         for entry in entries:
             seg = {
@@ -13431,6 +13498,8 @@ def emit_new_entries():
                 seg["denied_reason"] = entry[11]
             if len(entry) > 12:
                 seg["music_prob"] = entry[12]
+            if len(entry) > 13:
+                seg["marked"] = bool(entry[13])
             segments.append(seg)
 
         # Stable key matching db.segment_id (TEXT). Done before the output-delay split

@@ -59,6 +59,9 @@
       .seg-card.denied { opacity: 0.45; border-color: var(--danger); }
       .seg-card.denied .seg-original,
       .seg-card.denied .seg-translated { text-decoration: line-through; }
+      /* Marked = manual bookmark (persisted in the session DB); accent stripe
+         so flagged segments stand out while scrolling. */
+      .seg-card.marked { border-left: 3px solid var(--warning); }
 
       /* Per-card actions row (Deny / Restore on finalized segments) */
       .seg-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
@@ -68,6 +71,8 @@
       }
       .seg-actions .seg-btn.deny { color: var(--danger); border-color: var(--danger); }
       .seg-actions .seg-btn.restore { color: var(--success); border-color: var(--success); }
+      .seg-actions .seg-btn.mark { color: var(--warning); border-color: var(--warning); }
+      .seg-actions .seg-btn.mark.on { color: var(--bg-base); background: var(--warning); }
 
       /* Original text row */
       .seg-original {
@@ -297,7 +302,7 @@
             let changed = false;
             segs.forEach(s => {
                 if (!segments[s.id]) {
-                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null, denied: !!s.denied, denied_reason: s.denied_reason || null, music_prob: s.music_prob ?? null };
+                    segments[s.id] = { id: s.id, text: s.text, confidence: s.confidence, speech_type: s.speech_type || null, denied: !!s.denied, denied_reason: s.denied_reason || null, music_prob: s.music_prob ?? null, marked: !!s.marked };
                     changed = true;
                     if (!autoScroll) pendingNew++;  // arrived while user is reading above
                 } else {
@@ -307,6 +312,7 @@
                     if (s.denied !== undefined && segments[s.id].denied !== !!s.denied) { segments[s.id].denied = !!s.denied; changed = true; }
                     if (s.denied_reason !== undefined) segments[s.id].denied_reason = s.denied_reason || null;
                     if (s.music_prob != null) segments[s.id].music_prob = s.music_prob;
+                    if (s.marked !== undefined && segments[s.id].marked !== !!s.marked) { segments[s.id].marked = !!s.marked; changed = true; }
                 }
             });
             segOrder = Object.keys(segments).map(Number).sort((a, b) => a - b);
@@ -413,6 +419,7 @@
                 let cardCls = 'seg-card';
                 if (s.confidence != null && s.confidence < confidenceThreshold) cardCls += ' low-confidence';
                 if (s.denied) cardCls += ' denied';
+                if (s.marked) cardCls += ' marked';
 
                 let confHtml = '';
                 if (s.confidence != null) {
@@ -461,9 +468,12 @@
                         denyLabel = DENY_REASON_LABELS[s.denied_reason] || s.denied_reason;
                     }
                 }
+                const markBtn = s.marked
+                    ? `<button class="seg-btn mark on" onclick="toggleMarked(${id}, false)" title="Remove mark">&#9873; Marked</button>`
+                    : `<button class="seg-btn mark" onclick="toggleMarked(${id}, true)" title="Mark so you can find this segment later">&#9873; Mark</button>`;
                 const denyHtml = s.denied
                     ? `<div class="seg-actions"><button class="seg-btn restore" onclick="toggleDenied(${id}, false)">Restore</button>${denyLabel ? `<span class="denied-reason-pill">${esc(denyLabel)}</span>` : ''}</div>`
-                    : `<div class="seg-actions"><button class="seg-btn deny" onclick="toggleDenied(${id}, true)">Deny</button></div>`;
+                    : `<div class="seg-actions"><button class="seg-btn deny" onclick="toggleDenied(${id}, true)">Deny</button>${markBtn}</div>`;
 
                 html += `<div class="${cardCls}" data-seg-id="${id}">` +
                     `<div class="seg-original" data-seg-id="${id}">${esc(s.text)}</div>` +
@@ -652,6 +662,21 @@
             render();
             renderReview();
         };
+
+        // === Mark / Unmark (persistent bookmark, independent of the review queue) ===
+        window.toggleMarked = function(id, marked) {
+            socket.emit('set_segment_marked', { segment_ids: [id], marked: marked });
+            // Optimistic local update so the initiating page reacts instantly
+            if (segments[id]) segments[id].marked = marked;
+            render();
+        };
+
+        socket.on("segment_marked", function(d) {
+            const ids = (d && d.segment_ids) || [];
+            const marked = !!(d && d.marked);
+            ids.forEach(id => { if (segments[id]) segments[id].marked = marked; });
+            render();
+        });
 
         socket.on("segment_denied", function(d) {
             const ids = (d && d.segment_ids) || [];
