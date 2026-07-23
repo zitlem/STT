@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import warnings
+from typing import ClassVar
 
 # Determine application directory (works for both dev and PyInstaller bundle)
 # APP_DIR    = user data dir: config, models, logs (script dir in dev, ~/.stt when frozen)
@@ -1449,7 +1450,7 @@ def get_translation_cache():
 class ModelFactory:
     """Factory class for loading different types of speech-to-text models"""
 
-    _model_cache = {}
+    _model_cache: ClassVar[dict] = {}  # shared across instances by design
     _cache_lock = threading.Lock()
 
     @staticmethod
@@ -1476,7 +1477,7 @@ class ModelFactory:
             device = "cpu"
 
         # Create cache key
-        cache_key = f"{model_type}_{str(model_config)}_{device}"
+        cache_key = f"{model_type}_{model_config!s}_{device}"
 
         # Check cache first
         with ModelFactory._cache_lock:
@@ -3138,7 +3139,7 @@ def extract_audio_from_file(file_path):
                 os.unlink(temp_wav.name)
             except OSError:
                 pass
-        raise Exception(f"Failed to extract audio: {str(e)}") from e
+        raise Exception(f"Failed to extract audio: {e!s}") from e
 
 
 # Formatting/export helpers live in stt/formatting.py (importable, unit-tested);
@@ -5149,7 +5150,7 @@ def get_system_requirements():
     trans_cfg = config.get("live_translation", {})
     if (_live_translation_device == "cpu" and trans_cfg.get("use_gpu", True)
             and trans_cfg.get("translation_method", "nllb") == "nllb"):
-        warns = warns + ["Translation model is running on CPU (GPU requested but unavailable) — expect slow translations. Check GPU drivers / torch install."]
+        warns = [*warns, "Translation model is running on CPU (GPU requested but unavailable) — expect slow translations. Check GPU drivers / torch install."]
     details = {}
     try:
         hw = _probe_hardware()
@@ -5905,10 +5906,10 @@ def save_tts_settings():
 
     # Save manual voice/model selection as per-language preference
     target_lang = config.get("live_translation", {}).get("target_language", "en")
-    if "edge_voice" in data and data["edge_voice"]:
+    if data.get("edge_voice"):
         prefs = config["live_translation"]["tts"].setdefault("edge_voice_preferences", {})
         prefs[target_lang] = data["edge_voice"]
-    if "piper_model" in data and data["piper_model"]:
+    if data.get("piper_model"):
         prefs = config["live_translation"]["tts"].setdefault("piper_model_preferences", {})
         prefs[target_lang] = data["piper_model"]
 
@@ -6687,7 +6688,7 @@ def transcribe_file_endpoint():
                     "file_error",
                     {
                         "session_id": session_id,
-                        "error": f"Transcription failed: {str(e)}",
+                        "error": f"Transcription failed: {e!s}",
                     },
                 )
 
@@ -7106,7 +7107,7 @@ def perform_server_restart():
             # Fallback: spawn new process directly
             print("[RESTART] restart_server.bat not found, spawning directly...")
             subprocess.Popen(
-                [sys.executable] + sys.argv,
+                [sys.executable, *sys.argv],
                 cwd=script_dir,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
             )
@@ -7181,7 +7182,7 @@ def perform_server_restart():
         except Exception:
             maxfd = 65536
         os.closerange(3, maxfd)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
 @app.route("/api/server/restart", methods=["POST"])
@@ -9597,7 +9598,7 @@ def get_cached_models():
 
                     # Get directory size
                     total_size = 0
-                    for dirpath, dirnames, filenames in os.walk(model_path):
+                    for dirpath, _dirnames, filenames in os.walk(model_path):
                         for f in filenames:
                             fp = os.path.join(dirpath, f)
                             if os.path.exists(fp):
@@ -10757,7 +10758,7 @@ def nllb_status():
                     nllb_path = os.path.join(models_dir, item)
                     has_model = False
                     total_size = 0
-                    for root, dirs, files in os.walk(nllb_path):
+                    for root, _dirs, files in os.walk(nllb_path):
                         for f in files:
                             file_path = os.path.join(root, f)
                             total_size += os.path.getsize(file_path)
@@ -11188,7 +11189,7 @@ def download_translation_model():
                             # Calculate total size of model directory
                             total_size = 0
                             incomplete_files = []
-                            for root, dirs, files in os.walk(model_path):
+                            for root, _dirs, files in os.walk(model_path):
                                 for f in files:
                                     fp = os.path.join(root, f)
                                     try:
@@ -11311,7 +11312,7 @@ def download_translation_model():
                 if os.path.exists(cache_dir):
                     dl_logger.info(f"Found cache directory: {cache_dir}")
                     # Look for incomplete files that are actually complete
-                    for root, dirs, files in os.walk(cache_dir):
+                    for root, _dirs, files in os.walk(cache_dir):
                         for f in files:
                             if f.endswith(".incomplete"):
                                 incomplete_path = os.path.join(root, f)
@@ -13610,7 +13611,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                             transcription_state["loaded_model"] = loaded_model_name
 
                     except Exception as e:
-                        error_msg = f"Model loading failed: {str(e)}"
+                        error_msg = f"Model loading failed: {e!s}"
                         print(f"[ERROR] {error_msg}")
                         import traceback
                         traceback.print_exc()
@@ -13717,7 +13718,7 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
 
                         print(f"[OK] Database initialized: {db_path}")
                     except Exception as e:
-                        error_msg = f"Database initialization failed: {str(e)}"
+                        error_msg = f"Database initialization failed: {e!s}"
                         print(f"[ERROR] {error_msg}")
                         import traceback
                         traceback.print_exc()
@@ -15687,7 +15688,7 @@ def _self_update_loop():
         try:
             if _ts_get("running"):
                 continue  # idle-gate: never restart mid-transcription
-            updated, reason = git_self_update(BUNDLE_DIR)
+            updated, _reason = git_self_update(BUNDLE_DIR)
             if updated:
                 # git_self_update does a network pull that can take many
                 # seconds; re-check the idle-gate afterwards so a session that

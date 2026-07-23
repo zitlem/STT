@@ -10,7 +10,7 @@ import sys
 import os
 import numpy as np
 from queue import Queue
-from typing import Callable
+from typing import Callable, Optional
 from datetime import datetime
 
 # select.select() doesn't work on pipes on Windows - only on sockets
@@ -477,7 +477,7 @@ class FFmpegAudioCapture:
                 except subprocess.TimeoutExpired:
                     self.process.kill()
 
-    def start(self, callback: Callable = None):
+    def start(self, callback: Optional[Callable] = None):
         """Start capturing audio
 
         Args:

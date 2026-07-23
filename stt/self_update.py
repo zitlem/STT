@@ -207,4 +207,4 @@ def restart_via_execv():
     running, use ``perform_server_restart()`` in speech_to_text.py instead.
     """
     log.info("[self-update] restarting to load updated code")
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    os.execv(sys.executable, [sys.executable, *sys.argv])

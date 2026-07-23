@@ -213,7 +213,7 @@ def _advance_origin(seed, content="v2\n"):
 
 @needs_git
 def test_main_channel_up_to_date(git_updater):
-    upd, seed, clone = git_updater
+    upd, _seed, _clone = git_updater
 
     upd._check_for_branch_update()
 
@@ -263,7 +263,7 @@ def test_main_channel_rollback_on_dep_failure(git_updater, monkeypatch):
 
 @needs_git
 def test_check_for_update_defaults_to_main_channel(git_updater, monkeypatch):
-    upd, seed, clone = git_updater
+    upd, seed, _clone = git_updater
     monkeypatch.setattr(watchdog, "load_config", lambda: {})  # no channel configured
     _advance_origin(seed)
 

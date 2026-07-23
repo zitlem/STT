@@ -173,7 +173,7 @@ def extract_context_translation(combined_translated, num_context_sentences, sour
         return None
     out_sentences, out_remainder = split_into_sentences(combined_translated)
     if out_remainder:
-        out_sentences = out_sentences + [out_remainder]
+        out_sentences = [*out_sentences, out_remainder]
     if len(out_sentences) > num_context_sentences:
         _ctx_align_stats["exact"] += 1
         _log_ctx_align_stats()

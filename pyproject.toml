@@ -4,10 +4,21 @@ target-version = "py39"
 exclude = [".venv", "_AUTOMATIC_BACKUP", "models", "installer"]
 
 [tool.ruff.lint]
-# Hard-error rules only: syntax errors, undefined names, shadowed imports.
+# Hard-error rules (syntax errors, undefined names, shadowed imports) plus the
+# bug-finding tiers: B = bugbear (likely-bug patterns), RUF = ruff-native checks.
 # (F401/F841 were cleaned once but availability-check imports and a few
-# intentional unused locals remain, so they're not part of the CI gate.)
-select = ["E9", "F63", "F7", "F82", "F811"]
+# intentional unused locals remain, so they're not part of the CI gate.
+# Style-tier families — docstrings, quotes, pathlib, SIM rewrites — stay off:
+# they churn a deployed monolith for no behavior benefit.)
+select = ["E9", "F63", "F7", "F82", "F811", "B", "RUF"]
+ignore = [
+    "RUF001", "RUF003",  # ambiguous-unicode: Cyrillic strings are real data here
+    "RUF100",            # unused-noqa: noqa comments document intent for wider local runs
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Class-level constant dicts/lists are idiomatic in test classes.
+"tests/*" = ["RUF012"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -110,7 +110,7 @@ class TestValidateFile:
         assert "txt" in err
 
     def test_no_extension(self):
-        ok, err = validate_file(FakeUpload("plainfile"))
+        ok, _err = validate_file(FakeUpload("plainfile"))
         assert ok is False
 
 

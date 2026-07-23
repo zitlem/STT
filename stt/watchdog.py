@@ -38,6 +38,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 import zipfile
+from typing import ClassVar
 
 try:
     import certifi
@@ -638,7 +639,7 @@ class Provisioner:
     (message) -> None used by both the GUI pane and headless logging."""
 
     # Ordered (label, method-name) — drives the "Step k/N" display.
-    STEPS = [
+    STEPS: ClassVar[list] = [
         ("Checking disk space",        "_step_disk"),
         ("Installing uv",              "_step_uv"),
         ("Installing Python",          "_step_python"),
@@ -695,7 +696,7 @@ class Provisioner:
             )
         except FileNotFoundError as e:
             if check:
-                raise ProvisionError(f"{cmd[0]} not found: {e}")
+                raise ProvisionError(f"{cmd[0]} not found: {e}") from e
             return 1
         tail = []
         for line in proc.stdout:
@@ -1322,7 +1323,7 @@ class AutoUpdater:
         """Apply the pending update (if any) via git; fall back to source archive."""
         if not self._pending_update:
             return
-        remote, zipball_url, assets = self._pending_update
+        remote, zipball_url, _assets = self._pending_update
         self._pending_update = None
         self._apply_git_update(remote, zipball_url)
 
