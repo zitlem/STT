@@ -19,6 +19,61 @@ if not _IS_WINDOWS:
     import select
 
 
+def parse_asound_cards(content, deprioritize_markers=None):
+    """Parse /proc/asound/cards content into a device list.
+
+    deprioritize_markers: lowercase substrings matched against the card
+    id/description; matching cards are never flagged as is_default.
+    """
+    import re
+
+    deprioritize_markers = [m.lower() for m in (deprioritize_markers or [])]
+    devices = []
+
+    # Parse card entries (format: " N [ID]: TYPE - NAME")
+    # Match lines like " 0 [NVidia         ]: HDA-Intel - HDA NVidia"
+    card_pattern = r'^\s*(\d+)\s+\[([^\]]+)\]\s*:\s+([^-]+)\s*-\s*(.+)$'
+
+    for line in content.split('\n'):
+        match = re.match(card_pattern, line)
+        if match:
+            card_num = match.group(1).strip()
+            card_id = match.group(2).strip()
+            card_desc = match.group(4).strip()
+
+            # Use card description as the display name
+            display_name = f'{card_desc}'
+
+            # Use plughw instead of hw for better format compatibility
+            # plughw handles automatic format/rate conversion
+            is_deprioritized = any(
+                m in card_id.lower() or m in card_desc.lower()
+                for m in deprioritize_markers
+            )
+            devices.append({
+                'name': f'plughw:{card_num},0',
+                'index': len(devices),
+                'display_name': display_name,
+                'card_id': card_id,
+                'is_deprioritized': is_deprioritized,
+                'is_default': False,
+            })
+
+    # Pick the default after enumerating all cards: prefer the
+    # first non-deprioritized device, else fall back to the
+    # first device. (Selecting in-loop left no default when the
+    # first card was deprioritized.)
+    if devices:
+        default_dev = next(
+            (d for d in devices if not d['is_deprioritized']),
+            devices[0],
+        )
+        default_dev['is_default'] = True
+    for d in devices:
+        d.pop('is_deprioritized', None)
+    return devices
+
+
 class FFmpegAudioCapture:
     """Audio capture using ffmpeg - reliable cross-platform audio backend"""
 
@@ -532,49 +587,7 @@ class FFmpegAudioCapture:
                     try:
                         with open('/proc/asound/cards', 'r') as f:
                             content = f.read()
-
-                        # Parse card entries (format: " N [ID]: TYPE - NAME")
-                        import re
-                        # Match lines like " 0 [NVidia         ]: HDA-Intel - HDA NVidia"
-                        card_pattern = r'^\s*(\d+)\s+\[([^\]]+)\]\s*:\s+([^-]+)\s*-\s*(.+)$'
-
-                        for line in content.split('\n'):
-                            match = re.match(card_pattern, line)
-                            if match:
-                                card_num = match.group(1).strip()
-                                card_id = match.group(2).strip()
-                                card_desc = match.group(4).strip()
-
-                                # Use card description as the display name
-                                display_name = f'{card_desc}'
-
-                                # Use plughw instead of hw for better format compatibility
-                                # plughw handles automatic format/rate conversion
-                                is_deprioritized = any(
-                                    m in card_id.lower() or m in card_desc.lower()
-                                    for m in deprioritize_markers
-                                )
-                                devices.append({
-                                    'name': f'plughw:{card_num},0',
-                                    'index': len(devices),
-                                    'display_name': display_name,
-                                    'card_id': card_id,
-                                    'is_deprioritized': is_deprioritized,
-                                    'is_default': False,
-                                })
-
-                        # Pick the default after enumerating all cards: prefer the
-                        # first non-deprioritized device, else fall back to the
-                        # first device. (Selecting in-loop left no default when the
-                        # first card was deprioritized.)
-                        if devices:
-                            default_dev = next(
-                                (d for d in devices if not d['is_deprioritized']),
-                                devices[0],
-                            )
-                            default_dev['is_default'] = True
-                        for d in devices:
-                            d.pop('is_deprioritized', None)
+                        devices = parse_asound_cards(content, deprioritize_markers)
                     except Exception as e:
                         print(f"[FFMPEG] Error reading /proc/asound/cards: {e}")
 
