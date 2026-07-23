@@ -4298,11 +4298,12 @@ def _compute_display_version():
     """Single monotonic version string for scripts and the UI.
 
     Folds git describe's commits-since-tag count into the patch number:
-    '26.1.2-17-g398f75e' -> '26.1.19-g398f75e'. The number only ever moves
-    forward (a later 26.1.3 tag shows 26.1.3, then 26.1.4-g... one commit on),
-    and the -g<hash> suffix distinguishes it from any real future tag.
+    '26.1.2-17-g398f75e' -> '26.1.19-398f75e'. The number only ever moves
+    forward (a later 26.1.3 tag shows 26.1.3, then 26.1.4-... one commit on),
+    and the -<hash> suffix distinguishes it from any real future tag. The 'g'
+    that git describe prefixes onto the hash is stripped for display.
     """
-    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-(\d+)-(g[0-9a-f]+)", SERVER_DESCRIBE)
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)", SERVER_DESCRIBE)
     if m:
         return f"{m.group(1)}.{m.group(2)}.{int(m.group(3)) + int(m.group(4))}-{m.group(5)}"
     if SERVER_DESCRIBE:

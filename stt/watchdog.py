@@ -479,7 +479,8 @@ def read_display_version():
     """Human version string for UI display, matching the server's format.
 
     Folds git describe's commits-since-tag count into the patch number
-    ('26.1.2-17-g398f75e' -> '26.1.19-g398f75e'); an exact tag shows as-is.
+    ('26.1.2-17-g398f75e' -> '26.1.19-398f75e'); an exact tag shows as-is.
+    The 'g' git describe prefixes onto the hash is stripped for display.
     Falls back to read_version() when the checkout has no git metadata.
     Display only — update comparisons must keep using read_version().
     """
@@ -491,7 +492,7 @@ def read_display_version():
             )
             desc = r.stdout.strip().lstrip("v") if r.returncode == 0 else ""
             if desc:
-                m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-(\d+)-(g[0-9a-f]+)", desc)
+                m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)", desc)
                 if m:
                     return f"{m.group(1)}.{m.group(2)}.{int(m.group(3)) + int(m.group(4))}-{m.group(5)}"
                 return desc
