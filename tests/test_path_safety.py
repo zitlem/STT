@@ -70,6 +70,13 @@ def test_safe_model_path_normal_names():
     assert safe_model_path(MODELS_DIR, "facebook--nllb-200-distilled-600M")
 
 
+def test_mixed_absolute_relative_rejected():
+    # A relative base with an absolute payload makes commonpath raise; the
+    # guards must reject rather than propagate
+    assert safe_model_path("relative/base", "/etc/passwd") is None
+    assert safe_managed_path("/etc/passwd", "relative/base") is None
+
+
 def test_safe_managed_path_confinement(tmp_path):
     base = str(tmp_path)
     inside = tmp_path / "_AUTOMATIC_BACKUP"
