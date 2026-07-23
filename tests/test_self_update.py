@@ -205,3 +205,112 @@ def test_failed_sync_leaves_no_marker_so_it_retries(tmp_path, monkeypatch):
 
     assert len(calls) == 2  # retried because no marker was written
     assert not (tmp_path / ".venv" / ".requirements-synced").exists()
+
+
+# --- git_describe ------------------------------------------------------------
+
+
+def test_git_describe_exact_tag(repos):
+    _, _, clone = repos
+    _git(clone, "tag", "v26.1.2")
+    assert self_update.git_describe(str(clone)) == "v26.1.2"
+
+
+def test_git_describe_falls_back_to_hash_without_tags(repos):
+    _, _, clone = repos
+    desc = self_update.git_describe(str(clone))  # --always: bare short hash
+    assert desc
+    assert _head(str(clone)).startswith(desc)
+
+
+def test_git_describe_empty_for_non_git_dir(tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert self_update.git_describe(str(plain)) == ""
+
+
+# --- _sync_deps: the real uv invocation (subprocess stubbed) -----------------
+
+
+class FakeCompleted:
+    def __init__(self, returncode, stderr="", stdout=""):
+        self.returncode = returncode
+        self.stderr = stderr
+        self.stdout = stdout
+
+
+def test_sync_deps_success(tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("flask\n")
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        seen["cwd"] = kw.get("cwd")
+        return FakeCompleted(0)
+
+    monkeypatch.setattr(self_update.subprocess, "run", fake_run)
+    assert self_update._sync_deps(str(tmp_path)) is True
+    assert seen["cmd"][:3] == ["uv", "pip", "install"]
+    assert seen["cwd"] == str(tmp_path)
+
+
+def test_sync_deps_nonzero_exit_returns_false(tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("flask\n")
+    monkeypatch.setattr(self_update.subprocess, "run", lambda *a, **k: FakeCompleted(1, stderr="resolver error"))
+    assert self_update._sync_deps(str(tmp_path)) is False
+
+
+def test_sync_deps_exception_swallowed(tmp_path, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("flask\n")
+
+    def boom(*a, **k):
+        raise OSError("uv not installed")
+
+    monkeypatch.setattr(self_update.subprocess, "run", boom)
+    assert self_update._sync_deps(str(tmp_path)) is False
+
+
+def test_sync_deps_without_requirements_is_false(tmp_path):
+    assert self_update._sync_deps(str(tmp_path)) is False
+
+
+# --- git_self_update failure paths -------------------------------------------
+
+
+def test_git_timeout_reports_error(repos, monkeypatch):
+    _, _, clone = repos
+
+    def timeout(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="git", timeout=1)
+
+    monkeypatch.setattr(self_update, "_git", timeout)
+    assert self_update.git_self_update(str(clone)) == (False, "error")
+
+
+def test_git_status_failure_reports_error(repos, monkeypatch):
+    _, _, clone = repos
+    monkeypatch.setattr(self_update, "_git", lambda *a, **k: FakeCompleted(128, stderr="fatal: broken"))
+    assert self_update.git_self_update(str(clone)) == (False, "error")
+
+
+def test_fast_forward_triggers_dep_sync(repos, monkeypatch):
+    _, seed, clone = repos
+    _advance_origin(seed)
+    synced = []
+    monkeypatch.setattr(self_update, "_sync_deps_if_needed", lambda repo: synced.append(repo))
+
+    updated, _ = self_update.git_self_update(str(clone))
+
+    assert updated is True
+    assert synced == [str(clone)]
+
+
+def test_up_to_date_also_heals_dep_drift(repos, monkeypatch):
+    _, _, clone = repos
+    synced = []
+    monkeypatch.setattr(self_update, "_sync_deps_if_needed", lambda repo: synced.append(repo))
+
+    updated, reason = self_update.git_self_update(str(clone))
+
+    assert (updated, reason) == (False, "up-to-date")
+    assert synced == [str(clone)]
