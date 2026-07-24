@@ -3336,7 +3336,8 @@ def _probe_vram_bytes():
     try:
         import subprocess
         r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                           capture_output=True, text=True, timeout=5)
+                           capture_output=True, text=True, timeout=5,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if r.returncode == 0 and r.stdout.strip():
             return int(float(r.stdout.strip().splitlines()[0])) * 1024**2
     except Exception:
@@ -7106,7 +7107,9 @@ def perform_server_restart():
             subprocess.Popen(
                 ["cmd.exe", "/c", restart_bat],
                 cwd=script_dir,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                # NEW_PROCESS_GROUP: survive this process's exit. NO_WINDOW: the
+                # server runs windowless — cmd would flash a console otherwise.
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
             )
         else:
             # Fallback: spawn new process directly
@@ -13522,7 +13525,8 @@ def thread1_function(ts, cq, cfq, cal_state, cal_data, cal_step1, asq):
                                     ["powershell", "-Command", "Get-WmiObject Win32_SoundDevice | Select-Object Name"],
                                     capture_output=True,
                                     text=True,
-                                    timeout=5
+                                    timeout=5,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                 )
                                 if not result.stdout.strip() or "name" not in result.stdout.lower():
                                     error_msg = "No audio devices found on system. Please connect a microphone."

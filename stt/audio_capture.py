@@ -17,6 +17,11 @@ _IS_WINDOWS = sys.platform.startswith('win')
 if not _IS_WINDOWS:
     import select
 
+# The worker runs windowless on Windows, so every ffmpeg spawn (capture start,
+# backup-split restarts, device probes) would flash its own console window
+# without this. 0 off-Windows: safe to pass unconditionally.
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def parse_asound_cards(content, deprioritize_markers=None):
     """Parse /proc/asound/cards content into a device list.
@@ -277,7 +282,8 @@ class FFmpegAudioCapture:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                bufsize=self.chunk_size * 2  # 16-bit samples
+                bufsize=self.chunk_size * 2,  # 16-bit samples
+                creationflags=_CREATE_NO_WINDOW,
             )
 
             print(f"[DEBUG-TS-START] FFmpeg started, PID: {self.process.pid}", flush=True)
@@ -349,7 +355,8 @@ class FFmpegAudioCapture:
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    bufsize=self.chunk_size * 2
+                    bufsize=self.chunk_size * 2,
+                    creationflags=_CREATE_NO_WINDOW,
                 )
                 print(f"[DEBUG-TS-RESTART] New FFmpeg PID: {self.process.pid}", flush=True)
                 if _IS_WINDOWS:
@@ -596,7 +603,8 @@ class FFmpegAudioCapture:
                 if not devices:
                     try:
                         cmd = ['arecord', '-L']
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False,
+                                creationflags=_CREATE_NO_WINDOW)
                         for line in result.stdout.split('\n'):
                             line = line.strip()
                             if line and not line.startswith(' '):
@@ -632,7 +640,8 @@ class FFmpegAudioCapture:
             elif sys.platform == 'darwin':
                 # List macOS devices
                 cmd = ['ffmpeg', '-f', 'avfoundation', '-list_devices', 'true', '-i', '']
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False,
+                                creationflags=_CREATE_NO_WINDOW)
                 # Parse ffmpeg output for audio devices
                 # Each audio device line looks like:
                 #   [AVFoundation indev @ 0x...] [0] Built-in Microphone
@@ -669,7 +678,8 @@ class FFmpegAudioCapture:
             elif sys.platform.startswith('win'):
                 # List Windows devices
                 cmd = ['ffmpeg', '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy']
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False,
+                                creationflags=_CREATE_NO_WINDOW)
                 devices = []
                 for line in result.stderr.split('\n'):
                     if '"' in line and 'audio' in line.lower():

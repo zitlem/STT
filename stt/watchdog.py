@@ -48,6 +48,11 @@ except Exception as e:
     _SSL_CTX = None
 
 IS_WINDOWS = sys.platform == "win32"
+# Console-window suppression for child processes. The watchdog runs windowless
+# (GUI build / hidden daemon), so on Windows every console child — git version
+# polls, ffmpeg cleanup, taskkill — would otherwise flash a console window
+# (seen in the field as constant flashing). 0 off-Windows: safe to pass always.
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 IS_MACOS = sys.platform == "darwin"
 
 # ---------------------------------------------------------------------------
@@ -231,7 +236,8 @@ def _source_head():
         return ""
     try:
         r = subprocess.run(["git", "-C", SOURCE_DIR, "rev-parse", "HEAD"],
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True, text=True, timeout=10,
+                           creationflags=_CREATE_NO_WINDOW)
         return r.stdout.strip() if r.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -259,7 +265,7 @@ def _relaunch_watchdog(pm=None):
     logging.info(f"[WATCHDOG] Relaunching: {' '.join(argv)}")
     if IS_WINDOWS:
         # os.execv is unreliable under a frozen build on Windows; spawn + exit.
-        subprocess.Popen(argv, close_fds=False)
+        subprocess.Popen(argv, close_fds=False, creationflags=_CREATE_NO_WINDOW)
         os._exit(0)
     else:
         os.execv(exe, argv)
@@ -333,19 +339,20 @@ def _sync_source_to_bundle():
         logging.info(f"[WATCHDOG] Source ({source}) is behind the app ({bundle}); syncing…")
         subprocess.run(["git", "-C", SOURCE_DIR, "fetch", "--depth", "1", "--force",
                         "origin", "+refs/tags/*:refs/tags/*"],
-                       capture_output=True, timeout=120)
+                       capture_output=True, timeout=120, creationflags=_CREATE_NO_WINDOW)
         target = None
         for ref in (f"v{bundle}", bundle):
             if subprocess.run(["git", "-C", SOURCE_DIR, "rev-parse", "--verify", "--quiet", ref],
-                              capture_output=True).returncode == 0:
+                              capture_output=True, creationflags=_CREATE_NO_WINDOW).returncode == 0:
                 target = ref
                 break
         if not target:
             logging.warning(f"[WATCHDOG] No tag for {bundle}; leaving auto-update to catch up")
             return
         subprocess.run(["git", "-C", SOURCE_DIR, "reset", "--hard", target],
-                       capture_output=True, timeout=60)
-        subprocess.run(["git", "-C", SOURCE_DIR, "clean", "-fd"], capture_output=True, timeout=60)
+                       capture_output=True, timeout=60, creationflags=_CREATE_NO_WINDOW)
+        subprocess.run(["git", "-C", SOURCE_DIR, "clean", "-fd"], capture_output=True, timeout=60,
+                       creationflags=_CREATE_NO_WINDOW)
         try:
             Provisioner(log=lambda m: logging.info(f"[SYNC] {m}")).install_deps_only()
         except Exception as e:
@@ -480,6 +487,7 @@ def read_version():
             r = subprocess.run(
                 ["git", "-C", SOURCE_DIR, "describe", "--tags", "--exact-match", "HEAD"],
                 capture_output=True, text=True, timeout=10,
+                creationflags=_CREATE_NO_WINDOW,
             )
             tag = r.stdout.strip().lstrip("v") if r.returncode == 0 else ""
             if tag:
@@ -514,6 +522,7 @@ def read_display_version():
             r = subprocess.run(
                 ["git", "-C", SOURCE_DIR, "describe", "--tags", "--always"],
                 capture_output=True, text=True, timeout=10,
+                creationflags=_CREATE_NO_WINDOW,
             )
             desc = r.stdout.strip().lstrip("v") if r.returncode == 0 else ""
             if desc:
@@ -766,7 +775,7 @@ class Provisioner:
                 # (cp1252 on Windows) is strict and dies on bytes like 0x81 —
                 # e.g. a Cyrillic username in a path echoed by uv.
                 text=True, encoding="utf-8", errors="replace", bufsize=1, env=env,
-                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,  # type: ignore[attr-defined]
+                creationflags=_CREATE_NO_WINDOW,
             )
         except FileNotFoundError as e:
             if check:
@@ -1054,7 +1063,7 @@ class Provisioner:
                    "origin", "+refs/tags/*:refs/tags/*"],
                   desc="git fetch --tags", check=False)
         r = subprocess.run(["git", "-C", SOURCE_DIR, "tag", "--list"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW)
         tags = [t.strip() for t in r.stdout.splitlines() if t.strip()] if r.returncode == 0 else []
         if not tags:
             self.log("  no release tags — staying on default branch")
@@ -1254,7 +1263,7 @@ class ProcessManager:
                 stdout=self._log_fh,
                 stderr=self._log_fh,
                 close_fds=not IS_WINDOWS,
-                creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,  # type: ignore[attr-defined]
+                creationflags=_CREATE_NO_WINDOW,
             )
             self.state.set(process=proc, status="running", consecutive_crashes=0)
             logging.info(f"[PM] STT started (PID {proc.pid})")
@@ -1293,7 +1302,7 @@ class ProcessManager:
             if IS_WINDOWS:
                 subprocess.run(
                     ["taskkill", "/F", "/IM", "ffmpeg.exe"],
-                    capture_output=True, timeout=5,
+                    capture_output=True, timeout=5, creationflags=_CREATE_NO_WINDOW,
                 )
             else:
                 subprocess.run(
@@ -1525,7 +1534,7 @@ class AutoUpdater:
     def _git(self, *args, check=True):
         return subprocess.run(["git", "-C", SOURCE_DIR, *args],
                               capture_output=True, text=True,
-                              check=check)
+                              check=check, creationflags=_CREATE_NO_WINDOW)
 
     def _apply_git_update(self, remote, zipball_url):
         """Update the managed checkout: git fetch + reset to the release, reinstall

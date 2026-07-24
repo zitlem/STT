@@ -234,7 +234,10 @@ def download_url_to_file(url: str, dest_path: str, cancel_check: Optional[Callab
             # Output goes to a temp file: a PIPE would fill up with progress
             # noise and block the process, since nothing drains it while we poll
             with _tempfile.TemporaryFile(mode="w+", errors="replace") as outf:
-                proc = subprocess.Popen(dl_cmd, stdout=outf, stderr=subprocess.STDOUT)
+                # creationflags: windowless server — a console child would flash
+                # a window on Windows (0 elsewhere).
+                proc = subprocess.Popen(dl_cmd, stdout=outf, stderr=subprocess.STDOUT,
+                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 while proc.poll() is None:
                     if cancel_check and cancel_check():
                         proc.terminate()

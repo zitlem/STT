@@ -29,6 +29,10 @@ log = logging.getLogger(__name__)
 # Timeouts (seconds) for the individual git invocations.
 _GIT_TIMEOUT = 60
 
+# The server runs windowless on Windows; without this every git/uv child
+# would flash a console window. 0 off-Windows: safe to pass unconditionally.
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def _git(repo_dir: str, *args: str, timeout: int = _GIT_TIMEOUT) -> "subprocess.CompletedProcess[str]":
     """Run ``git -C repo_dir <args>`` and return the CompletedProcess.
@@ -42,6 +46,7 @@ def _git(repo_dir: str, *args: str, timeout: int = _GIT_TIMEOUT) -> "subprocess.
         text=True,
         timeout=timeout,
         check=False,
+        creationflags=_CREATE_NO_WINDOW,
     )
 
 
@@ -101,6 +106,7 @@ def _sync_deps(repo_dir: str) -> bool:
             text=True,
             timeout=600,
             check=False,
+            creationflags=_CREATE_NO_WINDOW,
         )
         if r.returncode != 0:
             log.warning("[self-update] dependency sync failed: %s", (r.stderr or r.stdout).strip())

@@ -128,7 +128,10 @@ def mount_smb_share(smb_path, username, password, domain=''):
             # same exposure), and unlike /proc on Linux it's only visible to
             # administrators.
             cmd = ['net', 'use', smb_path, f'/user:{user_str}', password]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+            # creationflags: windowless server — 'net use' would flash a console
+            # window on every (re)mount.
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
             if result.returncode == 0 or 'already in use' in result.stdout.lower():
                 logger.info(f"SMB share mounted successfully: {smb_path}")
