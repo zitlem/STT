@@ -320,15 +320,18 @@ class TestAugmentedPath:
     _which() and for the PATH handed to uv (VCS requirements shell out to git)."""
 
     def test_windows_includes_git_and_winget_shim_dirs(self, monkeypatch):
+        # Runs on POSIX CI too (IS_WINDOWS is forced): drive-letter entries
+        # would split at the colon under os.pathsep=":", so assert on the
+        # joined string rather than on split entries.
         monkeypatch.setattr(watchdog, "IS_WINDOWS", True)
         monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
         monkeypatch.setenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
         monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\u\AppData\Local")
-        entries = watchdog._augmented_path().split(os.pathsep)
-        assert os.path.join(r"C:\Program Files", "Git", "cmd") in entries
-        assert os.path.join(r"C:\Program Files (x86)", "Git", "cmd") in entries
-        assert os.path.join(r"C:\Users\u\AppData\Local", "Programs", "Git", "cmd") in entries
-        assert os.path.join(r"C:\Users\u\AppData\Local", "Microsoft", "WinGet", "Links") in entries
+        path = watchdog._augmented_path()
+        assert os.path.join(r"C:\Program Files", "Git", "cmd") in path
+        assert os.path.join(r"C:\Program Files (x86)", "Git", "cmd") in path
+        assert os.path.join(r"C:\Users\u\AppData\Local", "Programs", "Git", "cmd") in path
+        assert os.path.join(r"C:\Users\u\AppData\Local", "Microsoft", "WinGet", "Links") in path
 
     def test_non_windows_has_no_windows_entries(self, monkeypatch):
         monkeypatch.setattr(watchdog, "IS_WINDOWS", False)
