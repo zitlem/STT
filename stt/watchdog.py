@@ -105,12 +105,28 @@ WATCHDOG_SCRIPT = os.path.join(SOURCE_DIR, "stt", "watchdog.py")
 
 # uv-provisioned Python for the venv (see requirements.txt / CI).
 UV_PYTHON_VERSION = "3.11"
-# Fallback store for uv-managed Pythons. uv's default (%APPDATA%\uv\python on
-# Windows) can sit behind a user-created junction — OneDrive folder redirection,
-# a relocated profile — that Windows 11 24H2 refuses to let an elevated process
-# traverse ("untrusted mount point", os error 448; seen in the field). When
-# `uv python install` fails that way, we retry with the store under DATA_DIR.
-UV_PYTHON_FALLBACK_DIR = os.path.join(DATA_DIR, "uv-python")
+# `uv python install` can die with "untrusted mount point" (os error 448) on
+# Windows: OneDrive's Files-On-Demand filter driver and the Win11 24H2
+# mount-point hardening both refuse the *junction* uv creates as the store's
+# minor-version link (astral-sh/uv#19616) — seen in the field, where the
+# interpreter extracted fine into two different stores and only the link step
+# failed, so relocating the store alone does not recover. Recovery ladder in
+# _step_python: salvage the already-extracted interpreter out of the store
+# (no junction needed), else retry with the store relocated here —
+# %LOCALAPPDATA% is never OneDrive-synced or roamed (the workaround endorsed
+# in uv#19616) — then salvage from that.
+if IS_WINDOWS:
+    UV_PYTHON_FALLBACK_DIR = os.path.join(
+        os.environ.get("LOCALAPPDATA")
+        or os.path.join(os.path.expanduser("~"), "AppData", "Local"),
+        "uv", "python")
+else:
+    UV_PYTHON_FALLBACK_DIR = os.path.join(DATA_DIR, "uv-python")
+# Salvaged interpreters are copied here: a plain directory outside any uv
+# store. In-store paths won't do — `uv venv` silently rewrites a store
+# interpreter's base to the minor-version link (pyvenv.cfg `home`), which
+# resurrects the very junction that could not be created.
+UV_SALVAGED_PYTHON_DIR = os.path.join(DATA_DIR, "python")
 
 # Port used only for single-instance lock (never serves traffic)
 _LOCK_PORT = 57337
@@ -640,6 +656,30 @@ def _git_usable():
     return True
 
 
+def _is_untrusted_mount_error(msg):
+    """True for Windows' 'untrusted mount point' failure (os error 448) — see
+    the UV_PYTHON_FALLBACK_DIR comment for the scenarios that raise it."""
+    return "untrusted mount point" in msg or "os error 448" in msg
+
+
+def _uv_default_python_store():
+    """Where `uv python install` puts interpreters when we don't relocate it
+    (mirrors uv's own resolution order)."""
+    explicit = os.environ.get("UV_PYTHON_INSTALL_DIR")
+    if explicit:
+        return explicit
+    data_dir = os.environ.get("UV_DATA_DIR")
+    if data_dir:
+        return os.path.join(data_dir, "python")
+    if IS_WINDOWS:
+        base = os.environ.get("APPDATA") or os.path.join(
+            os.path.expanduser("~"), "AppData", "Roaming")
+        return os.path.join(base, "uv", "python")
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "share")
+    return os.path.join(base, "uv", "python")
+
+
 class Provisioner:
     """Builds the local runtime on first launch: uv, Python, git, ffmpeg, source
     checkout, venv, and dependencies. Each step is idempotent and retriable; the
@@ -664,6 +704,9 @@ class Provisioner:
         # Extra env for uv python/venv steps; set when the managed-Python store
         # is relocated to UV_PYTHON_FALLBACK_DIR (see _step_python).
         self._uv_env = None
+        # Absolute path of a salvaged interpreter (untrusted-mount recovery);
+        # when set, _step_venv pins `uv venv --python` to it.
+        self._uv_python = None
 
     # -- orchestration -------------------------------------------------------
 
@@ -792,16 +835,91 @@ class Provisioner:
         try:
             self._run([self._uv, "python", "install", UV_PYTHON_VERSION],
                       desc=f"uv python install {UV_PYTHON_VERSION}")
+            return
         except ProvisionError as e:
-            msg = str(e)
-            if "untrusted mount point" not in msg and "os error 448" not in msg:
+            if not _is_untrusted_mount_error(str(e)):
                 raise
-            self.log("  default uv Python dir is behind an untrusted mount point; "
-                     f"retrying with the store under {UV_PYTHON_FALLBACK_DIR}")
-            self._uv_env = {"UV_PYTHON_INSTALL_DIR": UV_PYTHON_FALLBACK_DIR}
+        # os error 448: the junction uv creates as the store's minor-version
+        # link was refused (see UV_PYTHON_FALLBACK_DIR). The interpreter
+        # itself usually extracted fine — use it directly instead of
+        # re-downloading into a store that will fail the same way.
+        if self._salvage_python(_uv_default_python_store()):
+            self.log("  store link was refused (untrusted mount point); "
+                     f"using the extracted interpreter directly: {self._uv_python}")
+            return
+        # Nothing extracted → the store dir itself is unreachable (e.g. a
+        # redirected %APPDATA%). Retry with a relocated store, then salvage
+        # from that as the last resort.
+        self.log("  default uv Python dir is behind an untrusted mount point; "
+                 f"retrying with the store under {UV_PYTHON_FALLBACK_DIR}")
+        self._uv_env = {"UV_PYTHON_INSTALL_DIR": UV_PYTHON_FALLBACK_DIR}
+        try:
             self._run([self._uv, "python", "install", UV_PYTHON_VERSION],
                       desc=f"uv python install {UV_PYTHON_VERSION} (fallback dir)",
                       extra_env=self._uv_env)
+        except ProvisionError as e:
+            if not _is_untrusted_mount_error(str(e)) or \
+                    not self._salvage_python(UV_PYTHON_FALLBACK_DIR):
+                raise
+            self.log("  relocated store link was refused too; "
+                     f"using the extracted interpreter directly: {self._uv_python}")
+
+    def _find_store_python(self, store_dir):
+        """Newest fully-extracted CPython UV_PYTHON_VERSION.x in a uv store, or
+        None. Matches only patch-versioned dirs (cpython-3.11.15-<platform>) —
+        never the minor-version link (cpython-3.11-<platform>, no patch dot),
+        which is exactly the junction whose creation fails. uv extracts to a
+        temp dir and renames into place, so a matching dir is complete."""
+        prefix = f"cpython-{UV_PYTHON_VERSION}."
+        best_ver, best_exe = None, None
+        try:
+            names = os.listdir(store_dir)
+        except OSError:
+            return None
+        for name in names:
+            if not name.startswith(prefix):
+                continue
+            d = os.path.join(store_dir, name)
+            exe = (os.path.join(d, "python.exe") if IS_WINDOWS
+                   else os.path.join(d, "bin", "python3"))
+            if not os.path.isfile(exe):
+                continue
+            ver = parse_version(name.split("-")[1])
+            if best_ver is None or ver > best_ver:
+                best_ver, best_exe = ver, exe
+        return best_exe
+
+    def _salvage_python(self, store_dir):
+        """Copy an interpreter that uv extracted (before dying on the store's
+        junction) into UV_SALVAGED_PYTHON_DIR and record it for _step_venv.
+        The copy is required, not defensive: `uv venv --python <store path>`
+        writes the minor-version *link* as the venv's base (pyvenv.cfg home),
+        and that link is what could not be created. Returns True on success."""
+        src_exe = self._find_store_python(store_dir)
+        if not src_exe:
+            return False
+        # store/<name>/python.exe (win) or store/<name>/bin/python3 (posix)
+        src_dir = (os.path.dirname(src_exe) if IS_WINDOWS
+                   else os.path.dirname(os.path.dirname(src_exe)))
+        dest_dir = os.path.join(UV_SALVAGED_PYTHON_DIR, os.path.basename(src_dir))
+        dest_exe = os.path.join(dest_dir, os.path.relpath(src_exe, src_dir))
+        try:
+            if not os.path.isfile(dest_exe):
+                if os.path.isdir(dest_dir):
+                    shutil.rmtree(dest_dir)  # broken/partial previous copy
+                os.makedirs(UV_SALVAGED_PYTHON_DIR, exist_ok=True)
+                self.log(f"  copying extracted interpreter out of the store: "
+                         f"{src_dir} -> {dest_dir}")
+                shutil.copytree(src_dir, dest_dir, symlinks=True)
+        except OSError as e:
+            self.log(f"  [WARN] could not copy interpreter out of the store: {e}")
+            return False
+        if self._run([dest_exe, "--version"], desc=f"{dest_exe} --version",
+                     check=False) != 0:
+            self.log("  [WARN] salvaged interpreter failed to run")
+            return False
+        self._uv_python = dest_exe
+        return True
 
     def _step_git(self):
         if _git_usable():
@@ -976,7 +1094,11 @@ class Provisioner:
         # provisioning aborts forever. Matches install.sh's `uv venv --clear`.
         # _uv_env carries UV_PYTHON_INSTALL_DIR when _step_python fell back to
         # the relocated store — uv must look there to find the interpreter.
-        self._run([self._uv, "venv", venv_dir, "--clear", "--python", UV_PYTHON_VERSION],
+        # _uv_python pins the exact exe when the store was unusable and the
+        # extracted interpreter was copied out (untrusted-mount salvage); the
+        # absolute path keeps uv from routing the venv through store links.
+        py = self._uv_python or UV_PYTHON_VERSION
+        self._run([self._uv, "venv", venv_dir, "--clear", "--python", py],
                   desc="uv venv", extra_env=self._uv_env)
 
     def install_deps_only(self, log=None):

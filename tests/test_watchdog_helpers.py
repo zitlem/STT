@@ -123,11 +123,37 @@ class TestWriteVersion:
         assert sorted(p.name for p in tmp_path.iterdir()) == ["VERSION"]
 
 
+def _exe_rel():
+    """Interpreter path inside a store dir, per platform."""
+    if watchdog.IS_WINDOWS:
+        return "python.exe"
+    return os.path.join("bin", "python3")
+
+
+def _make_store(root, versions, minor_link_decoy=False):
+    """Build a fake uv Python store: one patch-versioned dir per version, each
+    holding a dummy interpreter file. Optionally a dir named like the
+    minor-version *link* (no patch component) that must never be selected."""
+    root.mkdir(parents=True, exist_ok=True)
+    for v in versions:
+        exe = root / f"cpython-{v}-windows-x86_64-none" / _exe_rel()
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_text(f"fake python {v}")
+    if minor_link_decoy:
+        exe = root / f"cpython-{watchdog.UV_PYTHON_VERSION}-windows-x86_64-none" / _exe_rel()
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_text("minor-version link decoy")
+    return root
+
+
 class TestStepPythonUntrustedMountFallback:
-    """Windows 24H2 blocks elevated processes from traversing user-created
-    junctions (os error 448) — uv's default Python store can be behind one
-    (OneDrive-redirected %APPDATA%). _step_python must retry with the store
-    relocated to UV_PYTHON_FALLBACK_DIR, and _step_venv must reuse that env."""
+    """'Untrusted mount point' (os error 448): OneDrive's minifilter / Win11
+    24H2 hardening refuses the junction uv creates as the store's minor-version
+    link (astral-sh/uv#19616) — extraction usually succeeded, only the link
+    step died, so relocating the store doesn't recover (seen in the field).
+    _step_python's ladder: install → salvage the extracted interpreter out of
+    the default store → install into a relocated store → salvage from that.
+    _step_venv pins the salvaged exe (or reuses the relocated-store env)."""
 
     ERR_448 = watchdog.ProvisionError(
         "command failed (2): uv python install 3.11 — last output: "
@@ -136,37 +162,52 @@ class TestStepPythonUntrustedMountFallback:
         "untrusted mount point. (os error 448)"
     )
 
-    def _provisioner(self, run_impl):
+    def _provisioner(self, run_impl, monkeypatch, tmp_path,
+                     default_store=None, fallback_store=None):
+        """Provisioner with stubbed _run and store locations isolated to
+        tmp_path (the dev machine may have a real uv store)."""
+        monkeypatch.setattr(watchdog, "_uv_default_python_store",
+                            lambda: str(default_store or tmp_path / "no-default-store"))
+        monkeypatch.setattr(watchdog, "UV_PYTHON_FALLBACK_DIR",
+                            str(fallback_store or tmp_path / "no-fallback-store"))
+        monkeypatch.setattr(watchdog, "UV_SALVAGED_PYTHON_DIR",
+                            str(tmp_path / "salvaged"))
         p = watchdog.Provisioner(log=lambda m: None)
         p._uv = "uv"
         p._run = run_impl
         return p
 
-    def test_retries_with_relocated_store(self):
-        calls = []
-
-        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
-            calls.append((list(cmd), extra_env))
-            if len(calls) == 1:
-                raise self.ERR_448
+    @staticmethod
+    def _fake_run(calls, install_results):
+        """`uv python install` pops the next result (exception → raised,
+        else returned); anything else (the salvage `--version` probe) → 0."""
+        def run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            if "install" in cmd:
+                calls.append((list(cmd), extra_env))
+                result = install_results.pop(0)
+                if isinstance(result, Exception):
+                    raise result
+                return result
             return 0
+        return run
 
-        p = self._provisioner(fake_run)
+    def test_retries_with_relocated_store_when_nothing_extracted(self, tmp_path, monkeypatch):
+        calls = []
+        p = self._provisioner(self._fake_run(calls, [self.ERR_448, 0]),
+                              monkeypatch, tmp_path)
         p._step_python()
 
         assert len(calls) == 2
         assert calls[0][1] is None
         assert calls[1][1] == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
         assert p._uv_env == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
+        assert p._uv_python is None
 
-    def test_unrelated_failure_is_not_retried(self):
+    def test_unrelated_failure_is_not_retried(self, tmp_path, monkeypatch):
         calls = []
-
-        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
-            calls.append(list(cmd))
-            raise watchdog.ProvisionError("command failed (1): uv python install 3.11 — last output: network unreachable")
-
-        p = self._provisioner(fake_run)
+        err = watchdog.ProvisionError(
+            "command failed (1): uv python install 3.11 — last output: network unreachable")
+        p = self._provisioner(self._fake_run(calls, [err]), monkeypatch, tmp_path)
         try:
             p._step_python()
             raise AssertionError("expected ProvisionError")
@@ -174,6 +215,68 @@ class TestStepPythonUntrustedMountFallback:
             pass
         assert len(calls) == 1
         assert p._uv_env is None
+
+    def test_salvages_extracted_interpreter_from_default_store(self, tmp_path, monkeypatch):
+        # The field case: extraction succeeded, only the link step failed.
+        # No retry should happen — the interpreter is copied out and used.
+        store = _make_store(tmp_path / "store", ["3.11.9", "3.11.15"],
+                            minor_link_decoy=True)
+        calls = []
+        p = self._provisioner(self._fake_run(calls, [self.ERR_448]),
+                              monkeypatch, tmp_path, default_store=store)
+        p._step_python()
+
+        assert len(calls) == 1  # no pointless re-download into a second store
+        assert p._uv_env is None
+        # Newest patch wins numerically (3.11.15 > 3.11.9 despite lexicographic
+        # order), and the copy lives outside the store.
+        expected = os.path.join(str(tmp_path / "salvaged"),
+                                "cpython-3.11.15-windows-x86_64-none", _exe_rel())
+        assert p._uv_python == expected
+        assert os.path.isfile(expected)
+
+    def test_minor_link_name_is_never_selected(self, tmp_path, monkeypatch):
+        # Only the link-named dir exists (no patch-versioned dir): nothing to
+        # salvage — must fall through to the relocated-store retry.
+        store = _make_store(tmp_path / "store", [], minor_link_decoy=True)
+        calls = []
+        p = self._provisioner(self._fake_run(calls, [self.ERR_448, 0]),
+                              monkeypatch, tmp_path, default_store=store)
+        p._step_python()
+
+        assert len(calls) == 2
+        assert p._uv_python is None
+
+    def test_salvages_from_relocated_store_when_both_installs_fail(self, tmp_path, monkeypatch):
+        fallback = _make_store(tmp_path / "fallback", ["3.11.15"])
+        calls = []
+        p = self._provisioner(self._fake_run(calls, [self.ERR_448, self.ERR_448]),
+                              monkeypatch, tmp_path, fallback_store=fallback)
+        p._step_python()
+
+        assert len(calls) == 2
+        assert p._uv_python is not None
+        assert os.path.isfile(p._uv_python)
+
+    def test_broken_salvaged_interpreter_falls_through(self, tmp_path, monkeypatch):
+        # --version probe fails → salvage rejected → relocated retry runs.
+        store = _make_store(tmp_path / "store", ["3.11.15"])
+        calls = []
+
+        def run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            if "install" in cmd:
+                calls.append(list(cmd))
+                if len(calls) == 1:
+                    raise self.ERR_448
+                return 0
+            return 1  # the probe
+
+        p = self._provisioner(run, monkeypatch, tmp_path, default_store=store)
+        p._step_python()
+
+        assert len(calls) == 2
+        assert p._uv_python is None
+        assert p._uv_env == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
 
     def test_venv_reuses_fallback_env(self, tmp_path, monkeypatch):
         monkeypatch.setattr(watchdog, "SOURCE_DIR", str(tmp_path))
@@ -183,9 +286,29 @@ class TestStepPythonUntrustedMountFallback:
             seen["cmd"], seen["extra_env"] = list(cmd), extra_env
             return 0
 
-        p = self._provisioner(fake_run)
+        p = watchdog.Provisioner(log=lambda m: None)
+        p._uv = "uv"
+        p._run = fake_run
         p._uv_env = {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
         p._step_venv()
 
         assert seen["extra_env"] == {"UV_PYTHON_INSTALL_DIR": watchdog.UV_PYTHON_FALLBACK_DIR}
         assert "venv" in seen["cmd"]
+        # No salvage happened → version spec, not a pinned path.
+        assert seen["cmd"][-2:] == ["--python", watchdog.UV_PYTHON_VERSION]
+
+    def test_venv_pins_salvaged_interpreter(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(watchdog, "SOURCE_DIR", str(tmp_path))
+        seen = {}
+
+        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            seen["cmd"] = list(cmd)
+            return 0
+
+        p = watchdog.Provisioner(log=lambda m: None)
+        p._uv = "uv"
+        p._run = fake_run
+        p._uv_python = os.path.join("salvaged", "cpython-3.11.15", _exe_rel())
+        p._step_venv()
+
+        assert seen["cmd"][-2:] == ["--python", p._uv_python]
