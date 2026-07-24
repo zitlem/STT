@@ -312,3 +312,86 @@ class TestStepPythonUntrustedMountFallback:
         p._step_venv()
 
         assert seen["cmd"][-2:] == ["--python", p._uv_python]
+
+
+class TestAugmentedPath:
+    """Tools winget just installed are invisible to the running process's
+    inherited PATH — the canonical install dirs must be augmented in, both for
+    _which() and for the PATH handed to uv (VCS requirements shell out to git)."""
+
+    def test_windows_includes_git_and_winget_shim_dirs(self, monkeypatch):
+        monkeypatch.setattr(watchdog, "IS_WINDOWS", True)
+        monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+        monkeypatch.setenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\u\AppData\Local")
+        entries = watchdog._augmented_path().split(os.pathsep)
+        assert os.path.join(r"C:\Program Files", "Git", "cmd") in entries
+        assert os.path.join(r"C:\Program Files (x86)", "Git", "cmd") in entries
+        assert os.path.join(r"C:\Users\u\AppData\Local", "Programs", "Git", "cmd") in entries
+        assert os.path.join(r"C:\Users\u\AppData\Local", "Microsoft", "WinGet", "Links") in entries
+
+    def test_non_windows_has_no_windows_entries(self, monkeypatch):
+        monkeypatch.setattr(watchdog, "IS_WINDOWS", False)
+        monkeypatch.setenv("PATH", "/usr/bin")  # host PATH may itself contain WinGet
+        path = watchdog._augmented_path()
+        assert "WinGet" not in path
+        assert os.path.join("Git", "cmd") not in path
+
+    def test_existing_path_is_preserved(self, monkeypatch):
+        monkeypatch.setenv("PATH", "/existing/entry")
+        assert watchdog._augmented_path().endswith(os.pathsep + "/existing/entry")
+
+
+class TestStepDepsGitGuard:
+    """requirements.txt pins whisper to a git URL; uv needs a git executable
+    for it. When git could not be provisioned, _step_deps must fail up front
+    with instructions, not let uv die mid-install (seen in the field)."""
+
+    def _provisioner(self, run_impl):
+        p = watchdog.Provisioner(log=lambda m: None)
+        p._uv = "uv"
+        p._run = run_impl
+        return p
+
+    def test_vcs_requirement_without_git_fails_fast(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(watchdog, "SOURCE_DIR", str(tmp_path))
+        monkeypatch.setattr(watchdog, "_git_usable", lambda: False)
+        (tmp_path / "requirements.txt").write_text(
+            "numpy\ngit+https://github.com/openai/whisper.git\n")
+        calls = []
+        p = self._provisioner(lambda *a, **kw: calls.append(a) or 0)
+        try:
+            p._step_deps()
+            raise AssertionError("expected ProvisionError")
+        except watchdog.ProvisionError as e:
+            assert "git" in str(e).lower()
+        assert calls == []  # failed before invoking uv
+
+    def test_vcs_requirement_with_git_proceeds(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(watchdog, "SOURCE_DIR", str(tmp_path))
+        monkeypatch.setattr(watchdog, "_git_usable", lambda: True)
+        (tmp_path / "requirements.txt").write_text(
+            "git+https://github.com/openai/whisper.git\n")
+        seen = {}
+
+        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            seen["cmd"] = list(cmd)
+            return 0
+
+        p = self._provisioner(fake_run)
+        p._step_deps()
+        assert "pip" in seen["cmd"] and "-r" in seen["cmd"]
+
+    def test_plain_requirements_skip_the_git_check(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(watchdog, "SOURCE_DIR", str(tmp_path))
+        monkeypatch.setattr(watchdog, "_git_usable", lambda: False)
+        (tmp_path / "requirements.txt").write_text("numpy\nfaster-whisper==1.2.1\n")
+        seen = {}
+
+        def fake_run(cmd, desc=None, check=True, timeout=3600, extra_env=None):
+            seen["cmd"] = list(cmd)
+            return 0
+
+        p = self._provisioner(fake_run)
+        p._step_deps()  # git-less installs stay fine without VCS requirements
+        assert "pip" in seen["cmd"]

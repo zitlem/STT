@@ -624,7 +624,13 @@ def is_provisioned():
 
 
 def _augmented_path():
-    """PATH with the common uv/local install locations prepended."""
+    """PATH with the common uv/git/ffmpeg install locations prepended. A tool
+    winget just installed is not on the running process's PATH (Windows never
+    updates live processes), so the canonical install dirs are listed
+    explicitly — that lets _which() see it in the same provisioning run, and
+    _run() hands this PATH to subprocesses, so uv can shell out to git for
+    VCS requirements (seen in the field: `uv pip install` died on the whisper
+    git URL right after winget had installed git)."""
     home = os.path.expanduser("~")
     extra = [
         os.path.join(home, ".local", "bin"),
@@ -632,7 +638,18 @@ def _augmented_path():
         _FFMPEG_BIN_DIR,
     ]
     if IS_WINDOWS:
-        extra.append(os.path.join(home, ".local", "bin"))
+        local = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if base:
+                extra.append(os.path.join(base, "Git", "cmd"))
+        extra += [
+            # User-scope Git for Windows installer.
+            os.path.join(local, "Programs", "Git", "cmd"),
+            # winget's shims for portable packages (e.g. Gyan.FFmpeg) — without
+            # this, a successful winget ffmpeg install went unseen and a
+            # redundant static build was downloaded on top.
+            os.path.join(local, "Microsoft", "WinGet", "Links"),
+        ]
     return os.pathsep.join(extra) + os.pathsep + os.environ.get("PATH", "")
 
 
@@ -1112,6 +1129,22 @@ class Provisioner:
 
     def _step_deps(self):
         req = os.path.join(SOURCE_DIR, "requirements.txt")
+        # uv shells out to git for VCS requirements (whisper is pinned to a
+        # GitHub URL). When git could not be provisioned at all, fail up front
+        # with instructions instead of uv's mid-install "Git executable not
+        # found" — _step_git only warns, because a git-less install is fine
+        # for everything except these requirements.
+        try:
+            with open(req, encoding="utf-8") as f:
+                needs_git = "git+" in f.read()
+        except OSError:
+            needs_git = False  # let uv report the missing/broken file itself
+        if needs_git and not _git_usable():
+            raise ProvisionError(
+                "requirements.txt contains git-based packages but git is not "
+                "available. Install Git (https://git-scm.com/downloads), then "
+                "restart the app to resume setup."
+            )
         py = venv_python()
         cmd = [self._uv, "pip", "install", "--python", py, "-r", req]
         gpu = self._has_nvidia()
