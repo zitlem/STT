@@ -424,7 +424,12 @@ def load_config():
             )
 
     try:
-        with open(CONFIG_FILE, "r") as f:
+        # encoding= is load-bearing: config.json is seeded as a byte-copy of the
+        # UTF-8 template, whose hallucination-phrase list is Cyrillic. Without it,
+        # Windows reads cp1252 and dies on bytes cp1252 leaves undefined (0x81…),
+        # which quarantined the freshly seeded config in an infinite crash loop
+        # (seen in the field on 26.1.146).
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
         print(f"[OK] Loaded configuration from '{CONFIG_FILE}'")
     except OSError as e:
@@ -450,7 +455,7 @@ def load_config():
             print(f"[CONFIG] WARNING: could not back up corrupt config: {move_err}")
         if not _restore_config_from_template("recover config.json"):
             raise
-        with open(CONFIG_FILE, "r") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
         print(f"[CONFIG] Recovered '{CONFIG_FILE}' from config.default.json")
 
@@ -534,7 +539,7 @@ def _init_sentry():
         import sentry_sdk
         from sentry_sdk.integrations.flask import FlaskIntegration
         try:
-            with open(os.path.join(BUNDLE_DIR, "VERSION")) as _vf:
+            with open(os.path.join(BUNDLE_DIR, "VERSION"), encoding="utf-8") as _vf:
                 release = "stt@" + _vf.read().strip()
         except OSError:
             release = None
@@ -3187,7 +3192,7 @@ SERVER_START_TIME = time.time()
 # Running version (read once at startup; a self-update restarts the process, so a
 # fresh run picks up the new VERSION). Same source as the Sentry release tag.
 try:
-    with open(os.path.join(BUNDLE_DIR, "VERSION")) as _vf:
+    with open(os.path.join(BUNDLE_DIR, "VERSION"), encoding="utf-8") as _vf:
         SERVER_VERSION = _vf.read().strip()
 except OSError:
     SERVER_VERSION = "unknown"
@@ -8208,7 +8213,7 @@ def stop_transcription():
             import time
             _log_path = os.path.join(APP_DIR, "server.log")
             def log(msg):
-                with open(_log_path, "a") as f:
+                with open(_log_path, "a", encoding="utf-8") as f:
                     f.write(msg + "\n")
                     f.flush()
 
@@ -8234,12 +8239,12 @@ def stop_transcription():
         import threading
         _server_log = os.path.join(APP_DIR, "server.log")
         # Write directly to log file since stdout might be buffered
-        with open(_server_log, "a") as logf:
+        with open(_server_log, "a", encoding="utf-8") as logf:
             logf.write(f"[STOP] Creating cleanup thread, transcription_process={transcription_process}\n")
             logf.flush()
         cleanup_thread = threading.Thread(target=cleanup_process, daemon=True)
         cleanup_thread.start()
-        with open(_server_log, "a") as logf:
+        with open(_server_log, "a", encoding="utf-8") as logf:
             logf.write("[STOP] Cleanup thread started\n")
             logf.flush()
 
@@ -9878,7 +9883,7 @@ def load_whisper_models_from_file():
     """Load discovered Whisper models from local file"""
     try:
         if os.path.exists(WHISPER_MODELS_FILE):
-            with open(WHISPER_MODELS_FILE, "r") as f:
+            with open(WHISPER_MODELS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("models", {}), data.get("timestamp", 0)
     except Exception as e:
@@ -9896,7 +9901,7 @@ def save_whisper_models_to_file(models):
             "timestamp": time.time(),
             "last_updated": datetime.datetime.now().isoformat(),
         }
-        with open(WHISPER_MODELS_FILE, "w") as f:
+        with open(WHISPER_MODELS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         print(f"[OK] Saved {len(models)} Whisper models to {WHISPER_MODELS_FILE}")
     except Exception as e:
@@ -10013,7 +10018,7 @@ def load_faster_whisper_models_from_file():
     """Load discovered Faster-Whisper models from local file"""
     try:
         if os.path.exists(FASTER_WHISPER_MODELS_FILE):
-            with open(FASTER_WHISPER_MODELS_FILE, "r") as f:
+            with open(FASTER_WHISPER_MODELS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("models", {}), data.get("timestamp", 0)
     except Exception as e:
@@ -10031,7 +10036,7 @@ def save_faster_whisper_models_to_file(models):
             "timestamp": time.time(),
             "last_updated": datetime.datetime.now().isoformat(),
         }
-        with open(FASTER_WHISPER_MODELS_FILE, "w") as f:
+        with open(FASTER_WHISPER_MODELS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         print(f"[OK] Saved {len(models)} Faster-Whisper models to {FASTER_WHISPER_MODELS_FILE}")
     except Exception as e:

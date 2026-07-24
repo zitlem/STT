@@ -762,7 +762,10 @@ class Provisioner:
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1, env=env,
+                # uv/git emit UTF-8 on every platform; the locale default
+                # (cp1252 on Windows) is strict and dies on bytes like 0x81 —
+                # e.g. a Cyrillic username in a path echoed by uv.
+                text=True, encoding="utf-8", errors="replace", bufsize=1, env=env,
                 creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0,  # type: ignore[attr-defined]
             )
         except FileNotFoundError as e:
@@ -1234,6 +1237,13 @@ class ProcessManager:
             env["STT_DATA_DIR"] = DATA_DIR
             env["STT_MANAGED"] = "1"  # tells the server it's watchdog-managed (skip its own git self-update)
             env["PYTHONUNBUFFERED"] = "1"
+            # UTF-8 mode: the worker's config/templates and its transcription
+            # output are UTF-8 (Cyrillic phrase lists and captions), but Windows
+            # defaults every open() and non-console stdout to cp1252, which
+            # can't even decode bytes like 0x81 (field crash on 26.1.146, and
+            # a latent UnicodeEncodeError for any printed Cyrillic caption).
+            # stt.log is opened as UTF-8 above, so worker output stays coherent.
+            env["PYTHONUTF8"] = "1"
             _ffbin = os.path.join(DATA_DIR, "bin")
             if os.path.isdir(_ffbin):
                 env["PATH"] = _ffbin + os.pathsep + env.get("PATH", "")
